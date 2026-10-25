@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+node_modules/
+data.json
+data.json.bak
+data.json.before-restore.json
+logs/
+workspace/candidates/
