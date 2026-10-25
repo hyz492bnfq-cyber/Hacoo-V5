@@ -2268,19 +2268,30 @@ function isAdmin(ctx) {
 }
 
 
+
 bot.command('start', async ctx => {
   if (!isAdmin(ctx)) return;
+
+  const dashboardUrl = process.env.DASHBOARD_URL?.trim();
+
+  if (!dashboardUrl) {
+    await ctx.reply(
+      '⚠️ La variable DASHBOARD_URL n’est pas configurée.'
+    );
+    return;
+  }
 
   await ctx.reply(
     '⚙️ M2 HACOO BOT\n\nTon bot se pilote depuis le tableau de bord web. 👇',
     {
       reply_markup: new InlineKeyboard().url(
         '🌐 Ouvrir le tableau de bord',
-        'https://m2hacoo-bot.fadehost.app'
+        dashboardUrl
       )
     }
   );
 });
+
 
 
 bot.command('pause', async ctx => {
