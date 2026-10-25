@@ -1,0 +1,678 @@
+
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M2 HACOO BOT</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2c;--panel2:#19243a;--line:#29364e;--text:#edf2ff;--muted:#93a3bd;--blue:#6488ff;--green:#39d6a0;--red:#ff7385;--radius:16px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
+aside{padding:24px 15px;border-right:1px solid var(--line);background:#0e1526}
+.brand{display:flex;align-items:center;gap:12px;padding:4px 8px 25px}
+.logo{width:43px;height:43px;display:grid;place-items:center;background:linear-gradient(135deg,#6589ff,#8c64f7);border-radius:14px;font-size:23px}
+.brand strong{display:block;font-size:16px}.brand small{color:var(--muted)}
+.navtitle{font-size:10px;letter-spacing:1.5px;color:var(--muted);padding:13px 10px 7px}
+nav button{width:100%;border:0;background:transparent;color:var(--muted);text-align:left;padding:11px 12px;border-radius:10px;margin:2px 0;display:flex;gap:10px;align-items:center}
+nav button:hover,nav button.active{background:#202d49;color:white}
+main{padding:30px;max-width:1250px;width:100%;margin:auto}
+.top{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:25px}
+h1{font-size:27px;letter-spacing:-.7px;margin:0}h2{font-size:17px;margin:0 0 6px}h3{font-size:14px;margin:0}
+p{color:var(--muted);margin:4px 0 0}.sub{color:var(--muted);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;background:var(--panel2);border-radius:20px;font-size:12px}
+.dot{width:8px;height:8px;background:var(--green);border-radius:50%}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px;margin-bottom:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;min-width:0}
+.metric{font-size:29px;font-weight:750;margin-top:10px;letter-spacing:-1px}
+.metric-label{font-size:13px;color:var(--muted)}
+.section{margin-bottom:17px}
+.sectionhead{margin-bottom:17px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.setting{padding:15px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:18px}
+.setting:last-child{border-bottom:0;padding-bottom:0}
+.setting:first-child{padding-top:0}
+.setting p{font-size:12px;max-width:520px}
+.switch{position:relative;flex-shrink:0;width:46px;height:27px;background:#354158;border:0;border-radius:30px;padding:3px;transition:.2s}
+.switch:after{content:"";display:block;width:21px;height:21px;border-radius:50%;background:white;transition:.2s}
+.switch.on{background:#367be9}.switch.on:after{transform:translateX(19px)}
+select,input[type=text],input[type=password],input[type=number]{background:#0d1527;color:var(--text);border:1px solid var(--line);padding:11px 12px;border-radius:10px;width:100%;min-width:0;outline:none}
+select:focus,input:focus{border-color:var(--blue)}
+.field{display:grid;gap:7px;min-width:0}.field label{font-size:13px;color:#c6d1e5}
+.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:10px 14px;border-radius:10px;font-weight:600}
+.btn:hover{filter:brightness(1.15)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:white}
+.btn.danger{color:#ff9aaa;border-color:#6e3443}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:18px}
+.notice{padding:13px 15px;background:#152746;border:1px solid #2d4a78;border-radius:12px;color:#cbdcff;font-size:13px;margin-bottom:18px}
+.notice.warn{background:#342518;border-color:#71502c;color:#ffdfae}
+.hidden{display:none!important}
+.page{display:none}.page.active{display:block}
+.list{display:grid;gap:9px;margin-top:15px}
+.rule{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#0e1628;border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-wrap:anywhere}
+.rule span{min-width:0;overflow-wrap:anywhere}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:12px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.tablewrap{overflow-x:auto}
+.tag{display:inline-block;border-radius:7px;background:#25324a;padding:4px 7px;font-size:11px}
+footer{color:var(--muted);font-size:11px;padding:20px 0}
+.toast{position:fixed;bottom:20px;right:20px;max-width:calc(100% - 40px);background:#20334a;border:1px solid #405979;padding:14px 18px;border-radius:12px;z-index:10;box-shadow:0 10px 40px #0006}
+@media(max-width:800px){.layout{grid-template-columns:1fr}aside{padding:12px;border-right:0;border-bottom:1px solid var(--line)}.brand{padding:5px 5px 12px}.navtitle{display:none}nav{display:flex;overflow-x:auto;gap:5px;padding-bottom:3px}nav button{white-space:nowrap;width:auto;flex-shrink:0;padding:9px 11px}main{padding:19px 14px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.top{align-items:flex-start}h1{font-size:23px}.card{padding:15px}}
+@media(max-width:460px){.grid,.formgrid{grid-template-columns:1fr}.metric{font-size:25px}.top{flex-direction:column}.setting{gap:12px}.setting>div{min-width:0}}
+.bigpause{width:100%;min-height:58px;padding:16px;border:0;border-radius:16px;font-size:18px;font-weight:700;color:#fff;margin-bottom:16px}
+.bigpause.stop{background:#c98a1b}.bigpause.go{background:#1f9d73}.bigpause.off{background:#354158;color:var(--muted)}
+.hcard{display:grid;gap:6px;background:#0e1628;border:1px solid var(--line);border-radius:12px;padding:13px;overflow-wrap:anywhere}
+.hcard .btn{justify-self:start;min-height:44px}
+.tag.failed{background:#5a2330}
+.chart{display:flex;align-items:flex-end;gap:8px;height:130px;margin-top:14px}
+.bar{flex:1;display:grid;gap:4px;text-align:center;font-size:11px;color:var(--muted)}
+.cols{height:105px;display:flex;align-items:flex-end;justify-content:center;gap:3px}
+.cols i{display:block;width:45%;max-width:18px;min-height:2px;background:var(--blue);border-radius:4px 4px 0 0}.cols i.b2{background:#9a74ff}
+.saveSettings,#saveHome{display:none}
+.switch{width:54px;height:32px}.switch:after{width:26px;height:26px}.switch.on:after{transform:translateX(22px)}
+@media(max-width:800px){aside{padding:10px 14px}.brand{padding:2px}nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:#0e1526;border-top:1px solid var(--line);display:flex;overflow-x:auto;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom))}nav button{flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:72px;padding:8px 6px;font-size:11px;text-align:center}nav button i{font-style:normal;font-size:18px}main{padding-bottom:100px}.toast{bottom:88px;right:12px}}
+</style>
+</head>
+<body>
+<div class="layout">
+<aside>
+  <div class="brand"><div class="logo">🛡️</div><div><strong>M2 HACOO BOT</strong><small>Centre de contrôle</small></div></div>
+  <div class="navtitle">MENU PRINCIPAL</div>
+  <nav id="nav">
+    <button class="active" data-page="home"><i>◫</i><span>Accueil</span></button>
+    <button data-page="duplicates"><i>⧉</i><span>Doublons</span></button>
+    <button data-page="moderation"><i>⛨</i><span>Modération</span></button>
+    <button data-page="cleaning"><i>✦</i><span>Nettoyage</span></button>
+    <button data-page="content"><i>▧</i><span>Contenus</span></button>
+    <button data-page="rules"><i>☷</i><span>Règles</span></button>
+    <button data-page="history"><i>◷</i><span>Historique</span></button>
+    <button data-page="assistant"><i>✧</i><span>Assistant IA</span></button>
+    <button data-page="settings"><i>⚙</i><span>Réglages</span></button>
+  </nav>
+</aside>
+<main>
+  <div class="top">
+    <div><h1 id="pageTitle">Vue d’ensemble</h1><p id="pageDesc">Tout ce qui se passe sur ton canal, en un coup d’œil.</p></div>
+    <div class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Connexion en cours…</span></div>
+  </div>
+  <div id="notice" class="notice hidden"></div>
+
+  <section class="page active" id="home">
+    <button id="pauseBtn" class="bigpause stop">Chargement…</button>
+    <div class="grid">
+      <div class="card"><div class="metric-label">Messages analysés</div><div class="metric" id="mSeen">—</div></div>
+      <div class="card"><div class="metric-label">Doublons détectés</div><div class="metric" id="mDup">—</div></div>
+      <div class="card"><div class="metric-label">Publications supprimées</div><div class="metric" id="mDeleted">—</div></div>
+      <div class="card"><div class="metric-label">Actions de modération</div><div class="metric" id="mModeration">—</div></div>
+      <div class="card"><div class="metric-label">Messages nettoyés</div><div class="metric" id="mCleaned">—</div></div>
+      <div class="card"><div class="metric-label">Erreurs</div><div class="metric" id="mErrors">—</div></div>
+    </div>
+    <div class="card section">
+      <div class="sectionhead"><h2>Contrôle rapide</h2><p>Active ou mets en pause le bot.</p></div>
+      <div class="setting"><div><h3>Bot activé</h3><p>Le bot analyse les nouvelles publications du canal.</p></div><button class="switch" data-setting="enabled" role="switch" aria-label="Activer le bot"></button></div>
+      <div class="setting"><div><h3>Pause de sécurité</h3><p>Mettre le bot en pause si nécessaire.</p></div><button class="switch" data-setting="botPaused" role="switch" aria-label="Pause du bot"></button></div>
+      <div class="actions"><button class="btn primary" id="saveHome">Enregistrer les changements</button><button class="btn" id="refresh">Actualiser les données</button></div>
+    </div>
+    <div class="card section">
+      <div class="sectionhead"><h2>Fiabilité et reprise</h2><p>Les tâches en attente sont sauvegardées pour être reprises après une erreur ou un redémarrage.</p></div>
+      <div id="queueStatus" class="notice">Vérification de la file d’attente…</div>
+      <div class="actions"><button class="btn primary" id="retryPending">Relancer les tâches en attente</button></div>
+      <div id="uncertainAlbumPanel" class="notice warn hidden" style="margin-top:12px">
+        <strong>Album à vérifier manuellement.</strong> Consulte le canal Telegram avant de choisir une action.
+        <div class="actions" style="margin-top:10px"><button class="btn" id="albumConfirmSent">J’ai vérifié : tout l’album est publié</button><button class="btn" id="albumConfirmNotSent">J’ai vérifié : le morceau en attente n’est pas publié</button></div>
+      </div>
+    </div>
+    <div class="card section"><h2>7 derniers jours</h2><p><span style="color:var(--blue)">■</span> Supprimées &nbsp; <span style="color:#9a74ff">■</span> Doublons</p><div id="chart" class="chart"></div></div>
+    <div class="card"><h2>Activité récente</h2><p>Les dernières actions du bot.</p><div id="recent" class="list"><div class="empty">Chargement…</div></div></div>
+  </section>
+
+  <section class="page" id="duplicates">
+    <div class="card section">
+      <div class="sectionhead"><h2>Détection des doublons</h2><p>Évite qu’une même publication soit envoyée plusieurs fois.</p></div>
+      <div class="notice" id="geminiStatus">État de Gemini : vérification… Gemini analyse chaque nouvelle publication et compare l’historique récent. En cas de doute ou d’erreur API, la publication est conservée.</div>
+      <div class="setting"><div><h3>Activer l’anti-doublons</h3><p>Contrôle les publications répétées.</p></div><button class="switch" data-setting="duplicates" role="switch"></button></div>
+      <div class="formgrid" style="margin-top:20px">
+        <div class="field"><label for="windowMinutes">Durée de comparaison</label><select id="windowMinutes"><option value="1">1 minute</option><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 heure</option><option value="180">3 heures</option><option value="360">6 heures</option></select></div>
+        <div class="field"><label for="duplicateMode">Méthode de détection</label><select id="duplicateMode"><option value="exact">Texte identique</option><option value="similar">Texte similaire</option></select></div>
+      </div>
+      <div class="setting" style="margin-top:18px"><div><h3>Seuil de ressemblance</h3><p>Plus le seuil est élevé, plus les textes doivent se ressembler.</p></div><strong id="thresholdLabel">72 %</strong></div>
+      <input type="range" id="similarityThreshold" min="40" max="95" value="72" style="width:100%;accent-color:var(--blue)">
+      <div class="setting"><div><h3>Détecter les textes similaires</h3><p>Repère les messages reformulés.</p></div><button class="switch" data-setting="detectSimilarText" role="switch"></button></div>
+      <div class="setting"><div><h3>Comparer aussi les liens</h3><p>Deux publications au texte identique mais avec des liens différents ne sont pas des doublons.</p></div><button class="switch" data-setting="compareLinks" role="switch"></button></div>
+      <div class="setting"><div><h3>Comparer les images</h3><p>Recherche les photos identiques ou modifiées.</p></div><button class="switch" data-setting="duplicateImages" role="switch"></button></div>
+      <div class="setting"><div><h3>Détecter les images modifiées</h3><p>Compare visuellement les images quand le traitement est disponible.</p></div><button class="switch" data-setting="detectModifiedImages" role="switch"></button></div>
+      <div class="setting"><div><h3>Comparer les albums</h3><p>Repère les albums de photos déjà publiés.</p></div><button class="switch" data-setting="duplicateAlbums" role="switch"></button></div>
+      <div class="actions"><button class="btn primary saveSettings">Enregistrer les modifications</button></div>
+    </div>
+  </section>
+
+  <section class="page" id="moderation">
+    <div class="card">
+      <div class="sectionhead"><h2>Règles de modération</h2><p>Active uniquement les règles dont tu as besoin. Une règle déclenchée peut entraîner la suppression de la publication.</p></div>
+      <div class="setting"><div><h3>Hashtags interdits</h3><p>Supprime les publications contenant des hashtags.</p></div><button class="switch" data-setting="hashtags" role="switch"></button></div>
+      <div class="setting"><div><h3>Lignes commençant par un tiret</h3><p>Bloque les lignes du type « - exemple ».</p></div><button class="switch" data-setting="dashLines" role="switch"></button></div>
+      <div class="setting"><div><h3>Liens interdits</h3><p>Bloque les liens, sauf les domaines autorisés.</p></div><button class="switch" data-setting="blockLinks" role="switch"></button></div>
+      <div class="setting"><div><h3>Mentions interdites</h3><p>Bloque les mentions de comptes comme @compte.</p></div><button class="switch" data-setting="blockMentions" role="switch"></button></div>
+      <div class="setting"><div><h3>Messages transférés interdits</h3><p>Bloque les publications transférées détectées par Telegram.</p></div><button class="switch" data-setting="blockForwarded" role="switch"></button></div>
+      <div class="actions"><button class="btn primary saveSettings">Enregistrer les modifications</button></div>
+    </div>
+  </section>
+
+  <section class="page" id="cleaning">
+    <div class="card">
+      <div class="sectionhead"><h2>Nettoyage automatique</h2><p>Nettoie le texte ou la légende sans supprimer toute la publication.</p></div>
+      <div class="setting"><div><h3>Retirer les hashtags</h3><p>Enlève les hashtags du texte.</p></div><button class="switch" data-setting="cleanHashtags" role="switch"></button></div>
+      <div class="setting"><div><h3>Retirer les liens</h3><p>Enlève les URL du texte.</p></div><button class="switch" data-setting="cleanLinks" role="switch"></button></div>
+      <div class="setting"><div><h3>Retirer les mentions</h3><p>Enlève les mentions de comptes.</p></div><button class="switch" data-setting="cleanMentions" role="switch"></button></div>
+      <div class="setting"><div><h3>Retirer les emojis</h3><p>Enlève les emojis du texte et des légendes.</p></div><button class="switch" data-setting="cleanEmojis" role="switch"></button></div>
+      <div class="setting"><div><h3>Nettoyer les lignes vides</h3><p>Supprime les lignes vides inutiles.</p></div><button class="switch" data-setting="cleanEmptyLines" role="switch"></button></div>
+      <div class="actions"><button class="btn primary saveSettings">Enregistrer les modifications</button></div>
+    </div>
+  </section>
+
+  <section class="page" id="content">
+    <div class="card">
+      <div class="sectionhead"><h2>Types de publications</h2><p>Choisis les contenus que le bot accepte. Désactiver un type peut entraîner la suppression des publications correspondantes.</p></div>
+      <div class="setting"><div><h3>Messages texte</h3><p>Publications uniquement textuelles.</p></div><button class="switch" data-setting="allowText" role="switch"></button></div>
+      <div class="setting"><div><h3>Photos</h3><p>Images et albums de photos.</p></div><button class="switch" data-setting="allowPhotos" role="switch"></button></div>
+      <div class="setting"><div><h3>Vidéos</h3><p>Vidéos et animations.</p></div><button class="switch" data-setting="allowVideos" role="switch"></button></div>
+      <div class="setting"><div><h3>Documents</h3><p>Fichiers publiés dans le canal.</p></div><button class="switch" data-setting="allowDocuments" role="switch"></button></div>
+      <div class="setting"><div><h3>Regrouper les photos en album</h3><p>Si des photos sans texte arrivent dans la minute après une publication avec photo et texte, le bot les regroupe en un album. Tu peux modifier le texte pendant cette minute : la dernière version sera utilisée. L’original n’est supprimé qu’après la création de l’album.</p></div><button class="switch" data-setting="groupPhotos" role="switch"></button></div>
+      <div class="actions"><button class="btn primary saveSettings">Enregistrer les modifications</button></div>
+    </div>
+  </section>
+
+  <section class="page" id="rules">
+    <div class="card section">
+      <div class="sectionhead"><h2>Règles personnalisées</h2><p>Ajoute des mots, expressions ou domaines à bloquer ou autoriser.</p></div>
+      <div class="field"><label for="ruleList">Type de règle</label><select id="ruleList"><option value="bannedWords">Mots interdits</option><option value="blockedPhrases">Expressions interdites</option><option value="blockedDomains">Domaines interdits</option><option value="allowedDomains">Domaines autorisés</option></select></div>
+      <div class="field" style="margin-top:14px"><label for="ruleValue">Nouvelle règle</label><input id="ruleValue" type="text" maxlength="200" placeholder="Ex. exemple.com ou mot interdit"></div>
+      <div class="actions"><button class="btn primary" id="addRule">Ajouter la règle</button></div>
+    </div>
+    <div class="card"><div class="row"><h2>Règles enregistrées</h2><button class="btn" id="reloadRules">Actualiser</button></div><div id="rulesList" class="list"><div class="empty">Chargement…</div></div></div>
+  </section>
+
+  <section class="page" id="history">
+    <div class="card">
+      <div class="row"><div><h2>Historique des actions</h2><p>Publications supprimées, erreurs et albums regroupés.</p></div><button class="btn" id="reloadHistory">Actualiser</button></div>
+      <div class="formgrid" style="margin-top:18px">
+        <div class="field"><label for="historyFilter">Filtrer les actions</label><select id="historyFilter"><option value="all">Toutes les actions</option><option value="deleted">Supprimées</option><option value="failed">Échecs / erreurs</option><option value="regrouped">Albums regroupés</option></select></div>
+        <div class="field"><label for="historySearch">Rechercher un contenu</label><input id="historySearch" type="text" placeholder="Mot ou extrait…"></div>
+      </div>
+      <div id="historyRows" class="list"></div>
+      <div id="historyEmpty" class="empty hidden">Aucune action correspondante.</div>
+      <div class="actions"><button class="btn danger" id="clearHistory">Effacer l’historique</button></div>
+    </div>
+    <div class="card section" style="margin-top:16px"><h2>Historique des doublons</h2><div id="duplicateRows" class="list"></div></div><div class="card section" style="margin-top:16px"><h2>Journal IA et quotas</h2><p class="sub">Modèles utilisés, bascules et indisponibilités récentes.</p><div id="aiRows" class="list"></div></div>
+  </section>
+
+  <section class="page" id="assistant">
+    <div class="card section">
+      <div class="sectionhead"><h2>Assistant IA de configuration</h2><p>Explique ce que tu veux en français. L’IA prépare une proposition ; rien n’est appliqué avant que tu confirmes.</p></div>
+      <div class="notice" id="assistantKeyNotice">Cet assistant utilise la même variable GEMINI_API_KEY que l’anti-doublons. Aucune seconde clé n’est nécessaire.</div>
+      <div id="assistantChat" class="list" aria-live="polite" style="min-height:120px;max-height:420px;overflow:auto;margin-bottom:16px">
+        <div class="hcard"><strong>Assistant M2</strong><div>Salut ! Explique-moi comment tu veux présenter tes publications. Je peux préparer un format, un code promo, les emojis et la ligne du lien. Je te montrerai la proposition avant de l’appliquer.</div></div>
+      </div>
+      <div class="field"><label for="assistantInput">Explique la modification souhaitée</label><textarea id="assistantInput" rows="4" maxlength="1200" placeholder="Décris ici les changements que tu souhaites…" style="width:100%;background:#0d1527;color:var(--text);border:1px solid var(--line);padding:12px;border-radius:10px;resize:vertical"></textarea></div>
+      <div class="actions"><button class="btn primary" id="assistantSend">Demander à l’IA</button><button class="btn" id="assistantClear">Nouvelle conversation</button></div>
+      <div id="assistantProposal" class="notice hidden" style="margin-top:16px"><strong>Proposition à vérifier</strong><div id="assistantProposalText" style="white-space:pre-wrap;margin-top:8px"></div><div class="actions"><button class="btn primary" id="assistantApply">Appliquer au bot</button><button class="btn" id="assistantDismiss">Ne pas appliquer</button></div></div>
+      <p class="sub" style="margin-top:14px">Limite de sécurité : l’assistant peut modifier uniquement les paramètres de mise en forme, pas le code ni les réglages de suppression/modération.</p>
+    </div>
+  </section>
+
+  <section class="page" id="settings">
+    <div class="card section">
+      <div class="sectionhead"><h2>Mise en forme des publications</h2><p>Personnalise le format appliqué aux nouvelles publications. Désactivé par défaut : teste d’abord avec une publication non importante.</p></div>
+      <div class="setting"><div><h3>Activer la mise en forme automatique</h3><p>Modifie le texte ou la légende directement sur Telegram. Les autres informations et les liens sont conservés.</p></div><button class="switch" data-setting="formatEnabled" role="switch" aria-label="Activer la mise en forme"></button></div>
+      <div class="formgrid" style="margin-top:18px">
+        <div class="field"><label for="formatTitlePrefix">Début du titre</label><input id="formatTitlePrefix" type="text" maxlength="160" placeholder="Ex. 🛍️ "></div>
+        <div class="field"><label for="formatTitleSuffix">Fin du titre</label><input id="formatTitleSuffix" type="text" maxlength="160" placeholder="Ex. 🤩‼️"></div>
+        <div class="field"><label for="formatPromoCode">Code promo</label><input id="formatPromoCode" type="text" maxlength="60" placeholder="M2REPS"></div>
+        <div class="field"><label for="formatLinkPrefix">Début de ligne du lien</label><input id="formatLinkPrefix" type="text" maxlength="160" placeholder="👉🏼 "></div>
+        <div class="field" style="grid-column:1/-1"><label for="formatCouponTemplate">Ligne du coupon (utilise {code} à l’endroit du code)</label><input id="formatCouponTemplate" type="text" maxlength="160" placeholder="-15% coupon : {code} 🎁"></div>
+      </div>
+      <div class="notice" style="margin-top:16px"><strong>Aperçu</strong><pre id="formatPreview" style="white-space:pre-wrap;font:inherit;margin:8px 0 0">Nom du produit 🤩‼️</pre></div>
+      <div class="actions"><button class="btn primary saveSettings">Enregistrer les modifications</button><button class="btn" id="previewFormat">Actualiser l’aperçu</button></div>
+    </div>
+    <div class="card section">
+      <div class="sectionhead"><h2>Conservation des données</h2><p>Choisis combien de temps conserver l’historique.</p></div>
+      <div class="field"><label for="retentionDays">Durée de conservation</label><select id="retentionDays"><option value="7">7 jours</option><option value="30">30 jours</option><option value="90">90 jours</option></select></div>
+      <div class="setting" style="margin-top:18px"><div><h3>Enregistrer l’historique</h3><p>Conserve les actions de modération.</p></div><button class="switch" data-setting="logHistory" role="switch"></button></div>
+      <div class="setting"><div><h3>Pause automatique en cas d’erreurs</h3><p>Met le bot en pause après plusieurs erreurs rapprochées.</p></div><button class="switch" data-setting="pauseOnErrorBurst" role="switch"></button></div>
+      <div class="actions"><button class="btn primary saveSettings">Enregistrer les modifications</button></div>
+    </div>
+    <div class="card section" id="v6Panel">
+      <div class="sectionhead"><h2>HACOO BOT V6 — contrôle IA</h2><p>Vérifie les fournisseurs API configurés et enregistre des propositions d’amélioration. Les tests API envoient une requête courte et peuvent consommer du quota.</p></div>
+      <div class="actions" style="margin-top:0"><button class="btn" id="v6Refresh">Actualiser l’état V6</button><button class="btn primary" id="v6TestProviders">Tester les API configurées</button></div>
+      <div id="v6Status" class="notice" style="margin-top:14px">Chargement de l’état V6…</div>
+      <div class="card" style="margin-top:14px;background:#0e1628"><h3>Cycle autonome de diagnostic</h3><p>Analyse périodiquement des statistiques agrégées et propose une amélioration. Aucun code n’est modifié et aucun déploiement n’est effectué automatiquement.</p><div class="actions"><button class="btn primary" id="v6RunAutonomy">Lancer une revue maintenant</button></div><div id="v6AutonomyStatus" class="sub" style="margin-top:10px">Chargement du cycle autonome…</div></div>
+      <div id="v6ProviderRows" class="list"></div>
+      <div class="sectionhead" style="margin-top:24px"><h3>Proposer une amélioration</h3><p>La proposition est enregistrée dans le laboratoire; elle ne modifie ni le code ni le déploiement.</p></div>
+      <div class="formgrid">
+        <div class="field"><label for="v6ProposalTitle">Titre</label><input id="v6ProposalTitle" type="text" maxlength="120" placeholder="Ex. Mieux récupérer la file après une panne"></div>
+        <div class="field"><label for="v6ProposalBenefit">Bénéfice attendu</label><input id="v6ProposalBenefit" type="text" maxlength="1000" placeholder="Ex. Réduire les tâches bloquées"></div>
+        <div class="field" style="grid-column:1/-1"><label for="v6ProposalRationale">Pourquoi cette amélioration est utile</label><input id="v6ProposalRationale" type="text" maxlength="2000" placeholder="Décris le problème observé et le résultat attendu"></div>
+      </div>
+      <div class="actions"><button class="btn primary" id="v6CreateProposal">Enregistrer la proposition</button></div>
+      <div id="v6ProposalResult" class="sub" style="margin-top:10px"></div>
+      <div class="sectionhead" style="margin-top:24px"><h3>Générer un module candidat</h3><p>Le code généré est sauvegardé dans workspace/candidates, contrôlé syntaxiquement et jamais exécuté ou déployé par ce bouton.</p></div>
+      <div class="actions"><button class="btn primary" id="v6GenerateCandidate">Générer un candidat à partir du titre et du besoin ci-dessus</button><button class="btn" id="v6RefreshCandidates">Actualiser les candidats</button></div>
+      <div id="v6Candidates" class="list"></div>
+      <div class="sectionhead" style="margin-top:24px"><h3>Commandes en langage naturel</h3><p>Les commandes sont limitées à une liste d’actions autorisées. Le système ne lance pas de commandes shell et ne modifie pas les protections à partir d’une demande libre.</p></div>
+      <div class="field"><label for="v6NaturalCommand">Commande</label><input id="v6NaturalCommand" maxlength="160" placeholder="Ex. statut du bot, lancer une revue autonome, vérifier la santé"></div><div class="actions"><button class="btn primary" id="v6RunCommand">Exécuter la commande autorisée</button></div><pre id="v6CommandResult" class="sub" style="white-space:pre-wrap;margin-top:10px"></pre>
+      <div class="sectionhead" style="margin-top:24px"><h3>Optimisation éditoriale</h3><p>L’IA propose une version plus claire. La proposition n’est jamais publiée automatiquement et doit être relue.</p></div>
+      <div class="field"><label for="v6EditorialSource">Texte source</label><textarea id="v6EditorialSource" rows="4" maxlength="3500" placeholder="Colle le texte à améliorer"></textarea></div><div class="actions"><button class="btn primary" id="v6OptimizeEditorial">Proposer une version optimisée</button></div><div class="field" style="margin-top:10px"><label for="v6EditorialProposal">Proposition IA (modifiable)</label><textarea id="v6EditorialProposal" rows="5" maxlength="3900" placeholder="La proposition apparaîtra ici; elle ne sera pas publiée automatiquement"></textarea></div><div id="v6EditorialQuality" class="sub"></div>
+      <div class="sectionhead" style="margin-top:24px"><h3>Publications programmées</h3><p>Le texte passe un contrôle qualité avant programmation. Si le résultat d’un envoi est incertain après une panne, HACOO ne le renvoie pas automatiquement afin d’éviter un doublon.</p></div>
+      <div class="formgrid">
+        <div class="field"><label for="v6ScheduleAt">Date et heure (heure locale)</label><input id="v6ScheduleAt" type="datetime-local"></div>
+        <div class="field"><label for="v6ScheduleChannel">ID du canal (facultatif)</label><input id="v6ScheduleChannel" type="text" placeholder="Canal principal par défaut"></div>
+        <div class="field" style="grid-column:1/-1"><label for="v6ScheduleText">Texte à publier</label><textarea id="v6ScheduleText" rows="4" maxlength="3900" placeholder="Prépare le texte de la publication"></textarea></div>
+      </div>
+      <div class="actions"><button class="btn" id="v6CheckPublication">Vérifier la qualité</button><button class="btn primary" id="v6CreateSchedule">Programmer la publication</button><button class="btn" id="v6RefreshSchedules">Actualiser le planning</button><button class="btn" id="v6DailyReport">Envoyer le rapport quotidien</button></div>
+      <div id="v6QualityResult" class="sub" style="margin-top:10px"></div><div id="v6Schedules" class="list" style="margin-top:12px"></div>
+      <div class="sectionhead" style="margin-top:24px"><h3>Mémoire explicable</h3><p>Conserve uniquement les règles ou préférences explicitement ajoutées par l’administrateur, avec leur justification. N’y colle pas de secrets.</p></div>
+      <div class="formgrid"><div class="field"><label for="v6MemoryCategory">Catégorie</label><input id="v6MemoryCategory" maxlength="40" placeholder="Règle éditoriale"></div><div class="field"><label for="v6MemoryContent">Règle ou préférence</label><input id="v6MemoryContent" maxlength="600" placeholder="Ton de publication souhaité"></div><div class="field" style="grid-column:1/-1"><label for="v6MemoryExplanation">Justification</label><input id="v6MemoryExplanation" maxlength="600" placeholder="Pourquoi cette règle doit être retenue"></div></div>
+      <div class="actions"><button class="btn primary" id="v6SaveMemory">Enregistrer en mémoire</button><button class="btn" id="v6LoadMemory">Afficher la mémoire</button></div><div id="v6MemoryList" class="list"></div>
+      <div class="sectionhead" style="margin-top:24px"><h3>Déploiement protégé FadeHost</h3><p>Le candidat est testé dans une copie isolée, puis poussé sur la branche GitHub configurée. FadeHost ne le déploie que si cette application suit cette branche. Commence par une branche de staging, pas par la production.</p></div>
+      <div class="field"><label for="v6DeployFile">Chemin du candidat (dans workspace/candidates)</label><input id="v6DeployFile" maxlength="240" placeholder="workspace/candidates/nom-du-candidat.js"></div>
+      <div class="formgrid"><div class="field"><label for="v6DeployTarget">Fichier cible dans lib/</label><input id="v6DeployTarget" maxlength="180" placeholder="lib/nouveau-module.js"></div><div class="field"><label for="v6DeployRisk">Niveau de risque</label><select id="v6DeployRisk"><option value="low">Faible — module non critique</option><option value="medium" selected>Moyen</option><option value="high">Élevé</option></select></div></div>
+      <div class="field"><label><input type="checkbox" id="v6SecurityReview"> Je confirme avoir examiné le candidat et ses risques.</label></div><div class="field"><label><input type="checkbox" id="v6HumanApproval"> J’autorise explicitement ce déploiement (obligatoire pour risque moyen/élevé).</label></div>
+      <div class="actions"><button class="btn" id="v6InspectCandidate">Inspecter le candidat</button><button class="btn" id="v6StageCandidate">Créer une release isolée</button><button class="btn primary" id="v6ActivateCandidate">Tester et pousser vers GitHub/FadeHost</button></div><div class="formgrid" style="margin-top:12px"><div class="field"><label for="v6RollbackId">ID de release à restaurer</label><input id="v6RollbackId" maxlength="80" placeholder="ID renvoyé après le push"></div><div class="field" style="align-self:end"><button class="btn" id="v6RollbackButton">Pousser le rollback</button></div></div><div id="v6DeployStatus" class="sub" style="margin-top:8px"></div><div id="v6DeployResult" class="sub" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Sauvegarde et restauration</h2><p>Garde une copie de tes réglages et de tes données.</p>
+      <div class="actions"><a class="btn" href="/api/backup" style="text-decoration:none">Télécharger une sauvegarde</a></div>
+      <div class="field" style="margin-top:20px"><label for="restoreFile">Restaurer depuis un fichier de sauvegarde</label><input type="file" id="restoreFile" accept=".json,application/json"></div>
+      <div class="actions"><button class="btn danger" id="restoreButton">Restaurer la sauvegarde</button></div>
+    </div>
+  </section>
+  <footer>M2 HACOO BOT · Tableau de bord privé</footer>
+</main>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
+let state=null, settings={}, historyData=[], duplicateData=[], ruleData={};
+let assistantConversation=[], assistantPatch=null, assistantBusy=false;
+let toastTimer;
+const titles={
+ home:['Vue d’ensemble','Tout ce qui se passe sur ton canal, en un coup d’œil.'],
+ duplicates:['Anti-doublons','Choisis comment détecter les publications répétées.'],
+ moderation:['Modération','Définis les contenus qui doivent être bloqués.'],
+ cleaning:['Nettoyage automatique','Nettoie les publications sans supprimer tout le contenu.'],
+ content:['Types de contenu','Choisis les publications que le bot accepte.'],
+ rules:['Règles personnalisées','Gère tes listes sans modifier de code.'],
+ history:['Historique','Consulte les actions effectuées par le bot.'],
+ assistant:['Assistant IA','Explique tes besoins et valide les propositions de mise en forme.'],
+ settings:['Paramètres','Conservation des données et sauvegardes.']
+};
+function toast(message,error=false){
+ const el=$('#toast');el.textContent=message;el.style.borderColor=error?'#a64455':'#405979';el.classList.remove('hidden');
+ clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add('hidden'),3500);
+}
+function safe(value){
+ return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+async function api(url,options={}){
+ let response;
+ try {
+  response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});
+ } catch (err) {
+  throw new Error('Impossible de joindre le serveur FadeHost. Vérifie que le service est démarré, puis consulte ses logs.');
+ }
+ const type=response.headers.get('content-type')||'';
+ const body=type.includes('application/json')?await response.json():await response.text();
+ if(!response.ok){
+  if(typeof body==='string' && (body.includes('502: Bad gateway') || body.includes('502 Bad Gateway') || body.includes('cloudflare'))){
+   throw new Error('FadeHost renvoie une erreur 502 : le serveur du bot est inaccessible ou ne répond pas. Ce n’est pas une réponse de Gemini. Vérifie les logs de démarrage sur FadeHost et redémarre le service.');
+  }
+  if(typeof body==='string' && body.trim().startsWith('<')){
+   throw new Error(`Le serveur a renvoyé une page HTML au lieu d’une réponse API (HTTP ${response.status}). Vérifie les logs FadeHost.`);
+  }
+  throw new Error(body?.error||body||`Erreur HTTP ${response.status}`);
+ }
+ return body;
+}
+function showPage(id){
+ if(!titles[id])return;
+ $$('.page').forEach(p=>p.classList.toggle('active',p.id===id));
+ $$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
+ $('#pageTitle').textContent=titles[id][0];$('#pageDesc').textContent=titles[id][1];
+}
+$('#nav').addEventListener('click',e=>{
+ const b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page);
+});
+function renderSwitches(){
+ $$('.switch[data-setting]').forEach(b=>{
+  const key=b.dataset.setting;const on=Boolean(settings[key]);
+  b.classList.toggle('on',on);b.setAttribute('aria-checked',String(on));
+ });
+}
+function renderState(){
+ if(!state)return;
+ settings={...state.settings};
+ renderSwitches();
+ const s=settings.stats||{};
+ $('#mSeen').textContent=Number(s.totalSeen||0).toLocaleString('fr-FR');
+ $('#mDup').textContent=Number(s.duplicates||0).toLocaleString('fr-FR');
+ $('#mDeleted').textContent=Number(s.deleted||0).toLocaleString('fr-FR');
+ $('#mModeration').textContent=Number(s.moderation||0).toLocaleString('fr-FR');
+ $('#mCleaned').textContent=Number(s.cleaned||0).toLocaleString('fr-FR');
+ $('#mErrors').textContent=Number(s.errors||0).toLocaleString('fr-FR');
+ $('#windowMinutes').value=String(settings.windowMinutes||15);
+ $('#duplicateMode').value=settings.duplicateMode||'similar';
+ $('#similarityThreshold').value=Math.round(Number(settings.similarityThreshold||.72)*100);
+ $('#thresholdLabel').textContent=$('#similarityThreshold').value+' %';
+ $('#retentionDays').value=String(settings.retentionDays||30);
+ $('#formatTitlePrefix').value=String(settings.formatTitlePrefix??'🛍️ ');
+ $('#formatTitleSuffix').value=String(settings.formatTitleSuffix??' 🤩‼️');
+ $('#formatPromoCode').value=String(settings.formatPromoCode??'M2REPS');
+ $('#formatLinkPrefix').value=String(settings.formatLinkPrefix??'👉🏼 ');
+ $('#formatCouponTemplate').value=String(settings.formatCouponTemplate??'-15% coupon : {code} 🎁');
+ renderFormatPreview();
+ const runtime=state.runtime||{};
+ const pendingJobs=Number(runtime.pendingJobs||0);
+ const pendingAlbums=Number(runtime.pendingAlbums||0);
+ const failedJobs=Number(runtime.failedJobs||0);
+ $('#queueStatus').textContent = pendingJobs===0 && pendingAlbums===0
+  ? 'Aucune tâche en attente. La file de traitement est vide.'
+  : `${pendingJobs} tâche(s) à traiter, ${pendingAlbums} album(s) en cours de collecte${failedJobs ? `, dont ${failedJobs} tâche(s) ayant atteint la limite de tentatives` : ''}.`;
+ $('#queueStatus').classList.toggle('warn', failedJobs>0);
+ $('#retryPending').disabled = pendingJobs===0 && pendingAlbums===0;
+ const uncertainAlbum=Boolean(runtime.uncertainAlbumSend);
+ $('#uncertainAlbumPanel').classList.toggle('hidden',!uncertainAlbum);
+ const geminiConfigured=Boolean(state.runtime&&state.runtime.geminiConfigured);
+ const geminiModel=String(state.runtime&&state.runtime.geminiModel||'gemini-3.5-flash-lite');
+ $('#geminiStatus').textContent=geminiConfigured
+  ? 'Gemini configuré ('+geminiModel+'). L’IA analyse chaque nouvelle publication et la compare à l’historique récent. En cas de doute ou d’erreur API, la publication est conservée.'
+  : 'Gemini non configuré : ajoute GEMINI_API_KEY dans les variables d’environnement de FadeHost. Les ressemblances incertaines ne seront pas supprimées.';
+ $('#geminiStatus').classList.toggle('warn',!geminiConfigured);
+ const paused=Boolean(settings.botPaused);
+ $('#statusText').textContent=paused?'En pause':settings.enabled?'Actif':'Désactivé';
+ $('#statusDot').style.background=paused?'#ffbd59':settings.enabled?'var(--green)':'var(--red)';
+renderRecent();renderRules();renderHistory();renderPause();renderChart();
+}
+async function load(){
+ try{
+  state=await api('/api/state');renderState();
+  $('#notice').classList.add('hidden');
+ }catch(e){
+  $('#notice').textContent='Impossible de charger le tableau de bord : '+e.message+' Vérifie que le serveur a redémarré et que tu es connecté.';
+  $('#notice').classList.remove('hidden');$('#statusText').textContent='Connexion impossible';$('#statusDot').style.background='var(--red)';
+ }
+}
+$$('.switch[data-setting]').forEach(b=>b.addEventListener('click',()=>{
+ const key=b.dataset.setting;settings[key]=!settings[key];renderSwitches();renderPause();
+ autoSave({[key]:settings[key]});
+}));
+function collectSettings(){
+ const result={};
+ $$('.switch[data-setting]').forEach(b=>result[b.dataset.setting]=Boolean(settings[b.dataset.setting]));
+ result.windowMinutes=Number($('#windowMinutes').value);
+ result.duplicateMode=$('#duplicateMode').value;
+ result.similarityThreshold=Number($('#similarityThreshold').value)/100;
+ result.retentionDays=Number($('#retentionDays').value);
+ result.formatTitlePrefix=$('#formatTitlePrefix').value;
+ result.formatTitleSuffix=$('#formatTitleSuffix').value;
+ result.formatPromoCode=$('#formatPromoCode').value;
+ result.formatLinkPrefix=$('#formatLinkPrefix').value;
+ result.formatCouponTemplate=$('#formatCouponTemplate').value;
+ return result;
+}
+function renderFormatPreview(){
+ const prefix=$('#formatTitlePrefix')?.value??'';
+ const suffix=$('#formatTitleSuffix')?.value??' 🤩‼️';
+ const code=$('#formatPromoCode')?.value??'M2REPS';
+ const coupon=($('#formatCouponTemplate')?.value??'-15% coupon : {code} 🎁').replace(/\{code\}/gi,code);
+ const linkPrefix=$('#formatLinkPrefix')?.value??'👉🏼 ';
+ $('#formatPreview').textContent=`${prefix}Nom du produit${suffix}\n${coupon}\n\n${linkPrefix}https://c.onlyaff.app/EXEMPLE`;
+}
+['formatTitlePrefix','formatTitleSuffix','formatPromoCode','formatLinkPrefix','formatCouponTemplate'].forEach(id=>$('#'+id).addEventListener('input',renderFormatPreview));
+$('#previewFormat').addEventListener('click',renderFormatPreview);
+async function saveSettings(){
+ try{
+  const result=await api('/api/settings',{method:'POST',body:JSON.stringify(collectSettings())});
+  if(!result.ok)throw new Error('Les réglages n’ont pas été confirmés.');
+  toast('Modifications enregistrées.');
+  await load();
+ }catch(e){toast('Enregistrement impossible : '+e.message,true);}
+}
+$$('.saveSettings').forEach(b=>b.addEventListener('click',saveSettings));
+$('#saveHome').addEventListener('click',saveSettings);
+$('#refresh').addEventListener('click',load);
+$('#retryPending').addEventListener('click',async()=>{
+ try{
+  const result=await api('/api/retry-pending',{method:'POST',body:'{}'});
+  toast(`Relance demandée : ${Number(result.queued||0)} tâche(s) remise(s) en file.`);
+  await load();
+ }catch(e){toast('Relance impossible : '+e.message,true);}
+});
+async function resolveUncertainAlbum(action){
+ const warning=action==='confirm_sent'
+  ? 'Confirmer seulement si tu as vérifié dans Telegram que TOUS les morceaux du nouvel album sont déjà publiés. Le bot ne renverra rien et terminera le nettoyage des originaux.'
+  : 'Confirmer seulement si tu as vérifié que le morceau dont l’envoi est incertain n’est PAS publié dans Telegram. Le bot le renverra, ce qui pourrait créer un doublon si la vérification est incorrecte.';
+ if(!window.confirm(warning))return;
+ try{
+  const result=await api('/api/album/resolve',{method:'POST',body:JSON.stringify({action})});
+  toast(result.message||'Résolution enregistrée.');
+  await load();
+ }catch(e){toast('Résolution impossible : '+e.message,true);}
+}
+$('#albumConfirmSent').addEventListener('click',()=>resolveUncertainAlbum('confirm_sent'));
+$('#albumConfirmNotSent').addEventListener('click',()=>resolveUncertainAlbum('confirm_not_sent'));
+$('#similarityThreshold').addEventListener('input',e=>$('#thresholdLabel').textContent=e.target.value+' %');
+function renderRecent(){
+ const rows=(state?.history||[]).slice(0,5);
+ $('#recent').innerHTML=rows.length?rows.map(x=>`<div class="rule"><span><strong>${safe(x.reason||x.action||'Action')}</strong><br><small>${safe(x.text||'Sans texte')}</small></span><span class="sub">${safe(formatDate(x.time))}</span></div>`).join(''):'<div class="empty">Aucune action récente.</div>';
+}
+function formatDate(value){
+ if(!value)return 'Date inconnue';
+ const d=new Date(value);return Number.isNaN(d.getTime())?'Date inconnue':d.toLocaleString('fr-FR');
+}
+function currentList(){return $('#ruleList').value}
+function renderRules(){
+ const list=currentList(),items=state?.rules?.[list]||[];
+ $('#rulesList').innerHTML=items.length?items.map((value,index)=>`<div class="rule"><span>${safe(value)}</span><button class="btn danger removeRule" data-list="${safe(list)}" data-index="${index}">Supprimer</button></div>`).join(''):'<div class="empty">Aucune règle dans cette liste.</div>';
+}
+$('#ruleList').addEventListener('change',renderRules);
+$('#reloadRules').addEventListener('click',load);
+async function ruleAction(body){
+ try{
+  await api('/api/rules',{method:'POST',body:JSON.stringify(body)});
+  await load();toast(body.action==='remove'?'Règle supprimée.':'Règle ajoutée.');
+ }catch(e){toast('Impossible de modifier la règle : '+e.message,true);}
+}
+$('#addRule').addEventListener('click',()=>{
+ const value=$('#ruleValue').value.trim();
+ if(!value){toast('Saisis d’abord une règle.',true);return;}
+ ruleAction({list:currentList(),value}).then(()=>$('#ruleValue').value='');
+});
+$('#ruleValue').addEventListener('keydown',e=>{if(e.key==='Enter')$('#addRule').click()});
+$('#rulesList').addEventListener('click',e=>{
+ const b=e.target.closest('.removeRule');if(!b)return;
+ if(confirm('Supprimer cette règle ?'))ruleAction({list:b.dataset.list,index:Number(b.dataset.index),action:'remove'});
+});
+function renderHistory(){
+ const ACTIONS={deleted:'Supprimée',failed:'Échec',regrouped:'Regroupée'};
+ const filter=$('#historyFilter').value,query=$('#historySearch').value.toLowerCase();
+ const rows=(historyData.length?historyData:(state?.history||[])).filter(x=>{
+  const type=x.action||'unknown';
+  return (filter==='all'||filter===type)&&`${x.reason||''} ${x.text||''} ${x.messageId||''} ${x.error||''} ${x.aiReason||''}`.toLowerCase().includes(query);
+ });
+ $('#historyRows').innerHTML=rows.map(x=>`<div class="hcard"><div class="row"><span class="tag ${safe(x.action)}">${safe(ACTIONS[x.action]||x.action||'Action')}</span><span class="sub">${safe(formatDate(x.time))}</span></div><strong>${safe(x.reason||'Motif non précisé')}</strong><div class="sub">${safe(x.text||'Sans texte')}</div><div class="sub">ID Telegram : ${safe(x.messageId||'—')} · Éléments : ${safe(x.groupCount||1)}</div>${x.error?`<div class="notice warn" style="margin-top:8px">Erreur : ${safe(x.error)}</div>`:''}${x.aiReason?`<div class="sub">Explication IA : ${safe(x.aiReason)}</div>`:''}${x.restoredAt?`<div class="sub">✓ Republée le ${safe(formatDate(x.restoredAt))}</div>`:(x.action==='deleted'&&(x.canRestore||Array.isArray(x.originals)))?`<button class="btn undo" data-id="${safe(x.messageId)}">Republier la sauvegarde</button>`:''}</div>`).join('');
+ $('#historyEmpty').classList.toggle('hidden',rows.length>0);
+ const aiRows=state?.runtime?.aiEvents||[];
+ $('#aiRows').innerHTML=aiRows.length?aiRows.slice(0,50).map(a=>`<div class="hcard"><div class="row"><strong>${safe(a.type||'Événement IA')}</strong><span class="sub">${safe(formatDate(a.time))}</span></div><div>${safe(a.message||'—')}</div>${a.model?`<div class="sub">Modèle : ${safe(a.model)}</div>`:''}${a.nextRetryAt?`<div class="sub">Nouvel essai prévu : ${safe(formatDate(a.nextRetryAt))}</div>`:''}</div>`).join(''):'<div class="empty">Aucun événement IA enregistré.</div>';
+ $('#duplicateRows').innerHTML=duplicateData.length?duplicateData.slice(0,50).map(x=>`<div class="hcard"><div class="row"><span class="tag">${safe(x.type?'Doublon '+x.type:x.reason||'Doublon')}</span><span class="sub">${safe(formatDate(x.time))}</span></div><div class="sub">Original${x.originalTime?' ('+safe(formatDate(x.originalTime))+')':''} :</div><div>${safe(x.originalText||'—')}</div><div class="sub">Doublon :</div><div>${safe(x.duplicateText||'—')}</div><div class="sub">Action : ${safe(ACTIONS[x.action]||x.action||'—')}</div></div>`).join(''):'<div class="empty">Aucun doublon enregistré.</div>';
+}
+$('#historyFilter').addEventListener('change',renderHistory);
+$('#historySearch').addEventListener('input',renderHistory);
+$('#reloadHistory').addEventListener('click',load);
+$('#historyRows').addEventListener('click',async e=>{
+ const b=e.target.closest('.undo');if(!b)return;
+ if(!confirm('Republier le contenu sauvegardé ? Cela créera une nouvelle publication.'))return;
+ try{const r=await api('/api/undo/'+encodeURIComponent(b.dataset.id),{method:'POST',body:'{}'});toast(r.note||'Publication renvoyée.');}
+ catch(err){toast(err.message,true);}
+});
+$('#clearHistory').addEventListener('click',async()=>{
+ if(!confirm('Effacer définitivement l’historique des suppressions et des doublons ?'))return;
+ try{await api('/api/clear-history',{method:'POST',body:'{}'});await load();toast('Historique effacé.');}
+ catch(e){toast(e.message,true);}
+});
+async function load(){
+ try{
+  state=await api('/api/state');
+  historyData=state.history||[];duplicateData=state.duplicates||[];
+  renderState();$('#notice').classList.add('hidden');
+ }catch(e){
+  $('#notice').textContent='Impossible de charger les données : '+e.message;
+  $('#notice').classList.remove('hidden');
+  $('#statusText').textContent='Connexion impossible';
+  $('#statusDot').style.background='var(--red)';
+ }
+}
+$('#restoreButton').addEventListener('click',async()=>{
+ const file=$('#restoreFile').files[0];
+ if(!file){toast('Choisis d’abord un fichier de sauvegarde.',true);return;}
+ if(!confirm('Restaurer cette sauvegarde remplacera les données actuelles. Continuer ?'))return;
+ try{
+  const backup=JSON.parse(await file.text());
+  await api('/api/restore',{method:'POST',body:JSON.stringify({data:backup})});
+  $('#restoreFile').value='';await load();toast('Sauvegarde restaurée.');
+ }catch(e){toast('Restauration impossible : '+e.message,true);}
+});
+function addAssistantBubble(role, text) {
+ const el=document.createElement('div'); el.className='hcard';
+ const head=document.createElement('strong'); head.textContent=role==='user'?'Toi':'Assistant M2';
+ const body=document.createElement('div'); body.style.whiteSpace='pre-wrap'; body.textContent=String(text||'');
+ el.append(head,body); $('#assistantChat').append(el); $('#assistantChat').scrollTop=$('#assistantChat').scrollHeight;
+}
+function setAssistantBusy(busy){assistantBusy=busy;$('#assistantSend').disabled=busy;$('#assistantSend').textContent=busy?'Réflexion…':'Demander à l’IA';}
+$('#assistantSend').addEventListener('click', async()=>{
+ const text=$('#assistantInput').value.trim(); if(!text||assistantBusy)return;
+ assistantConversation.push({role:'user',content:text}); addAssistantBubble('user',text); $('#assistantInput').value=''; setAssistantBusy(true);
+ try{
+  const result=await api('/api/assistant/chat',{method:'POST',body:JSON.stringify({messages:assistantConversation.slice(-8)})});
+  const reply=String(result.reply||'Je n’ai pas de réponse pour le moment.');
+  assistantConversation.push({role:'assistant',content:reply}); addAssistantBubble('assistant',reply);
+  assistantPatch=result.settingsPatch||null;
+  if(assistantPatch){
+   const preview={...settings,...assistantPatch};
+   const coupon=String(preview.formatCouponTemplate||'-15% coupon : {code} 🎁').replace(/\{code\}/gi,String(preview.formatPromoCode||'M2REPS'));
+   const example=`${preview.formatTitlePrefix||''}NOM DU PRODUIT${preview.formatTitleSuffix||''}\n${coupon}\n\n${preview.formatLinkPrefix||''}[lien produit conservé]`;
+   $('#assistantProposalText').textContent=reply+'\n\nAperçu du format proposé :\n'+example;
+   $('#assistantProposal').classList.remove('hidden');
+  } else { $('#assistantProposal').classList.add('hidden'); }
+ }catch(e){addAssistantBubble('assistant','Erreur : '+e.message);toast('Assistant IA indisponible : '+e.message,true);}
+ finally{setAssistantBusy(false);}
+});
+$('#assistantInput').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')$('#assistantSend').click();});
+$('#assistantApply').addEventListener('click',async()=>{
+ if(!assistantPatch)return;
+ const btn=$('#assistantApply');btn.disabled=true;
+ try{
+  const result=await api('/api/assistant/apply',{method:'POST',body:JSON.stringify({settingsPatch:assistantPatch})});
+  if(!result.ok)throw new Error('Les réglages ne sont pas confirmés.');
+  assistantPatch=null;$('#assistantProposal').classList.add('hidden');
+  toast('Format appliqué et enregistré.'); await load();
+  addAssistantBubble('assistant','C’est enregistré. Le format est maintenant dans les paramètres du bot. Vérifie qu’il est activé uniquement quand tu es prêt à l’utiliser.');
+ }catch(e){toast('Impossible d’appliquer : '+e.message,true);}finally{btn.disabled=false;}
+});
+$('#assistantDismiss').addEventListener('click',()=>{assistantPatch=null;$('#assistantProposal').classList.add('hidden');});
+$('#assistantClear').addEventListener('click',()=>{assistantConversation=[];assistantPatch=null;$('#assistantChat').innerHTML='';$('#assistantProposal').classList.add('hidden');addAssistantBubble('assistant','Nouvelle conversation. Explique-moi le format que tu veux obtenir.');});
+
+async function loadV6Status(){
+ const box=$('#v6Status'),rows=$('#v6ProviderRows');
+ try{
+  const data=await api('/api/v6/status');
+  box.textContent=`Version ${data.version} · Constitution ${data.constitution} · Laboratoire : ${data.lab.mode} · Revue autonome : ${data.autonomy?.enabled?'active':'indisponible (vérifie les clés API)'} · Déploiement automatique : ${data.controller.automaticProductionDeployment?'activé':'bloqué tant que l’adaptateur FadeHost n’est pas validé'} · Canaux actifs : ${data.channels?.active||0}`;
+  const a=data.autonomy||{};$('#v6AutonomyStatus').textContent=`État : ${safe(a.lastStatus||'pas encore exécuté')} · Intervalle : ${a.intervalMinutes||360} min · Exécutions aujourd’hui : ${a.runsToday||0}/${a.maxRunsPerDay||4}${a.lastRunAt?' · Dernière revue : '+safe(a.lastRunAt):''}${a.lastSummary?.title?' · Dernière proposition : '+safe(a.lastSummary.title):''}`;
+  rows.innerHTML=(data.providers||[]).map(p=>`<div class="rule"><span><strong>${safe(p.id)}</strong><br><span class="sub">Modèle : ${safe(p.model)} · Variable : ${safe(p.keyVariable)}</span></span><span class="tag ${p.configured?'':'failed'}">${p.configured?'Clé configurée':'Clé absente'}</span></div>`).join('')||'<div class="empty">Aucun fournisseur.</div>';
+ }catch(e){box.textContent='État V6 indisponible : '+e.message;rows.innerHTML='';}
+}
+$('#v6Refresh').addEventListener('click',loadV6Status);
+$('#v6RunAutonomy').addEventListener('click',async()=>{
+ const btn=$('#v6RunAutonomy');btn.disabled=true;btn.textContent='Revue en cours…';
+ try{const result=await api('/api/v6/autonomy/run',{method:'POST',body:'{}'});if(!result.ok)throw new Error(result.message||result.status||'Revue non terminée');toast('Revue terminée : proposition enregistrée.');await loadV6Status();}
+ catch(e){toast('Revue autonome impossible : '+e.message,true);await loadV6Status();}
+ finally{btn.disabled=false;btn.textContent='Lancer une revue maintenant';}
+});
+
+$('#v6TestProviders').addEventListener('click',async()=>{
+ const btn=$('#v6TestProviders');btn.disabled=true;btn.textContent='Tests en cours…';
+ try{
+  const result=await api('/api/v6/providers/test',{method:'POST',body:'{}'});
+  const lines=(result.results||[]).map(r=>`${r.id}: ${r.ok?'OK':'Échec ('+r.status+')'}${r.latencyMs?' · '+r.latencyMs+' ms':''}${r.httpStatus?' · HTTP '+r.httpStatus:''}`).join('\n');
+  toast(lines||'Aucune clé API configurée.');
+  $('#v6Status').textContent=lines||'Aucune clé API configurée. Ajoute au moins une clé dans FadeHost si tu souhaites tester un fournisseur.';
+  await loadV6Status();
+ }catch(e){toast('Test API impossible : '+e.message,true);}finally{btn.disabled=false;btn.textContent='Tester les API configurées';}
+});
+async function loadV6Candidates(){try{const result=await api('/api/v6/lab/candidates');const list=$('#v6Candidates');list.innerHTML=(result.candidates||[]).map(c=>`<div class="rule"><span><strong>${safe(c.title)}</strong><br><span class="sub">${safe(c.createdAt)} · ${safe(c.provider||'IA')} · ${c.syntaxValid?'Syntaxe valide':'Syntaxe inconnue'} · Jamais exécuté</span><br><span class="sub">${safe(c.file)}</span></span><span class="tag">À vérifier</span></div>`).join('')||'<div class="empty">Aucun candidat généré.</div>';}catch(e){$('#v6Candidates').textContent='Liste des candidats indisponible : '+e.message;}}
+$('#v6RefreshCandidates').addEventListener('click',loadV6Candidates);
+$('#v6GenerateCandidate').addEventListener('click',async()=>{const btn=$('#v6GenerateCandidate');const title=$('#v6ProposalTitle').value.trim(),requirements=$('#v6ProposalRationale').value.trim();if(!title||requirements.length<20){toast('Renseigne un titre et un besoin détaillé (20 caractères minimum).',true);return;}btn.disabled=true;btn.textContent='Génération et vérification…';try{const result=await api('/api/v6/lab/generate-candidate',{method:'POST',body:JSON.stringify({title,requirements})});toast('Candidat généré et isolé; il n’a pas été exécuté.');await loadV6Candidates();await loadV6Status();}catch(e){toast('Génération impossible : '+e.message,true);}finally{btn.disabled=false;btn.textContent='Générer un candidat à partir du titre et du besoin ci-dessus';}});
+$('#v6CreateProposal').addEventListener('click',async()=>{
+ const title=$('#v6ProposalTitle').value.trim(),rationale=$('#v6ProposalRationale').value.trim(),expectedBenefit=$('#v6ProposalBenefit').value.trim();
+ try{
+  const result=await api('/api/v6/lab/proposals',{method:'POST',body:JSON.stringify({title,rationale,expectedBenefit})});
+  $('#v6ProposalResult').textContent=`Proposition enregistrée : ${result.proposal.id}. Aucun code n’a été modifié.`;
+  $('#v6ProposalTitle').value='';$('#v6ProposalRationale').value='';$('#v6ProposalBenefit').value='';toast('Proposition enregistrée dans le laboratoire V6.');await loadV6Status();
+ }catch(e){$('#v6ProposalResult').textContent=e.message;toast('Proposition non enregistrée : '+e.message,true);}
+});
+async function loadV6Schedules(){try{const result=await api('/api/v6/schedules');const box=$('#v6Schedules');box.innerHTML=(result.schedules||[]).map(x=>`<div class="rule"><span><strong>${safe(x.status)}</strong> · ${safe(x.scheduledAt)}<br><span class="sub">Canal : ${safe(x.targetChannel)} · ${safe(x.preview||'')}</span><br><span class="sub">ID : ${safe(x.id)}${x.lastError?' · '+safe(x.lastError):''}</span></span>${['scheduled','blocked'].includes(x.status)?`<button class="btn danger" data-cancel-schedule="${safe(x.id)}">Annuler</button>`:''}</div>`).join('')||'<div class="empty">Aucune publication programmée.</div>';box.querySelectorAll('[data-cancel-schedule]').forEach(btn=>btn.addEventListener('click',async()=>{try{await api('/api/v6/schedules/'+encodeURIComponent(btn.dataset.cancelSchedule)+'/cancel',{method:'POST',body:'{}'});toast('Publication annulée.');await loadV6Schedules();}catch(e){toast(e.message,true);}}));}catch(e){$('#v6Schedules').textContent='Planning indisponible : '+e.message;}}
+$('#v6RunCommand').addEventListener('click',async()=>{try{const result=await api('/api/v6/command',{method:'POST',body:JSON.stringify({command:$('#v6NaturalCommand').value})});$('#v6CommandResult').textContent=JSON.stringify(result.result,null,2);toast('Commande autorisée exécutée.');}catch(e){$('#v6CommandResult').textContent='Commande refusée : '+e.message;}});
+$('#v6OptimizeEditorial').addEventListener('click',async()=>{const btn=$('#v6OptimizeEditorial');btn.disabled=true;btn.textContent='Analyse éditoriale…';try{const result=await api('/api/v6/editorial/optimize',{method:'POST',body:JSON.stringify({text:$('#v6EditorialSource').value})});$('#v6EditorialProposal').value=result.proposedText;$('#v6EditorialQuality').textContent=`Modèle : ${result.provider}/${result.model}. Contrôle qualité : ${result.quality.ok?'aucun blocage détecté':'bloqué'}${result.quality.errors?.length?' · '+result.quality.errors.join(' '):''}${result.quality.warnings?.length?' · Avertissements : '+result.quality.warnings.join(' '):''}. Publication automatique : non.`;toast('Proposition éditoriale prête à relire.');}catch(e){$('#v6EditorialQuality').textContent='Optimisation impossible : '+e.message;}finally{btn.disabled=false;btn.textContent='Proposer une version optimisée';}});
+$('#v6RefreshSchedules').addEventListener('click',loadV6Schedules);
+$('#v6CheckPublication').addEventListener('click',async()=>{try{const result=await api('/api/v6/publication/check',{method:'POST',body:JSON.stringify({text:$('#v6ScheduleText').value})});$('#v6QualityResult').textContent=(result.ok?'Contrôle réussi. ':'Publication bloquée. ')+(result.errors||[]).join(' ')+(result.warnings?.length?' Avertissements : '+result.warnings.join(' '):'');}catch(e){$('#v6QualityResult').textContent=e.message;}});
+$('#v6CreateSchedule').addEventListener('click',async()=>{try{const local=$('#v6ScheduleAt').value;if(!local)throw new Error('Choisis une date et une heure.');const scheduledAt=new Date(local).toISOString();const body={text:$('#v6ScheduleText').value,scheduledAt,targetChannel:$('#v6ScheduleChannel').value.trim()||undefined};const result=await api('/api/v6/schedules',{method:'POST',body:JSON.stringify(body)});toast('Publication programmée.');$('#v6ScheduleText').value='';await loadV6Schedules();}catch(e){toast('Programmation refusée : '+e.message,true);}});
+$('#v6DailyReport').addEventListener('click',async()=>{try{const result=await api('/api/v6/report/run',{method:'POST',body:'{}'});toast(result.ok?'Rapport envoyé sur Telegram.':'Rapport non envoyé : '+(result.status||'erreur'));}catch(e){toast('Rapport impossible : '+e.message,true);}});
+async function loadV6Memory(){try{const result=await api('/api/v6/memory');$('#v6MemoryList').innerHTML=(result.items||[]).map(x=>`<div class="rule"><span><strong>${safe(x.category)}</strong><br>${safe(x.content)}<br><span class="sub">Justification : ${safe(x.explanation)} · ${safe(x.createdAt)}</span></span></div>`).join('')||'<div class="empty">Aucune mémoire explicable enregistrée.</div>';}catch(e){$('#v6MemoryList').textContent=e.message;}}
+$('#v6LoadMemory').addEventListener('click',loadV6Memory);
+$('#v6SaveMemory').addEventListener('click',async()=>{try{const item={category:$('#v6MemoryCategory').value,content:$('#v6MemoryContent').value,explanation:$('#v6MemoryExplanation').value};await api('/api/v6/memory',{method:'POST',body:JSON.stringify(item)});toast('Mémoire enregistrée avec justification.');$('#v6MemoryContent').value='';$('#v6MemoryExplanation').value='';await loadV6Memory();}catch(e){toast('Mémoire non enregistrée : '+e.message,true);}});
+$('#v6InspectCandidate').addEventListener('click',async()=>{try{const result=await api('/api/v6/deploy/inspect',{method:'POST',body:JSON.stringify({file:$('#v6DeployFile').value.trim()})});$('#v6DeployResult').textContent=`Candidat valide : ${result.sha256} · ${result.bytes} octets · syntaxe et contrôle statique réussis. Aucune activation effectuée.`;}catch(e){$('#v6DeployResult').textContent='Inspection refusée : '+e.message;}});
+$('#v6StageCandidate').addEventListener('click',async()=>{try{const result=await api('/api/v6/deploy/stage',{method:'POST',body:JSON.stringify({file:$('#v6DeployFile').value.trim()})});$('#v6DeployResult').textContent=`Release isolée créée : ${result.release.id}. Production inchangée. Activation automatique bloquée tant que les validations indépendantes et l’adaptateur d’hébergement ne sont pas disponibles.`;toast('Release candidate archivée, non activée.');}catch(e){$('#v6DeployResult').textContent='Release refusée : '+e.message;}});
+async function loadV6DeployStatus(){try{const x=await api('/api/v6/deploy/status');$('#v6DeployStatus').textContent=`Adaptateur : ${x.adapter} · configuration GitHub : ${x.configured?'prête':'incomplète'} · déploiement : ${x.enabled?'activé':'désactivé'} · branche : ${x.branch||'non configurée'}. ${x.note}`;}catch(e){$('#v6DeployStatus').textContent='État du déploiement indisponible : '+e.message;}}
+$('#v6RollbackButton').addEventListener('click',async()=>{const releaseId=$('#v6RollbackId').value.trim();if(!releaseId){toast('Indique l’identifiant de release.',true);return;}if(!confirm('Pousser la restauration du fichier précédent vers GitHub ?'))return;try{const result=await api('/api/v6/deploy/rollback',{method:'POST',body:JSON.stringify({releaseId})});$('#v6DeployResult').textContent=`Rollback poussé : ${result.releaseId} · ${result.target} · branche ${result.branch}. ${result.note}`;toast('Rollback poussé; vérifie FadeHost.');}catch(e){$('#v6DeployResult').textContent='Rollback refusé : '+e.message;toast('Rollback non confirmé : '+e.message,true);}});
+$('#v6ActivateCandidate').addEventListener('click',async()=>{const body={file:$('#v6DeployFile').value.trim(),target:$('#v6DeployTarget').value.trim(),risk:$('#v6DeployRisk').value,securityReviewConfirmed:$('#v6SecurityReview').checked,humanApproved:$('#v6HumanApproval').checked};if(!body.file||!body.target){toast('Indique le candidat et son fichier cible.',true);return;}const btn=$('#v6ActivateCandidate');btn.disabled=true;btn.textContent='Tests et déploiement…';try{const result=await api('/api/v6/deploy/activate',{method:'POST',body:JSON.stringify(body)});$('#v6DeployResult').textContent=`Push GitHub réussi : ${result.commitSha||'commit créé'} · cible ${result.target} · branche ${result.branch}. ${result.note} Sauvegarde de retour arrière : ${result.rollback?.file||'voir workspace/releases'}.`;toast('Push effectué; vérifie l’état runtime dans FadeHost.');}catch(e){$('#v6DeployResult').textContent='Déploiement bloqué ou échoué : '+e.message;toast('Déploiement non confirmé : '+e.message,true);}finally{btn.disabled=false;btn.textContent='Tester et pousser vers GitHub/FadeHost';await loadV6DeployStatus();}});
+loadV6Status();
+loadV6Candidates();
+loadV6Schedules();
+loadV6Memory();
+loadV6DeployStatus();
+load();
+async function autoSave(patch){
+ try{
+  const r=await api('/api/settings',{method:'POST',body:JSON.stringify(patch)});
+  if(!r.ok)throw new Error('Changement non confirmé.');
+  toast('Enregistré ✓');
+ }catch(e){toast('Échec : '+e.message,true);}
+ await load();
+}
+['windowMinutes','duplicateMode','retentionDays'].forEach(id=>$('#'+id).addEventListener('change',e=>autoSave({[id]:id==='duplicateMode'?e.target.value:Number(e.target.value)})));
+$('#similarityThreshold').addEventListener('change',e=>autoSave({similarityThreshold:Number(e.target.value)/100}));
+function renderPause(){
+ const b=$('#pauseBtn'),paused=Boolean(settings.botPaused),on=Boolean(settings.enabled);
+ b.className='bigpause '+(!on?'off':paused?'go':'stop');
+ b.textContent=!on?'Bot désactivé (active-le dans Contrôle rapide)':paused?'▶ Reprendre le bot':'⏸ Mettre en pause';
+ b.disabled=!on;
+
+}
+$('#pauseBtn').addEventListener('click',()=>autoSave({botPaused:!settings.botPaused}));
+function renderChart(){
+ const d=state?.daily||[],max=Math.max(1,...d.flatMap(x=>[x.deleted,x.duplicates]));
+ $('#chart').innerHTML=d.length?d.map(x=>`<div class="bar" title="${x.deleted} supprimées, ${x.duplicates} doublons"><div class="cols"><i style="height:${Math.round(x.deleted/max*100)}%"></i><i class="b2" style="height:${Math.round(x.duplicates/max*100)}%"></i></div>${safe(x.label)}</div>`).join(''):'<div class="empty">Pas encore de données.</div>';
+}
+setInterval(load,60000);
+</script>
+</body>
+</html>
