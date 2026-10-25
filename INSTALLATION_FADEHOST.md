@@ -38,6 +38,8 @@ npm start
 - `V6_AUTONOMY_GENERATE_CANDIDATES=true` (consomme des appels API supplémentaires; mettre `false` pour ne générer que des propositions)
 - `V6_MULTICHANNEL_ENABLED=false`
 - `V6_AUTO_DEPLOY_ENABLED=false` au premier lancement.
+   - `V6_AUTONOMOUS_ENGINEERING_ENABLED=false` pendant la validation initiale.
+   - `V6_AUTONOMOUS_DEPLOY_SAFE=false` jusqu’à ce que staging, tests, health check et rollback aient été validés.
 - `TZ=Europe/Paris` si l’heure du rapport quotidien doit suivre la France.
 
 ## Configurer le déploiement via GitHub et FadeHost
@@ -65,3 +67,23 @@ FadeHost déploie les applications à partir d’un dépôt GitHub et peut redé
 - Avant le push, la version précédente est enregistrée dans `workspace/releases/<id>/rollback.json`. Le tableau de bord propose une action explicite **Pousser le rollback** à partir de cet identifiant; le retour arrière n’est pas automatique.
 - Le logiciel ne peut pas garantir que FadeHost a fini de démarrer ni effectuer un rollback runtime automatique à partir du seul succès du push. Vérifie l’état dans le panneau FadeHost.
 - Le déploiement reste désactivé par défaut et échoue fermé si la configuration, les tests ou les validations requises manquent.
+
+
+### Déploiement autonome à faible risque (optionnel, désactivé par défaut)
+
+V6.3.0 expose `GET /api/v6/autonomy/deployment-status` et les routes `GET /api/v6/engineering/status`, `GET /api/v6/engineering/tasks`, `POST /api/v6/engineering/tasks`, ainsi que `/run` et `/cancel` par identifiant. N’active pas le traitement automatique directement sur la branche de production. Commence par un dépôt et une branche de staging reliés à FadeHost. Les variables nécessaires sont :
+
+```env
+V6_AUTO_DEPLOY_ENABLED=false
+V6_AUTONOMOUS_DEPLOY_SAFE=false
+V6_AUTONOMOUS_DEPLOY_ALLOWLIST=
+```
+
+Après validation en staging seulement, les deux interrupteurs peuvent être évalués et une liste exacte de modules auxiliaires `lib/*.js` peut être configurée. Ne mets jamais `index.js`, `dashboard.html`, `package.json`, `data.json`, `.env` ou les fichiers de gouvernance dans la liste. Le système sauvegarde le contenu GitHub antérieur avant le push et tente un rollback automatique si le contrôle HTTPS runtime obligatoire échoue. Cette tentative restaure le contenu vers GitHub, mais ne prouve pas que FadeHost a terminé le redéploiement; vérifie les logs et l’endpoint `/health/ready`. Conserve le `data.json` de production hors de toute opération de remplacement de code.
+
+
+### Configuration agent d’ingénierie V6.3.0
+
+L’agent accepte uniquement les modules auxiliaires `lib/*.js` non critiques et de moins de 10 Ko dans ce flux. Pour activer le traitement des tâches en attente après validation en staging, configure `V6_AUTONOMOUS_ENGINEERING_ENABLED=true`. Pour que le déploiement autonome puisse être tenté, les quatre conditions supplémentaires sont requises : `V6_AUTONOMOUS_DEPLOY_SAFE=true`, `V6_AUTO_DEPLOY_ENABLED=true`, une cible exacte dans `V6_AUTONOMOUS_DEPLOY_ALLOWLIST` et `V6_DEPLOY_HEALTH_URL=https://votre-domaine/health/ready`, plus les variables GitHub déjà décrites. Le endpoint `/health/ready` renvoie 503 tant qu’il ne constate pas une connexion Telegram récente.
+
+Une tâche interrompue pendant une phase de déploiement est marquée `interrupted_needs_review`; elle n’est pas relancée automatiquement car l’état distant peut être incertain. Le mécanisme de test retire les secrets de l’environnement enfant mais ne constitue pas une sandbox OS inviolable.

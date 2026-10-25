@@ -65,8 +65,7 @@ th{color:var(--muted);font-weight:500}
 .tag{display:inline-block;border-radius:7px;background:#25324a;padding:4px 7px;font-size:11px}
 footer{color:var(--muted);font-size:11px;padding:20px 0}
 .toast{position:fixed;bottom:20px;right:20px;max-width:calc(100% - 40px);background:#20334a;border:1px solid #405979;padding:14px 18px;border-radius:12px;z-index:10;box-shadow:0 10px 40px #0006}
-@media(max-width:800px){.layout{grid-template-columns:1fr}aside{padding:12px;border-right:0;border-bottom:1px solid var(--line)}.brand{padding:5px 5px 12px}.navtitle{display:none}nav{display:flex;overflow-x:auto;gap:5px;padding-bottom:3px}nav button{white-space:nowrap;width:auto;flex-shrink:0;padding:9px 11px}main{padding:19px 14px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.top{align-items:flex-start}h1{font-size:23px}.card{padding:15px}}
-@media(max-width:460px){.grid,.formgrid{grid-template-columns:1fr}.metric{font-size:25px}.top{flex-direction:column}.setting{gap:12px}.setting>div{min-width:0}}
+
 .bigpause{width:100%;min-height:58px;padding:16px;border:0;border-radius:16px;font-size:18px;font-weight:700;color:#fff;margin-bottom:16px}
 .bigpause.stop{background:#c98a1b}.bigpause.go{background:#1f9d73}.bigpause.off{background:#354158;color:var(--muted)}
 .hcard{display:grid;gap:6px;background:#0e1628;border:1px solid var(--line);border-radius:12px;padding:13px;overflow-wrap:anywhere}
@@ -78,7 +77,89 @@ footer{color:var(--muted);font-size:11px;padding:20px 0}
 .cols i{display:block;width:45%;max-width:18px;min-height:2px;background:var(--blue);border-radius:4px 4px 0 0}.cols i.b2{background:#9a74ff}
 .saveSettings,#saveHome{display:none}
 .switch{width:54px;height:32px}.switch:after{width:26px;height:26px}.switch.on:after{transform:translateX(22px)}
-@media(max-width:800px){aside{padding:10px 14px}.brand{padding:2px}nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:#0e1526;border-top:1px solid var(--line);display:flex;overflow-x:auto;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom))}nav button{flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:72px;padding:8px 6px;font-size:11px;text-align:center}nav button i{font-style:normal;font-size:18px}main{padding-bottom:100px}.toast{bottom:88px;right:12px}}
+
+
+
+/* V6 — espace IA autonome clarifié */
+.v6-autonomy-wrap{margin-top:16px;padding:20px;border:1px solid var(--border,#263248);border-radius:18px;background:linear-gradient(145deg,rgba(25,38,61,.78),rgba(12,20,34,.9))}
+.v6-autonomy-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.v6-autonomy-heading h3{margin:0 0 8px;font-size:1.18rem}
+.v6-autonomy-heading p,.v6-info-card p,.v6-subsection p{color:var(--muted,#9aa9bf);line-height:1.55;margin:0}
+.v6-autonomy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.v6-info-card{padding:16px;border:1px solid var(--border,#263248);border-radius:14px;background:rgba(8,15,27,.72);min-width:0}
+.v6-info-card h4{margin:8px 0;font-size:1rem}
+.v6-info-card p{font-size:.92rem;margin-bottom:12px}
+.v6-info-card small{display:block;color:var(--muted,#9aa9bf);line-height:1.5;overflow-wrap:anywhere}
+.v6-info-kicker{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent,#9bbcff);font-weight:700}
+.v6-info-card code{font-size:.85em;overflow-wrap:anywhere}
+.v6-safety-card{border-color:rgba(83,174,142,.42)}
+.v6-subsection{margin:22px 0 10px}
+.v6-subsection h4{margin:0 0 6px}
+.v6-subsection p{font-size:.9rem}
+@media(max-width:720px){.v6-autonomy-wrap{padding:14px}.v6-autonomy-heading{display:block}.v6-autonomy-heading .btn{margin-top:14px;width:100%}.v6-autonomy-grid{grid-template-columns:1fr}}
+
+
+/* V6.2.1 — refonte mobile-first, sans modifier les fonctions métier */
+:root{--bg:#080d19;--panel:#101a2b;--panel2:#18263d;--line:#293a55;--text:#f2f6ff;--muted:#9aabc4;--blue:#6d91ff;--green:#41d7a2;--radius:18px}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{min-width:320px;overscroll-behavior-y:contain}
+button,input,select,textarea{font:inherit}
+button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.layout{grid-template-columns:252px minmax(0,1fr)}
+aside{position:sticky;top:0;height:100dvh;overflow-y:auto;padding:22px 14px;background:linear-gradient(180deg,#101a2c,#0c1322);border-right:1px solid var(--line)}
+.brand{padding:5px 8px 24px}.logo{box-shadow:0 8px 24px #6589ff33}
+.navtitle{padding:16px 12px 8px;font-weight:750}
+nav button{min-height:44px;border:1px solid transparent;transition:background .16s ease,color .16s ease,border-color .16s ease}
+nav button.active{background:#233454;border-color:#344a70;color:#fff;box-shadow:inset 3px 0 0 var(--blue)}
+main{max-width:1440px;padding:30px clamp(18px,3vw,42px) 42px}
+.top{position:relative;align-items:center;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid #1d2a40}
+h1{font-size:clamp(24px,2vw,32px);line-height:1.2}.top p{max-width:680px;margin-top:8px}
+.pill{white-space:nowrap;border:1px solid var(--line);padding:8px 12px}
+.card{box-shadow:0 8px 28px #00000012;transition:border-color .18s ease}.card h2{line-height:1.35}.sectionhead{margin-bottom:20px}
+.grid{gap:14px}.metric{font-variant-numeric:tabular-nums}.metric-label{line-height:1.4}
+.btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1.25;text-align:center;text-decoration:none;touch-action:manipulation}
+.actions{align-items:stretch}.actions .btn{max-width:100%}
+.setting{align-items:center}.setting>div{min-width:0}.setting h3{line-height:1.4}.setting p{line-height:1.5}
+.field label{line-height:1.4}.field input,.field select,.field textarea{min-height:46px}textarea{max-width:100%;resize:vertical}
+.tablewrap{max-width:100%;overscroll-behavior-x:contain}.tablewrap table{min-width:560px}
+#mobileMoreButton{display:none}
+.mobile-menu-backdrop{position:fixed;inset:0;z-index:40;background:#020611b8;backdrop-filter:blur(5px);display:none;align-items:flex-end}
+.mobile-menu-backdrop.open{display:flex}
+.mobile-menu-sheet{width:100%;max-height:min(78dvh,680px);overflow:auto;background:#101a2b;border:1px solid var(--line);border-bottom:0;border-radius:22px 22px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 60px #0006}
+.mobile-menu-grabber{width:42px;height:4px;border-radius:8px;background:#53647f;margin:2px auto 16px}
+.mobile-menu-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.mobile-menu-head h2{margin:0}
+.mobile-menu-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.mobile-menu-grid button{display:flex;align-items:center;gap:10px;text-align:left;min-height:58px;padding:12px;background:#152239;border:1px solid #2a3b56;border-radius:13px;color:var(--text)}
+.mobile-menu-grid button i{font-style:normal;font-size:20px;width:25px;text-align:center}
+.mobile-menu-grid button.active{border-color:var(--blue);background:#213355}
+@media(min-width:801px){.mobile-menu-backdrop{display:none!important}}
+@media(max-width:800px){
+ .layout{display:block;min-height:100dvh}aside{position:relative;height:auto;overflow:visible;padding:10px 16px 0;border-right:0;border-bottom:1px solid var(--line)}
+ .brand{padding:2px 0 10px;gap:10px}.logo{width:38px;height:38px;border-radius:12px;font-size:20px}.brand strong{font-size:15px}.brand small{font-size:12px}.navtitle{display:none}
+ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:space-around;gap:3px;overflow:visible;background:#0d1525f5;border-top:1px solid #30415d;padding:7px 5px calc(7px + env(safe-area-inset-bottom));backdrop-filter:blur(18px)}
+ nav button{width:auto;min-width:0;flex:1;min-height:56px;margin:0;padding:6px 2px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center;font-size:10px;line-height:1.1;white-space:normal}
+ nav button[data-page="cleaning"],nav button[data-page="content"],nav button[data-page="rules"],nav button[data-page="assistant"],nav button[data-page="settings"]{display:none}
+ nav button.active{box-shadow:inset 0 2px 0 var(--blue);border-color:transparent;background:#1c2c48}
+ nav button i{font-style:normal;font-size:19px;line-height:1.1}#mobileMoreButton{display:flex}
+ main{padding:16px 13px calc(108px + env(safe-area-inset-bottom));}
+ .top{display:flex;align-items:flex-start;flex-direction:row;gap:10px;margin-bottom:16px;padding-bottom:14px}.top>div:first-child{min-width:0}.top h1{font-size:23px;letter-spacing:-.45px}.top p{font-size:13px;line-height:1.4;margin-top:6px}.pill{font-size:10px;padding:7px 8px;gap:5px;max-width:130px;white-space:normal;line-height:1.2}.dot{width:7px;height:7px;flex-shrink:0}
+ .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}.card{padding:15px;border-radius:16px}.metric{font-size:25px;margin-top:7px}.metric-label{font-size:12px}
+ .section{margin-bottom:12px}.sectionhead{margin-bottom:15px}.sectionhead p,.card>p{font-size:13px;line-height:1.5}
+ .formgrid{grid-template-columns:1fr;gap:13px}.formgrid [style*="grid-column"]{grid-column:auto!important}
+ .setting{gap:12px;padding:14px 0}.setting h3{font-size:13px}.setting p{font-size:12px;max-width:none}
+ .actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:14px}.actions .btn{width:100%;min-height:46px}
+ .row{align-items:flex-start;gap:10px}.row>.btn{flex-shrink:0}
+ .bigpause{min-height:54px;margin-bottom:12px;border-radius:14px;font-size:16px}
+ .chart{gap:4px}.bar{font-size:10px}.cols{gap:2px}
+ .v6-autonomy-wrap{padding:13px}.v6-autonomy-grid{grid-template-columns:1fr}.v6-info-card{padding:14px}
+ .tablewrap{margin-right:-3px}.tablewrap table{min-width:560px}
+ .toast{left:12px;right:12px;bottom:calc(83px + env(safe-area-inset-bottom));max-width:none}
+ footer{padding:18px 0 4px}
+}
+@media(max-width:390px){main{padding-left:10px;padding-right:10px}.top h1{font-size:21px}.pill{max-width:112px}.card{padding:12px}.metric{font-size:23px}.mobile-menu-grid{grid-template-columns:1fr}nav button{font-size:9px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+
 </style>
 </head>
 <body>
@@ -96,6 +177,7 @@ footer{color:var(--muted);font-size:11px;padding:20px 0}
     <button data-page="history"><i>◷</i><span>Historique</span></button>
     <button data-page="assistant"><i>✧</i><span>Assistant IA</span></button>
     <button data-page="settings"><i>⚙</i><span>Réglages</span></button>
+    <button id="mobileMoreButton" type="button" aria-haspopup="dialog" aria-expanded="false"><i>☰</i><span>Plus</span></button>
   </nav>
 </aside>
 <main>
@@ -253,9 +335,53 @@ footer{color:var(--muted);font-size:11px;padding:20px 0}
       <div class="sectionhead"><h2>HACOO BOT V6 — contrôle IA</h2><p>Vérifie les fournisseurs API configurés et enregistre des propositions d’amélioration. Les tests API envoient une requête courte et peuvent consommer du quota.</p></div>
       <div class="actions" style="margin-top:0"><button class="btn" id="v6Refresh">Actualiser l’état V6</button><button class="btn primary" id="v6TestProviders">Tester les API configurées</button></div>
       <div id="v6Status" class="notice" style="margin-top:14px">Chargement de l’état V6…</div>
-      <div class="card" style="margin-top:14px;background:#0e1628"><h3>Cycle autonome de diagnostic</h3><p>Analyse périodiquement des statistiques agrégées et propose une amélioration. Aucun code n’est modifié et aucun déploiement n’est effectué automatiquement.</p><div class="actions"><button class="btn primary" id="v6RunAutonomy">Lancer une revue maintenant</button></div><div id="v6AutonomyStatus" class="sub" style="margin-top:10px">Chargement du cycle autonome…</div></div>
-      <div id="v6ProviderRows" class="list"></div>
-      <div class="sectionhead" style="margin-top:24px"><h3>Proposer une amélioration</h3><p>La proposition est enregistrée dans le laboratoire; elle ne modifie ni le code ni le déploiement.</p></div>
+      <div class="v6-autonomy-wrap">
+        <div class="v6-autonomy-heading">
+          <div><h3>IA autonome — centre de pilotage</h3><p>L’IA observe les statistiques agrégées, propose des améliorations et génère des candidats isolés. Le déploiement autonome à faible risque est préparé derrière une allowlist stricte et reste désactivé par défaut.</p></div>
+          <button class="btn primary" id="v6RunAutonomy">Lancer une revue maintenant</button>
+        </div>
+        <div id="v6AutonomyStatus" class="notice" style="margin:12px 0">Chargement du cycle autonome…</div>
+        <div class="card section" id="v6AutonomyWorkspace" style="margin-top:16px;border:1px solid var(--line)">
+          <div class="sectionhead"><h3>Centre de pilotage autonome</h3><p>Une vue centralisée des décisions, diagnostics, conversations et commandes de contrôle. Les actions réellement exécutées sont journalisées; le chat seul ne peut pas modifier le code ni déployer.</p></div>
+          <div class="actions">
+            <button class="btn" id="v6AutonomyRefreshAll">Actualiser tout</button>
+            <button class="btn primary" id="v6AutonomyRepair">Diagnostiquer et réparer les problèmes sûrs</button>
+            <button class="btn danger" id="v6AutonomyPause">Mettre l’autonomie en pause</button>
+            <button class="btn" id="v6AutonomyResume">Reprendre l’autonomie</button>
+            <button class="btn" id="v6AutonomyChatToggle">Désactiver le chat</button>
+          </div>
+          <div id="v6AutonomyControlStatus" class="notice" style="margin:12px 0">Chargement des commandes de pilotage…</div>
+          <div class="v6-autonomy-grid">
+            <div class="v6-info-card"><div class="v6-info-kicker">ÉTAT ACTUEL</div><h4>Diagnostic et activité</h4><p id="v6AutonomyDiagnostics">Chargement des données de fonctionnement.</p><button class="btn" id="v6AutonomyRunDiagnostic">Lancer un diagnostic IA</button></div>
+            <div class="v6-info-card"><div class="v6-info-kicker">DÉCISIONS</div><h4>Pourquoi l’IA agit</h4><p>Chaque cycle, proposition, blocage ou tentative de déploiement apparaît dans le journal avec son horodatage et ses détails disponibles.</p><button class="btn" id="v6AutonomyRefreshDecisions">Actualiser le journal</button></div>
+          </div>
+          <div class="sectionhead" style="margin-top:22px"><h4>Agent de développement autonome</h4><p>Crée une tâche persistante : l’IA lit un module, génère une version candidate, vérifie la syntaxe et les règles statiques. Le déploiement n’est tenté que si l’allowlist, GitHub, les tests et le contrôle runtime sont configurés. La production n’est jamais remplacée par un simple chat.</p></div>
+          <form id="v6EngineeringForm" class="formgrid">
+            <div class="field"><label for="v6EngineeringTarget">Module cible</label><select id="v6EngineeringTarget" required><option value="lib/incident-forecaster.js">lib/incident-forecaster.js</option><option value="lib/adaptive-policy.js">lib/adaptive-policy.js</option><option value="lib/prepublication.js">lib/prepublication.js</option></select></div>
+            <div class="field" style="grid-column:1/-1"><label for="v6EngineeringObjective">Objectif précis</label><textarea id="v6EngineeringObjective" rows="3" maxlength="3000" minlength="20" placeholder="Exemple : améliore la validation des horaires invalides, conserve les exports existants et ajoute un comportement robuste aux dates mal formées." required></textarea></div>
+            <div class="actions" style="grid-column:1/-1"><button class="btn primary" id="v6EngineeringStart" type="submit">Créer et exécuter la tâche IA</button><button class="btn" id="v6EngineeringRefresh" type="button">Actualiser les tâches</button></div>
+          </form>
+          <div id="v6EngineeringStatus" class="notice" style="margin:12px 0">Chargement de l’agent d’ingénierie…</div>
+          <div id="v6EngineeringTasks" class="list"><div class="empty">Aucune tâche de développement.</div></div>
+          <div class="sectionhead" style="margin-top:22px"><h4>Parler à l’IA autonome</h4><p>Demande-lui d’expliquer une décision, d’analyser un incident ou de proposer une amélioration. Une réponse du chat ne vaut pas autorisation de déploiement.</p></div>
+          <div id="v6AutonomyChatHistory" class="list" aria-live="polite" style="max-height:360px;overflow:auto;margin-bottom:12px"><div class="empty">Conversation vide. Pose une question à l’IA.</div></div>
+          <form id="v6AutonomyChatForm" class="formgrid">
+            <div class="field" style="grid-column:1/-1"><label for="v6AutonomyChatInput">Message</label><textarea id="v6AutonomyChatInput" rows="3" maxlength="3000" placeholder="Pourquoi as-tu proposé cette amélioration ? Analyse les erreurs récentes et propose un plan…" required></textarea></div>
+            <div class="actions" style="grid-column:1/-1"><button class="btn primary" id="v6AutonomyChatSend" type="submit">Envoyer à l’IA</button><span class="sub">L’appel utilise le fournisseur IA configuré et peut consommer du quota.</span></div>
+          </form>
+          <div class="sectionhead" style="margin-top:22px"><h4>Journal complet des décisions récentes</h4><p>Les événements les plus récents apparaissent en premier. Les secrets ne doivent jamais être saisis dans le chat.</p></div>
+          <div id="v6AutonomyDecisionLog" class="list"><div class="empty">Chargement du journal…</div></div>
+        </div>
+        <div class="v6-autonomy-grid">
+          <div class="v6-info-card"><div class="v6-info-kicker">01 · Fonctionnement</div><h4>Revue périodique</h4><p>À chaque cycle, l’IA examine les compteurs du bot (file, erreurs, doublons, modération) et prépare une seule proposition prudente.</p><small>Réglages FadeHost : <code>V6_AUTONOMY_ENABLED</code> et <code>V6_AUTONOMY_INTERVAL_MINUTES</code>.</small></div>
+          <div class="v6-info-card"><div class="v6-info-kicker">02 · Limites</div><h4>Plafond et consommation</h4><p>Un plafond quotidien évite les cycles sans fin. Les appels IA peuvent consommer le quota du fournisseur configuré.</p><small>Réglage FadeHost : <code>V6_AUTONOMY_MAX_RUNS_PER_DAY</code>. Valeur par défaut : 4 cycles/jour.</small></div>
+          <div class="v6-info-card"><div class="v6-info-kicker">03 · Fichiers candidats</div><h4>Proposition isolée</h4><p>Si cette option est activée, l’IA peut générer un module candidat séparé. La génération seule ne lance pas le candidat. Si un déploiement protégé est configuré, les tests de pré-déploiement l’exécutent dans une copie temporaire avec un environnement épuré; ce n’est pas un sandbox système.</p><small>Réglage FadeHost : <code>V6_AUTONOMY_GENERATE_CANDIDATES</code>.</small></div>
+          <div class="v6-info-card v6-safety-card"><div class="v6-info-kicker">04 · Niveau 3 protégé</div><h4>Déploiement sûr sur allowlist</h4><p>Seuls des modules auxiliaires explicitement autorisés peuvent passer la porte automatique. Les fichiers critiques, secrets, données, tableau de bord et dépendances sont exclus.</p><small>Le push GitHub ne confirme pas que FadeHost a redémarré. Le mode reste désactivé par défaut; si le contrôle HTTPS runtime échoue, le système tente de repousser la version précédente, puis il faut vérifier le redémarrage FadeHost.</small></div>
+        </div>
+        <div class="v6-subsection"><h4>Fournisseurs IA configurés</h4><p>La présence d’une clé indique qu’elle est configurée, pas que l’API fonctionne. Utilise le test ci-dessous pour vérifier la connexion; ce test peut consommer du quota.</p></div>
+        <div id="v6ProviderRows" class="list"></div>
+      </div>
+      <div class="sectionhead" style="margin-top:24px"><h3>Laboratoire d’amélioration</h3><p>Enregistre une proposition manuelle ou génère un candidat isolé. Les actions de cette zone ne changent pas le code de production.</p></div>
       <div class="formgrid">
         <div class="field"><label for="v6ProposalTitle">Titre</label><input id="v6ProposalTitle" type="text" maxlength="120" placeholder="Ex. Mieux récupérer la file après une panne"></div>
         <div class="field"><label for="v6ProposalBenefit">Bénéfice attendu</label><input id="v6ProposalBenefit" type="text" maxlength="1000" placeholder="Ex. Réduire les tâches bloquées"></div>
@@ -296,6 +422,13 @@ footer{color:var(--muted);font-size:11px;padding:20px 0}
   </section>
   <footer>M2 HACOO BOT · Tableau de bord privé</footer>
 </main>
+</div>
+<div id="mobileMoreMenu" class="mobile-menu-backdrop" role="dialog" aria-modal="true" aria-labelledby="mobileMenuTitle" aria-hidden="true">
+  <div class="mobile-menu-sheet">
+    <div class="mobile-menu-grabber" aria-hidden="true"></div>
+    <div class="mobile-menu-head"><h2 id="mobileMenuTitle">Tous les outils</h2><button type="button" class="btn" id="closeMobileMenu" aria-label="Fermer le menu">Fermer</button></div>
+    <div class="mobile-menu-grid" id="mobileMenuItems"></div>
+  </div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <script>
@@ -343,15 +476,31 @@ async function api(url,options={}){
  }
  return body;
 }
+const mobileMenu=$('#mobileMoreMenu');
+function closeMobileMenu(){mobileMenu.classList.remove('open');mobileMenu.setAttribute('aria-hidden','true');$('#mobileMoreButton').setAttribute('aria-expanded','false');}
+function openMobileMenu(){mobileMenu.classList.add('open');mobileMenu.setAttribute('aria-hidden','false');$('#mobileMoreButton').setAttribute('aria-expanded','true');$('#closeMobileMenu').focus();}
+function buildMobileMenu(){
+ const target=$('#mobileMenuItems');target.innerHTML='';
+ const hiddenPages=$$('#nav button[data-page]').filter(b=>['cleaning','content','rules','assistant','settings'].includes(b.dataset.page));
+ hiddenPages.forEach(source=>{const b=document.createElement('button');b.type='button';b.dataset.page=source.dataset.page;b.innerHTML=source.innerHTML;b.classList.toggle('active',source.classList.contains('active'));target.appendChild(b);});
+}
 function showPage(id){
  if(!titles[id])return;
  $$('.page').forEach(p=>p.classList.toggle('active',p.id===id));
- $$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
+ $$('#nav button[data-page]').forEach(b=>{b.classList.toggle('active',b.dataset.page===id);if(b.dataset.page===id)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+ $$('#mobileMenuItems button[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
  $('#pageTitle').textContent=titles[id][0];$('#pageDesc').textContent=titles[id][1];
+ closeMobileMenu();window.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
+buildMobileMenu();
 $('#nav').addEventListener('click',e=>{
  const b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page);
+ if(e.target.closest('#mobileMoreButton'))openMobileMenu();
 });
+$('#mobileMenuItems').addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page);});
+$('#closeMobileMenu').addEventListener('click',closeMobileMenu);
+mobileMenu.addEventListener('click',e=>{if(e.target===mobileMenu)closeMobileMenu();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMobileMenu();});
 function renderSwitches(){
  $$('.switch[data-setting]').forEach(b=>{
   const key=b.dataset.setting;const on=Boolean(settings[key]);
@@ -596,10 +745,72 @@ async function loadV6Status(){
  try{
   const data=await api('/api/v6/status');
   box.textContent=`Version ${data.version} · Constitution ${data.constitution} · Laboratoire : ${data.lab.mode} · Revue autonome : ${data.autonomy?.enabled?'active':'indisponible (vérifie les clés API)'} · Déploiement automatique : ${data.controller.automaticProductionDeployment?'activé':'bloqué tant que l’adaptateur FadeHost n’est pas validé'} · Canaux actifs : ${data.channels?.active||0}`;
-  const a=data.autonomy||{};$('#v6AutonomyStatus').textContent=`État : ${safe(a.lastStatus||'pas encore exécuté')} · Intervalle : ${a.intervalMinutes||360} min · Exécutions aujourd’hui : ${a.runsToday||0}/${a.maxRunsPerDay||4}${a.lastRunAt?' · Dernière revue : '+safe(a.lastRunAt):''}${a.lastSummary?.title?' · Dernière proposition : '+safe(a.lastSummary.title):''}`;
+  const a=data.autonomy||{};
+  const statusLabels={not_started:'Aucune revue effectuée',paused_by_admin:'En pause par l’administrateur',proposal_created:'Proposition créée',proposal_and_candidate_created:'Proposition + candidat créés',error:'Dernière revue en erreur',disabled:'Désactivée',no_provider_configured:'Aucun fournisseur IA configuré',daily_limit_reached:'Plafond quotidien atteint',interval_not_elapsed:'En attente du prochain créneau',already_running:'Une revue est déjà en cours'};
+  const autonomyParts=[
+   `Activation : ${a.enabled?'active':'inactive'}`,
+   `Fournisseur API : ${a.configuredProviderAvailable?'clé configurée':'aucune clé configurée'}`,
+   `Intervalle : ${a.intervalMinutes||360} min`,
+   `Cycles aujourd’hui : ${a.runsToday||0}/${a.maxRunsPerDay||4}`,
+   `Génération de candidats : ${a.candidateGenerationEnabled?'autorisée':'désactivée'}`,
+   `Dernier résultat : ${statusLabels[a.lastStatus]||a.lastStatus||'pas encore exécuté'}`
+  ];
+  if(a.lastRunAt)autonomyParts.push(`Dernière revue : ${safe(a.lastRunAt)}`);
+  if(a.nextEligibleAt)autonomyParts.push(`Prochaine revue possible : ${safe(a.nextEligibleAt)}`);
+  if(a.lastSummary?.title)autonomyParts.push(`Dernière proposition : ${safe(a.lastSummary.title)}`);
+  if(a.lastSummary?.message)autonomyParts.push(`Détail : ${safe(a.lastSummary.message)}`);
+  try{const release=await api('/api/v6/autonomy/deployment-status');const cfg=release.configured||{};autonomyParts.push(`Déploiement autonome : ${release.enabled?'activé (allowlist limitée)':'désactivé/protégé'}`);autonomyParts.push(`Allowlist : ${(release.allowlist||[]).length} cible(s)`);if(!cfg.githubDeployment)autonomyParts.push('Push GitHub désactivé');}catch(e){autonomyParts.push('État du déploiement autonome indisponible');}
+  $('#v6AutonomyStatus').textContent=autonomyParts.join(' · ');
   rows.innerHTML=(data.providers||[]).map(p=>`<div class="rule"><span><strong>${safe(p.id)}</strong><br><span class="sub">Modèle : ${safe(p.model)} · Variable : ${safe(p.keyVariable)}</span></span><span class="tag ${p.configured?'':'failed'}">${p.configured?'Clé configurée':'Clé absente'}</span></div>`).join('')||'<div class="empty">Aucun fournisseur.</div>';
  }catch(e){box.textContent='État V6 indisponible : '+e.message;rows.innerHTML='';}
 }
+
+function renderAutonomyChat(role, text, meta=''){
+ const box=$('#v6AutonomyChatHistory');
+ if(box.querySelector('.empty'))box.innerHTML='';
+ const row=document.createElement('div');row.className='rule';
+ const label=role==='user'?'Vous':'IA autonome';
+ row.innerHTML=`<span style="min-width:0;white-space:pre-wrap;overflow-wrap:anywhere"><strong>${safe(label)}</strong>${meta?`<br><span class="sub">${safe(meta)}</span>`:''}<br>${safe(text)}</span>`;
+ box.appendChild(row);box.scrollTop=box.scrollHeight;
+}
+async function loadAutonomyWorkspace(){
+ try{
+  const [control, decisions]=await Promise.all([api('/api/v6/autonomy/control'),api('/api/v6/autonomy/decisions')]);
+  const s=control.status||{};
+  $('#v6AutonomyControlStatus').textContent=`Autonomie : ${s.paused?'en pause':s.enabled?'active':'indisponible'} · Chat : ${control.chatEnabled?'activé':'désactivé'} · Dernière modification : ${control.updatedAt||'aucune'} · Déploiement sûr : ${s.autonomousDeployment?.enabled?'activé mais limité à l’allowlist':'désactivé/protégé'}`;
+  $('#v6AutonomyPause').disabled=Boolean(s.paused);
+  $('#v6AutonomyResume').disabled=!s.paused;
+  $('#v6AutonomyChatToggle').textContent=control.chatEnabled?'Désactiver le chat':'Réactiver le chat';
+  $('#v6AutonomyDiagnostics').textContent=`État : ${s.lastStatus||'pas encore lancé'} · Cycles aujourd’hui : ${s.runsToday||0}/${s.maxRunsPerDay||4} · Intervalle : ${s.intervalMinutes||360} min · Fournisseur : ${s.configuredProviderAvailable?'configuré':'non configuré'}${s.lastSummary?.title?' · Dernière proposition : '+s.lastSummary.title:''}${s.lastSummary?.message?' · Dernière erreur : '+s.lastSummary.message:''}`;
+  const events=decisions.events||[];
+  $('#v6AutonomyDecisionLog').innerHTML=events.map(e=>`<div class="rule"><span style="min-width:0;overflow-wrap:anywhere"><strong>${safe(e.message||e.type)}</strong><br><span class="sub">${safe(e.time||'')} · ${safe(e.type||'événement')}</span>${e.details&&Object.keys(e.details).length?`<br><span class="sub">${safe(JSON.stringify(e.details).slice(0,700))}</span>`:''}</span><span class="tag">Journal</span></div>`).join('')||'<div class="empty">Aucun événement dans le journal.</div>';
+ }catch(e){$('#v6AutonomyControlStatus').textContent='Impossible de charger le centre de pilotage : '+e.message;}
+}
+async function setAutonomyControl(patch){
+ try{await api('/api/v6/autonomy/control',{method:'POST',body:JSON.stringify(patch)});toast('Commande de pilotage enregistrée.');await loadAutonomyWorkspace();await loadV6Status();}
+ catch(e){toast('Commande refusée : '+e.message,true);}
+}
+$('#v6AutonomyPause').addEventListener('click',()=>setAutonomyControl({paused:true}));
+$('#v6AutonomyResume').addEventListener('click',()=>setAutonomyControl({paused:false}));
+$('#v6AutonomyChatToggle').addEventListener('click',async()=>{try{const c=await api('/api/v6/autonomy/control');await setAutonomyControl({chatEnabled:!c.chatEnabled});}catch(e){toast(e.message,true);}});
+$('#v6AutonomyRefreshAll').addEventListener('click',async()=>{await loadAutonomyWorkspace();await loadV6Status();await loadV6Candidates();});
+$('#v6AutonomyRepair').addEventListener('click',async()=>{const b=$('#v6AutonomyRepair');b.disabled=true;b.textContent='Supervision en cours…';try{const r=await api('/api/v6/autonomy/supervisor/run',{method:'POST',body:'{}'});const summary={status:r.status,findings:r.report?.findings||[],repairs:r.report?.repairs||[],automaticCodeChanges:r.report?.automaticCodeChanges,automaticDeployments:r.report?.automaticDeployments};renderAutonomyChat('assistant',JSON.stringify(summary,null,2),'Rapport du superviseur · réparations locales limitées');toast(r.status==='healthy'?'Contrôle terminé : aucun problème détecté.':'Contrôle terminé : consulte le rapport pour les anomalies.');await loadAutonomyWorkspace();await loadV6Status();}catch(e){toast('Supervision impossible : '+e.message,true);}finally{b.disabled=false;b.textContent='Diagnostiquer et réparer les problèmes sûrs';}});
+$('#v6AutonomyRefreshDecisions').addEventListener('click',loadAutonomyWorkspace);
+$('#v6AutonomyRunDiagnostic').addEventListener('click',async()=>{const b=$('#v6AutonomyRunDiagnostic');b.disabled=true;b.textContent='Diagnostic en cours…';try{const r=await api('/api/v6/autonomy/run',{method:'POST',body:'{}'});renderAutonomyChat('assistant',JSON.stringify({status:r.status,proposal:r.proposal,candidate:r.candidate,candidateError:r.candidateError},null,2),'Résultat du diagnostic · aucune activation automatique garantie');await loadAutonomyWorkspace();await loadV6Status();}catch(e){toast('Diagnostic impossible : '+e.message,true);}finally{b.disabled=false;b.textContent='Lancer un diagnostic IA';}});
+async function loadEngineeringTasks(){
+ try{
+  const [status,data]=await Promise.all([api('/api/v6/engineering/status'),api('/api/v6/engineering/tasks')]);
+  $('#v6EngineeringStatus').textContent=`Agent : ${status.enabled?'activé par configuration':'candidat autonome disponible, déploiement auto non activé'} · Tâches : ${status.taskCount||0} · En cours : ${status.activeTasks||0} · GitHub : ${status.githubConfigured?'configuré':'non configuré'} · Santé runtime : ${status.runtimeHealthConfigured?'configurée':'non configurée'} · Allowlist : ${(status.deployAllowlist||[]).length} cible(s)`;
+  const tasks=data.tasks||[];
+  $('#v6EngineeringTasks').innerHTML=tasks.map(t=>`<div class="rule"><span style="min-width:0;overflow-wrap:anywhere"><strong>${safe(t.target||'cible inconnue')} · ${safe(t.status||'inconnu')}</strong><br><span class="sub">${safe(t.createdAt||'')} · ${safe(t.objective||'')}</span>${t.result?`<br><span class="sub">${safe(JSON.stringify(t.result).slice(0,900))}</span>`:''}${t.error?`<br><span class="sub">Erreur : ${safe(t.error)}</span>`:''}${t.candidateFile?`<br><span class="sub">Candidat : ${safe(t.candidateFile)} · SHA : ${safe(t.candidateSha256||'')}</span>`:''}</span><span class="actions"><button class="btn" data-engineering-run="${safe(t.id)}" ${['running','deploying','completed_runtime_healthy','deployed_runtime_unconfirmed','rollback_attempted','cancelled'].includes(t.status)?'disabled':''}>${t.status==='queued'?'Exécuter':'Relancer'}</button><button class="btn danger" data-engineering-cancel="${safe(t.id)}" ${['running','deploying','completed_runtime_healthy','deployed_runtime_unconfirmed','rollback_attempted','cancelled'].includes(t.status)?'disabled':''}>Annuler</button></span></div>`).join('')||'<div class="empty">Aucune tâche de développement.</div>';
+  $('#v6EngineeringTasks').querySelectorAll('[data-engineering-run]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const r=await api(`/api/v6/engineering/tasks/${encodeURIComponent(btn.dataset.engineeringRun)}/run`,{method:'POST',body:'{}'});renderAutonomyChat('assistant',JSON.stringify(r.task,null,2),'Résultat de tâche d’ingénierie');toast('Tâche terminée : '+r.task.status);}catch(e){toast('Tâche non terminée : '+e.message,true);}finally{await loadEngineeringTasks();await loadAutonomyWorkspace();}}));
+  $('#v6EngineeringTasks').querySelectorAll('[data-engineering-cancel]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await api(`/api/v6/engineering/tasks/${encodeURIComponent(btn.dataset.engineeringCancel)}/cancel`,{method:'POST',body:'{}'});toast('Tâche annulée avant déploiement.');}catch(e){toast('Annulation refusée : '+e.message,true);}finally{await loadEngineeringTasks();}}));
+ }catch(e){$('#v6EngineeringStatus').textContent='Agent d’ingénierie indisponible : '+e.message;}
+}
+$('#v6EngineeringRefresh').addEventListener('click',loadEngineeringTasks);
+$('#v6EngineeringForm').addEventListener('submit',async ev=>{ev.preventDefault();const btn=$('#v6EngineeringStart');const objective=$('#v6EngineeringObjective').value.trim(),target=$('#v6EngineeringTarget').value;btn.disabled=true;btn.textContent='Création de la tâche…';try{const created=await api('/api/v6/engineering/tasks',{method:'POST',body:JSON.stringify({objective,target})});$('#v6EngineeringObjective').value='';await loadEngineeringTasks();btn.textContent='Génération et contrôles IA…';const run=await api(`/api/v6/engineering/tasks/${encodeURIComponent(created.task.id)}/run`,{method:'POST',body:'{}'});renderAutonomyChat('assistant',JSON.stringify(run.task,null,2),'Tâche d’ingénierie persistante · résultat vérifiable');toast('Tâche IA : '+run.task.status);await loadEngineeringTasks();await loadAutonomyWorkspace();}catch(e){toast('Tâche IA échouée ou bloquée : '+e.message,true);await loadEngineeringTasks();}finally{btn.disabled=false;btn.textContent='Créer et exécuter la tâche IA';}});
+
+$('#v6AutonomyChatForm').addEventListener('submit',async ev=>{ev.preventDefault();const input=$('#v6AutonomyChatInput'),message=input.value.trim(),btn=$('#v6AutonomyChatSend');if(!message)return;renderAutonomyChat('user',message);input.value='';btn.disabled=true;btn.textContent='Réponse en cours…';try{const r=await api('/api/v6/autonomy/chat',{method:'POST',body:JSON.stringify({message})});renderAutonomyChat('assistant',r.answer,`${r.provider}/${r.model} · ${r.latencyMs||'?'} ms · aucune action de code exécutée`);await loadAutonomyWorkspace();}catch(e){renderAutonomyChat('assistant','Je n’ai pas pu répondre : '+e.message,'Erreur');}finally{btn.disabled=false;btn.textContent='Envoyer à l’IA';}});
 $('#v6Refresh').addEventListener('click',loadV6Status);
 $('#v6RunAutonomy').addEventListener('click',async()=>{
  const btn=$('#v6RunAutonomy');btn.disabled=true;btn.textContent='Revue en cours…';
@@ -616,6 +827,7 @@ $('#v6TestProviders').addEventListener('click',async()=>{
   toast(lines||'Aucune clé API configurée.');
   $('#v6Status').textContent=lines||'Aucune clé API configurée. Ajoute au moins une clé dans FadeHost si tu souhaites tester un fournisseur.';
   await loadV6Status();
+loadAutonomyWorkspace();
  }catch(e){toast('Test API impossible : '+e.message,true);}finally{btn.disabled=false;btn.textContent='Tester les API configurées';}
 });
 async function loadV6Candidates(){try{const result=await api('/api/v6/lab/candidates');const list=$('#v6Candidates');list.innerHTML=(result.candidates||[]).map(c=>`<div class="rule"><span><strong>${safe(c.title)}</strong><br><span class="sub">${safe(c.createdAt)} · ${safe(c.provider||'IA')} · ${c.syntaxValid?'Syntaxe valide':'Syntaxe inconnue'} · Jamais exécuté</span><br><span class="sub">${safe(c.file)}</span></span><span class="tag">À vérifier</span></div>`).join('')||'<div class="empty">Aucun candidat généré.</div>';}catch(e){$('#v6Candidates').textContent='Liste des candidats indisponible : '+e.message;}}
@@ -649,6 +861,7 @@ loadV6Candidates();
 loadV6Schedules();
 loadV6Memory();
 loadV6DeployStatus();
+loadEngineeringTasks();
 load();
 async function autoSave(patch){
  try{
