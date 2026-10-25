@@ -9,6 +9,9 @@ const { providerStatus, testProvider, testConfiguredProviders } = require('./lib
 const { labStatus, createProposal, generateCandidate, listCandidates } = require('./lib/self-development-lab');
 const { appendAudit } = require('./lib/audit-log');
 const { autonomyStatus, runAutonomyCycle } = require('./lib/autonomy-engine');
+const { readControl, updateControl, readAudit } = require('./lib/autonomy-control');
+const { supervisorStatus, runSupervisorCycle } = require('./lib/autonomous-supervisor');
+const { autonomousReleaseStatus } = require('./lib/autonomous-release');
 const { parseChannelRegistry } = require('./lib/multichannel');
 const { inspectPublication } = require('./lib/prepublication');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
@@ -20,6 +23,7 @@ const { forecastIncidents } = require('./lib/incident-forecaster');
 const { proposeAdaptivePolicy } = require('./lib/adaptive-policy');
 const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
+const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 
 let sharp;
 try {
@@ -702,12 +706,24 @@ function cleanText(text) {
 }
 
 function stripFormattingMarkers(value) {
-  // Retire uniquement les emojis de présentation connus, pas tous les emojis
-  // du message : les drapeaux et les informations utiles restent préservés.
+  // Retire uniquement les marqueurs de présentation utilisés par le format.
+  // Les emojis informatifs et le contenu des autres lignes ne sont pas touchés.
   return String(value || '')
     .replace(/(?:🛍️?|🤩|‼️?|🔥|🎟️?|🎁|🔗|👉🏼?|🚨|⭐️?)/gu, '')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+}
+
+function isExistingPromoLine(value) {
+  const line = String(value || '').trim();
+  if (!line) return false;
+  // On ne supprime que les lignes clairement promotionnelles. Les références,
+  // tailles, couleurs et codes produit sans contexte promotionnel sont conservés.
+  if (/(?:code\s*promo|promo(?:tionnel)?\s*code|promo\s*code|coupon|code\s*de\s*réduction|code\s*réduction|use\s*code|discount\s*code)/iu.test(line)) return true;
+  // Codes connus qui ont pu être ajoutés par d'anciens formats, avec ou sans emoji.
+  const knownCodes = ['M2REPS', 'LINKCREW10', 'REAL150', '560RIL'];
+  const normalized = line.replace(/[🎁🎟️🔥✨👉🏼⭐️:：\s]/gu, '').toUpperCase();
+  return knownCodes.some(code => normalized === code || normalized === `-${code}`);
 }
 
 function formatPostText(text) {
@@ -725,27 +741,40 @@ function formatPostText(text) {
   const couponTemplate = String(data.formatCouponTemplate || '').trim();
   const couponLine = couponTemplate ? couponTemplate.replace(/\{code\}/gi, code) : '';
   const linkPrefix = String(data.formatLinkPrefix || '');
-  const title = lines[titleIndex].trim();
-  let cleanTitle = title;
-  if (prefix && cleanTitle.startsWith(prefix)) cleanTitle = cleanTitle.slice(prefix.length);
-  if (suffix && cleanTitle.endsWith(suffix)) cleanTitle = cleanTitle.slice(0, -suffix.length);
+
+  // Enlève les anciens marqueurs connus et les marqueurs configurés en bordure,
+  // puis applique une seule fois le format choisi.
+  let cleanTitle = lines[titleIndex].trim();
+  const decorations = [prefix, suffix, '🛍️', '🛍', '🤩', '‼️', '‼', '🔥', '🎟️', '🎟', '🎁', '🔗', '👉🏼', '👉', '🚨', '⭐️', '⭐'];
+  for (const marker of decorations.filter(Boolean)) {
+    const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    cleanTitle = cleanTitle.replace(new RegExp(`^(?:${escaped})+\\s*`, 'u'), '');
+    cleanTitle = cleanTitle.replace(new RegExp(`\\s*(?:${escaped})+$`, 'u'), '');
+  }
+  // Retire aussi les anciens emojis décoratifs inconnus en bordure du titre
+  // (ex. 😍 ou ✨), sans toucher aux emojis situés au milieu du nom.
+  cleanTitle = cleanTitle
+    .replace(/^(?:[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\u{1F3FB}-\u{1F3FF}]+\s*)+/u, '')
+    .replace(/(?:\s*[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\u{1F3FB}-\u{1F3FF}]+)+$/u, '');
   cleanTitle = stripFormattingMarkers(cleanTitle);
   lines[titleIndex] = `${prefix}${cleanTitle}${suffix}`;
 
-  // Replace an existing promo/coupon line rather than adding a second one.
   let couponInserted = false;
   const output = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
-    const isPromoLine = /(?:code\s*promo|coupon|promo\s*code)/iu.test(trimmed) || /^(?:M2REPS|linkcrew10|REAL150|560ril)$/iu.test(trimmed);
-    if (isPromoLine) {
+
+    // Supprime/remplace toutes les anciennes lignes promo, mais garde le code
+    // produit et les autres détails qui ne sont pas explicitement promotionnels.
+    if (isExistingPromoLine(trimmed)) {
       if (couponLine && !couponInserted) {
         output.push(couponLine);
         couponInserted = true;
       }
       continue;
     }
+
     if (i === titleIndex) {
       output.push(lines[titleIndex]);
       if (couponLine && !couponInserted) {
@@ -754,7 +783,8 @@ function formatPostText(text) {
       }
       continue;
     }
-    // Retire les anciens marqueurs autour des liens puis ajoute un seul préfixe.
+
+    // Les liens gardent leur URL et reçoivent un seul préfixe de présentation.
     const cleanLinkLine = stripFormattingMarkers(trimmed);
     if (/^(?:https?:\/\/|www\.)\S+/iu.test(cleanLinkLine) && linkPrefix) {
       output.push(linkPrefix + cleanLinkLine);
@@ -2268,16 +2298,12 @@ function isAdmin(ctx) {
 }
 
 
-
 bot.command('start', async ctx => {
   if (!isAdmin(ctx)) return;
 
   const dashboardUrl = process.env.DASHBOARD_URL?.trim();
-
   if (!dashboardUrl) {
-    await ctx.reply(
-      '⚠️ La variable DASHBOARD_URL n’est pas configurée.'
-    );
+    await ctx.reply('⚠️ La variable DASHBOARD_URL n’est pas configurée dans FadeHost.');
     return;
   }
 
@@ -2291,7 +2317,6 @@ bot.command('start', async ctx => {
     }
   );
 });
-
 
 
 bot.command('pause', async ctx => {
@@ -2443,6 +2468,13 @@ function auth(req, res, next) {
 }
 
 // Health check minimal et public pour les sondes d'hébergement; aucune donnée secrète.
+app.get('/health/ready', (_req, res) => {
+  const now = Date.now();
+  const telegramConnected = Boolean(lastTelegramOk && Number.isFinite(Date.parse(lastTelegramOk)) && now - Date.parse(lastTelegramOk) < 10 * 60 * 1000);
+  const ready = !shuttingDown && Boolean(TOKEN) && telegramConnected;
+  res.status(ready ? 200 : 503).json({ ok: ready, checks: { process: !shuttingDown, telegramTokenConfigured: Boolean(TOKEN), telegramConnectedRecently: telegramConnected }, checkedAt: new Date().toISOString() });
+});
+
 app.get('/health', (_req, res) => {
   const ok = !shuttingDown;
   const pendingJobs = Array.isArray(data.pendingJobs) ? data.pendingJobs : [];
@@ -2474,11 +2506,12 @@ app.use(auth);
 app.get('/api/v6/status', (_req, res) => {
   const channels = parseChannelRegistry();
   res.json({
-    version: '6.2.0',
+    version: '6.3.0',
     constitution: require('./lib/constitution').VERSION,
     providers: providerStatus(),
     lab: labStatus(__dirname),
     autonomy: autonomyStatus(__dirname),
+    supervisor: supervisorStatus(__dirname, data),
     controller: { mode: 'guarded', automaticProductionDeployment: false, reason: 'Le remplacement du processus actif nécessite un adaptateur de déploiement confirmé pour l’hébergeur.' },
     channels: { ok: channels.ok, enabled: channels.enabled, prepared: channels.prepared, active: channels.active, entries: channels.channels.map(({ id, name, enabled }) => ({ id, name, enabled })) },
     scheduler: { enabled: true, items: listSchedules(__dirname).length },
@@ -2599,7 +2632,7 @@ app.post('/api/v6/command', async (req, res) => {
   const plan = planSafeCommand(req.body?.command);
   if (!plan.ok) return res.status(400).json(plan);
   try {
-    if (plan.action === 'status') return res.json({ ok: true, action: plan.action, result: { version: '6.2.0', enabled: data.enabled, paused: data.botPaused, pendingJobs: (data.pendingJobs || []).length, autonomy: autonomyStatus(__dirname) } });
+    if (plan.action === 'status') return res.json({ ok: true, action: plan.action, result: { version: '6.3.0', enabled: data.enabled, paused: data.botPaused, pendingJobs: (data.pendingJobs || []).length, autonomy: autonomyStatus(__dirname) } });
     if (plan.action === 'health') return res.json({ ok: true, action: plan.action, result: forecastIncidents(data) });
     if (plan.action === 'list_schedules') return res.json({ ok: true, action: plan.action, result: listSchedules(__dirname) });
     if (plan.action === 'list_proposals') {
@@ -2613,8 +2646,75 @@ app.post('/api/v6/command', async (req, res) => {
   } catch (error) { res.status(503).json({ ok: false, error: String(error?.message || error).slice(0, 220) }); }
 });
 
+app.get('/api/v6/autonomy/control', (_req, res) => {
+  const control = readControl(__dirname);
+  res.json({ ...control, chatEnabled: control.chatEnabled !== false, status: { ...autonomyStatus(__dirname), autonomousDeployment: autonomousReleaseStatus() } });
+});
+
+app.post('/api/v6/autonomy/control', (req, res) => {
+  const patch = {};
+  if (typeof req.body?.paused === 'boolean') patch.paused = req.body.paused;
+  if (typeof req.body?.chatEnabled === 'boolean') patch.chatEnabled = req.body.chatEnabled;
+  if (!Object.keys(patch).length) return res.status(400).json({ error: 'Aucune commande de contrôle valide.' });
+  const control = updateControl(__dirname, patch);
+  res.json({ ok: true, ...control, status: { ...autonomyStatus(__dirname), autonomousDeployment: autonomousReleaseStatus() } });
+});
+
+app.get('/api/v6/autonomy/decisions', (_req, res) => res.json({ events: readAudit(__dirname, 100) }));
+
+app.get('/api/v6/autonomy/deployment-status', (_req, res) => res.json(autonomousReleaseStatus()));
+
+app.get('/api/v6/autonomy/supervisor', (_req, res) => res.json(supervisorStatus(__dirname, data)));
+app.post('/api/v6/autonomy/supervisor/run', (_req, res) => {
+  const result = runSupervisorCycle({ rootDir: __dirname, data });
+  res.status(result.ok ? 200 : 503).json(result);
+});
+
+app.post('/api/v6/autonomy/chat', async (req, res) => {
+  const control = readControl(__dirname);
+  if (control.chatEnabled === false) return res.status(403).json({ error: 'Le chat autonome est désactivé.' });
+  const message = String(req.body?.message || '').trim().slice(0, 3000);
+  if (message.length < 2) return res.status(400).json({ error: 'Message trop court.' });
+  const events = readAudit(__dirname, 12).map(e => ({ time: e.time, type: e.type, message: String(e.message || '').slice(0, 180) }));
+  const status = autonomyStatus(__dirname);
+  const prompt = [
+    'Tu es l’assistant du centre de pilotage M2 HACOO BOT V6. Réponds en français, clairement et sans exagérer les capacités.',
+    'Tu peux expliquer l’état, diagnostiquer à partir des informations fournies et proposer un plan. Tu ne peux pas modifier le code, lancer une commande, supprimer des données ni déployer depuis cette conversation.',
+    'Distingue faits, hypothèses et étapes à vérifier. Ne promets jamais zéro problème.',
+    `État d’autonomie: ${JSON.stringify({ enabled: status.enabled, paused: status.paused, lastStatus: status.lastStatus, lastRunAt: status.lastRunAt, mode: status.mode })}`,
+    `Événements récents résumés: ${JSON.stringify(events)}`,
+    `Message administrateur: ${message}`
+  ].join('\n');
+  const started = Date.now();
+  try {
+    const generated = await generateText(prompt, { maxTokens: 700, timeoutMs: 18000 });
+    if (!generated.ok) return res.status(503).json({ error: `Fournisseur IA indisponible (${generated.status}).` });
+    appendAudit(__dirname, { type: 'autonomy_chat_message', message: 'Message envoyé au chat du centre de pilotage autonome.', details: { messageLength: message.length, provider: generated.provider, model: generated.model } });
+    res.json({ ok: true, answer: String(generated.text || '').slice(0, 6000), provider: generated.provider, model: generated.model, latencyMs: Date.now() - started });
+  } catch (error) {
+    appendAudit(__dirname, { type: 'autonomy_chat_failed', message: 'Le chat autonome n’a pas pu répondre.', details: { reason: String(error?.message || error).slice(0, 180) } });
+    res.status(503).json({ error: 'Le fournisseur IA n’a pas répondu. Vérifie sa configuration et ses quotas.' });
+  }
+});
+
 app.get('/api/v6/autonomy/status', (_req, res) => {
   res.json(autonomyStatus(__dirname));
+});
+
+// Persistent autonomous engineering tasks: generate and validate a candidate; production deploy remains gated by explicit runtime/GitHub configuration.
+app.get('/api/v6/engineering/status', (_req, res) => res.json(engineeringAgentStatus(__dirname)));
+app.get('/api/v6/engineering/tasks', (_req, res) => res.json({ tasks: listEngineeringTasks(__dirname) }));
+app.post('/api/v6/engineering/tasks', (req, res) => {
+  try { const task = createEngineeringTask(__dirname, req.body || {}); res.status(201).json({ ok: true, task }); }
+  catch (error) { res.status(400).json({ ok: false, error: String(error?.message || error).slice(0, 300) }); }
+});
+app.post('/api/v6/engineering/tasks/:id/run', async (req, res) => {
+  try { const task = await runEngineeringTask(__dirname, String(req.params.id || '')); res.status(200).json({ ok: true, task }); }
+  catch (error) { res.status(409).json({ ok: false, error: String(error?.message || error).slice(0, 350), tasks: listEngineeringTasks(__dirname) }); }
+});
+app.post('/api/v6/engineering/tasks/:id/cancel', (req, res) => {
+  try { res.json({ ok: true, task: cancelEngineeringTask(__dirname, String(req.params.id || '')) }); }
+  catch (error) { res.status(409).json({ ok: false, error: String(error?.message || error).slice(0, 300) }); }
 });
 
 app.post('/api/v6/autonomy/run', async (_req, res) => {
@@ -3265,10 +3365,16 @@ let autonomyLoopRunning = false;
 setInterval(async () => {
   if (autonomyLoopRunning || shuttingDown) return;
   const status = autonomyStatus(__dirname);
-  if (!status.enabled) return;
   autonomyLoopRunning = true;
-  try { await runAutonomyCycle({ rootDir: __dirname, data }); }
-  catch (error) { appendAudit(__dirname, { type: 'autonomy_loop_error', message: 'Le cycle autonome périodique a échoué; aucun changement de code effectué.', details: { reason: String(error?.message || error).slice(0, 180) } }); }
+  try {
+    const supervisorFile = path.join(__dirname, 'workspace', 'supervisor-state.json');
+    let supervisorDue = true;
+    try { const previous = JSON.parse(fs.readFileSync(supervisorFile, 'utf8')); supervisorDue = Date.now() - Date.parse(previous.lastRunAt || '') >= 5 * 60 * 1000; } catch {}
+    if (supervisorDue) runSupervisorCycle({ rootDir: __dirname, data });
+    if (String(process.env.V6_AUTONOMOUS_ENGINEERING_ENABLED || '').toLowerCase() === 'true') await runNextQueuedEngineeringTask(__dirname);
+    if (status.enabled) await runAutonomyCycle({ rootDir: __dirname, data });
+  }
+  catch (error) { appendAudit(__dirname, { type: 'autonomy_loop_error', message: 'Le cycle autonome périodique a échoué; aucune modification libre du code n’a été effectuée.', details: { reason: String(error?.message || error).slice(0, 180) } }); }
   finally { autonomyLoopRunning = false; }
 }, 60000);
 

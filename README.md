@@ -1,6 +1,6 @@
 # HACOO BOT V6 — livraison consolidée
 
-Version 6.2.0 construite sur le code V5 fourni et durcie après audit du processus de déploiement. Cette livraison rassemble les fonctions de modération et de file persistante existantes, puis ajoute des services V6 testables. **Il s’agit d’une release candidate complète au niveau applicatif, pas d’une validation de production FadeHost** : les clés, droits Telegram, stockage persistant, HTTPS et comportement de l’hébergeur doivent encore être validés dans l’environnement réel.
+Version 6.3.0 construite sur le code V5 fourni et durcie après audit du processus de déploiement. Cette livraison rassemble les fonctions de modération et de file persistante existantes, puis ajoute des services V6 testables. **Il s’agit d’une release candidate complète au niveau applicatif, pas d’une validation de production FadeHost** : les clés, droits Telegram, stockage persistant, HTTPS et comportement de l’hébergeur doivent encore être validés dans l’environnement réel.
 
 ## Fonctions conservées de V5
 
@@ -15,7 +15,7 @@ Version 6.2.0 construite sur le code V5 fourni et durcie après audit du process
 - **Constitution versionnée** et contrôleur d’actions : les propositions ne peuvent pas désactiver la constitution ni les contrôles de sécurité.
 - **Cerveau de revue périodique** : boucle d’arrière-plan (intervalle par défaut de 6 h, 4 exécutions maximum/jour) qui examine uniquement des statistiques agrégées, enregistre une proposition et (sauf si `V6_AUTONOMY_GENERATE_CANDIDATES=false`) tente de générer un module candidat isolé; aucun texte de publication, identifiant Telegram ou secret n’est envoyé par ce cycle.
 - **Laboratoire de développement** : génération de modules candidats isolés, contrôle syntaxique et contrôle statique; les candidats ne sont pas exécutés automatiquement.
-- **Déploiement FadeHost via GitHub (opt-in)** : le candidat est testé dans une copie temporaire, puis peut être poussé pour remplacer un module existant `lib/*.js` sur une branche GitHub suivie par FadeHost. L’état du déploiement runtime doit être vérifié dans FadeHost; le rollback est une action explicite.
+- **Déploiement FadeHost via GitHub (opt-in)** : le candidat est testé dans une copie temporaire, puis peut être poussé pour remplacer un module existant `lib/*.js` sur une branche GitHub suivie par FadeHost. Un contrôle de santé HTTPS est effectué après le push si configuré; le mode autonome exige cette URL et tente un rollback GitHub automatique si le contrôle échoue.
 - **Gestion des fournisseurs** : Gemini, Groq et OpenRouter; état et test explicite des API.
 - **Diagnostic préventif** : signaux de file bloquée, tâches en revue manuelle, album incertain et volume d’erreurs.
 - **Politique adaptative** : recommande des changements de seuils mais ne les applique pas sans tests.
@@ -70,3 +70,42 @@ Le cahier de référence est fourni dans `CAHIER_DES_CHARGES_V6.md`; le bilan de
 ## Déploiement FadeHost protégé (V6.2.0)
 
 L’adaptateur optionnel `lib/fadehost-deployer.js` teste un candidat dans une copie temporaire avec un environnement de variables épuré, sauvegarde le contenu précédent, puis pousse le fichier cible vers GitHub. Cette copie de test n’est pas une sandbox de sécurité au niveau du système d’exploitation; une revue humaine reste nécessaire. FadeHost doit être configuré pour déployer la même branche. Voir `INSTALLATION_FADEHOST.md` avant d’activer le déploiement. Par défaut, `V6_AUTO_DEPLOY_ENABLED=false`; les secrets GitHub doivent être configurés uniquement dans les variables d’environnement de l’hébergeur. Le succès d’un push ne garantit pas à lui seul que le processus FadeHost a redémarré correctement.
+
+
+## Développement autonome et déploiement contrôlé (V6.3.0)
+
+Le cycle autonome produit des propositions et des candidats isolés. V6.3.0 ajoute un agent d’ingénierie avec tâches persistantes, génération de candidat sur un module autorisé, contrôle statique et interface de suivi. Le contrôleur de déploiement est **désactivé par défaut** et fonctionne en mode « fail closed ». Il ne donne pas à l’IA un accès arbitraire au dépôt ou au serveur.
+
+- `V6_AUTONOMOUS_DEPLOY_SAFE=false` : porte dédiée au déploiement autonome, désactivée par défaut.
+- `V6_AUTO_DEPLOY_ENABLED=false` : porte existante du push GitHub, désactivée par défaut.
+- `V6_AUTONOMOUS_DEPLOY_ALLOWLIST=` : liste explicite et séparée par des virgules de cibles `lib/*.js` autorisées. Les fichiers de gouvernance, `index.js`, le tableau de bord, les dépendances et les données sont interdits.
+- `V6_DEPLOY_HEALTH_URL=` : URL publique HTTPS de santé, obligatoire pour autoriser le déploiement autonome; utiliser de préférence `/health/ready`.
+- `V6_AUTONOMOUS_ENGINEERING_ENABLED=false` : active le traitement périodique des tâches d’ingénierie persistantes; laisser désactivé tant que le staging n’est pas validé.
+- `V6_DEPLOY_HEALTH_TIMEOUT_MS=4000`, `V6_DEPLOY_HEALTH_ATTEMPTS=6`, `V6_DEPLOY_HEALTH_INTERVAL_MS=5000` : paramètres bornés du contrôle runtime.
+- État consultable via `GET /api/v6/autonomy/deployment-status`. L’agent d’ingénierie est piloté via `GET /api/v6/engineering/status`, `GET /api/v6/engineering/tasks`, `POST /api/v6/engineering/tasks`, et les routes `/run` et `/cancel` par identifiant.
+
+Avant un push, le contrôleur vérifie la cible, applique une analyse statique restrictive, puis utilise la chaîne existante qui exécute la suite de tests dans une copie temporaire avec un environnement réduit et crée une sauvegarde du contenu GitHub précédent. Le retour arrière automatique est tenté si le contrôle de santé échoue après le push lorsque l’option de contrôle runtime est exigée. Le contrôle doit pointer vers une route HTTPS qui ne répond 2xx que lorsque le bot est opérationnel. Le rollback confirme seulement que la restauration a été poussée vers GitHub; il ne garantit pas que FadeHost a fini de redémarrer après restauration.
+
+**Recommandation :** laisser les deux variables à `false` tant que le dépôt/branche de staging, les tests sur FadeHost, la vérification runtime et la procédure de rollback n’ont pas été validés. N’ajoute à l’allowlist que des modules auxiliaires non critiques. La génération d’un candidat ne déclenche pas à elle seule le déploiement : une cible exacte autorisée et l’appel de déploiement sont requis. La modification autonome reste limitée aux modules auxiliaires de l’allowlist; les fichiers critiques et la gouvernance ne sont pas librement réécrits.
+
+### Espace de pilotage autonome
+Le panneau V6 comprend un centre de pilotage pour consulter l'état, demander un diagnostic, discuter avec le fournisseur IA configuré, mettre en pause/reprendre les cycles et consulter les événements récents. Les préférences de pause/chat sont conservées dans `workspace/autonomy-control.json`; ce fichier peut être recréé si absent.
+
+Le chat est explicatif : il n'exécute pas de commandes libres, ne modifie pas directement le code et ne déploie pas. Les propositions/candidats restent séparés de la production. L'auto-diagnostic réduit certains risques mais ne garantit jamais zéro problème. Le déploiement autonome doit rester désactivé tant que les contrôles de test isolé, de santé runtime FadeHost et de rollback automatique ne sont pas validés dans un dépôt de staging. Ces mécanismes ne constituent pas une modification libre de tout fichier du projet.
+
+## Supervision autonome et limites réelles
+
+Le superviseur exécute périodiquement des contrôles locaux et répare seulement des problèmes déterministes sans toucher au code métier (par exemple recréer des dossiers de travail manquants et libérer un verrou de cycle autonome clairement périmé). Il consigne ses constats et ses réparations dans `workspace/supervisor-state.json` et le journal d'audit. Une file Telegram vieillissante est signalée, jamais renvoyée aveuglément, car l'issue d'un envoi peut être incertaine.
+
+Le centre de pilotage propose pause/reprise, chat, journal de décisions et lancement manuel d'un diagnostic. Le chat explique et recommande, mais ne dispose pas d'une exécution de commandes arbitraires. Le laboratoire peut générer des candidats isolés; cela ne signifie pas que tout le code du projet peut être modifié sans risque.
+
+Le déploiement autonome reste désactivé par défaut et, s'il est activé explicitement, limité aux modules `lib/*.js` non critiques listés exactement dans `V6_AUTONOMOUS_DEPLOY_ALLOWLIST`. Un push GitHub ne garantit pas que FadeHost a démarré correctement. La validation de santé du runtime et le rollback automatique sur échec doivent être testés dans l'environnement réel avant de compter dessus. Aucun logiciel ne peut garantir zéro panne ou une auto-réparation parfaite.
+
+
+## Agent d’ingénierie autonome (V6.3.0)
+
+Le centre de pilotage comprend désormais un registre persistant de tâches d’ingénierie : demande d’objectif, lecture d’un module `lib/*.js` autorisé, génération d’un candidat isolé, contrôle syntaxique et contrôle statique, journalisation et affichage du résultat dans le dashboard. Une tâche conserve l’empreinte du fichier source et refuse d’écraser une version qui a changé depuis sa création.
+
+Le déploiement automatique depuis une tâche n’est tenté que si `V6_AUTONOMOUS_ENGINEERING_ENABLED=true`, `V6_AUTONOMOUS_DEPLOY_SAFE=true`, `V6_AUTO_DEPLOY_ENABLED=true`, une cible exacte est présente dans `V6_AUTONOMOUS_DEPLOY_ALLOWLIST`, les paramètres GitHub sont configurés et une URL HTTPS publique de santé est définie dans `V6_DEPLOY_HEALTH_URL` (recommandé : endpoint public `/health/ready`, qui vérifie aussi une connexion Telegram récente). Les tests pré-déploiement et le contrôle runtime sont requis.
+
+**Limites importantes :** les candidats sont limités aux modules auxiliaires `lib/*.js` non critiques de moins de 10 Ko. Les contrôles statiques et l’environnement de test sans secrets ne constituent pas un sandbox OS inviolable. Le modèle ne peut pas modifier librement `index.js`, le dashboard, les dépendances, les secrets ou les données de production via ce mécanisme. Le push GitHub déclenche FadeHost seulement si le dépôt est relié à l’hébergeur; l’URL de santé doit vérifier une vraie fonction de santé. Les clés et l’accès à la production ne sont pas fournis dans cette archive et aucun déploiement de production n’est prétendu.
