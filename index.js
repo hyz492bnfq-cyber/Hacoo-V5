@@ -2501,12 +2501,16 @@ app.get('/health', (_req, res) => {
 app.use(rateLimit({ windowMs: 5 * 60 * 1000, max: 35, keyPrefix: 'dashboard' }));
 app.use(auth);
 
+app.get('/dashboard/autonomie', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'dashboard-autonomie.html'));
+});
+
 // HACOO BOT V6: status, explicit provider checks and improvement proposals.
 // Provider checks are admin-triggered (not automatic) to avoid surprise API usage.
 app.get('/api/v6/status', (_req, res) => {
   const channels = parseChannelRegistry();
   res.json({
-    version: '6.3.0',
+    version: '6.3.1',
     constitution: require('./lib/constitution').VERSION,
     providers: providerStatus(),
     lab: labStatus(__dirname),
@@ -2632,7 +2636,7 @@ app.post('/api/v6/command', async (req, res) => {
   const plan = planSafeCommand(req.body?.command);
   if (!plan.ok) return res.status(400).json(plan);
   try {
-    if (plan.action === 'status') return res.json({ ok: true, action: plan.action, result: { version: '6.3.0', enabled: data.enabled, paused: data.botPaused, pendingJobs: (data.pendingJobs || []).length, autonomy: autonomyStatus(__dirname) } });
+    if (plan.action === 'status') return res.json({ ok: true, action: plan.action, result: { version: '6.3.1', enabled: data.enabled, paused: data.botPaused, pendingJobs: (data.pendingJobs || []).length, autonomy: autonomyStatus(__dirname) } });
     if (plan.action === 'health') return res.json({ ok: true, action: plan.action, result: forecastIncidents(data) });
     if (plan.action === 'list_schedules') return res.json({ ok: true, action: plan.action, result: listSchedules(__dirname) });
     if (plan.action === 'list_proposals') {
