@@ -1,3 +1,12 @@
+## 6.3.1 — CI GitHub et déploiement FadeHost après validation
+- Ajout d’un workflow GitHub Actions qui vérifie la syntaxe serveur/modules/scripts et exécute la suite de tests sur les pushes et pull requests vers `main` et `staging`.
+- Ajout de `scripts/check-dashboard.js` : la commande `npm run check` valide désormais aussi la syntaxe JavaScript inline du dashboard.
+- Ajout d’un déploiement FadeHost optionnel après validation CI, désactivé par défaut et conditionné à une variable GitHub explicite, un secret FadeHost et une URL de santé HTTPS.
+- Le workflow vérifie la santé après déploiement et échoue de façon visible si elle n’est pas confirmée. Il n’appelle pas d’API de rollback non documentée; le rollback de déploiement complet reste à lancer depuis l’historique FadeHost si le workflow échoue.
+- Ajout de `AUTONOMIE_FADEHOST_CI.md` avec la configuration depuis les interfaces GitHub et FadeHost.
+- Validation locale : `npm run check` réussi; `npm test` : 44 tests réussis, 0 échec.
+- Aucun accès au dépôt GitHub ou à FadeHost n’a été utilisé et aucun déploiement réel n’a été effectué pendant cette construction.
+
 # Changelog
 
 ## 6.2.3 — Vérification runtime et rollback automatique contrôlé

@@ -1,0 +1,88 @@
+name: HACOO BOT CI and guarded FadeHost deploy
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hacoo-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate project before any deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check server, modules, scripts and dashboard syntax
+        run: npm run check
+      - name: Run test suite
+        run: npm test
+
+  deploy-fadehost:
+    name: Deploy to FadeHost after successful validation
+    needs: validate
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.FADEHOST_AUTODEPLOY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate deployment configuration
+        env:
+          FADEHOST_TOKEN: ${{ secrets.FADEHOST_TOKEN }}
+          FADEHOST_APP_ID: ${{ vars.FADEHOST_APP_ID }}
+          FADEHOST_HEALTH_URL: ${{ vars.FADEHOST_HEALTH_URL }}
+        run: |
+          set -eu
+          test -n "$FADEHOST_TOKEN" || { echo 'Secret FADEHOST_TOKEN absent.'; exit 1; }
+          test -n "$FADEHOST_APP_ID" || { echo 'Variable FADEHOST_APP_ID absente.'; exit 1; }
+          test -n "$FADEHOST_HEALTH_URL" || { echo 'Variable FADEHOST_HEALTH_URL absente.'; exit 1; }
+          node -e "const u=new URL(process.env.FADEHOST_HEALTH_URL); if(u.protocol!=='https:') process.exit(1)" || { echo 'FADEHOST_HEALTH_URL doit être une URL HTTPS.'; exit 1; }
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Deploy latest validated commit to FadeHost
+        env:
+          FADEHOST_TOKEN: ${{ secrets.FADEHOST_TOKEN }}
+          FADEHOST_APP_ID: ${{ vars.FADEHOST_APP_ID }}
+        run: npx --yes fadehost apps deploy "$FADEHOST_APP_ID"
+      - name: Verify live health endpoint
+        env:
+          FADEHOST_HEALTH_URL: ${{ vars.FADEHOST_HEALTH_URL }}
+        run: |
+          set -eu
+          healthy=0
+          for attempt in $(seq 1 12); do
+            code=$(curl --silent --show-error --output /tmp/hacoo-health.txt --write-out '%{http_code}' --max-time 8 "$FADEHOST_HEALTH_URL" || true)
+            if [ "$code" = '200' ]; then
+              healthy=1
+              echo "Health check succeeded on attempt $attempt."
+              break
+            fi
+            echo "Health check attempt $attempt returned ${code:-no response}; waiting 5 seconds."
+            sleep 5
+          done
+          if [ "$healthy" -ne 1 ]; then
+            echo 'DEPLOYMENT HEALTH CHECK FAILED. The deployment is not confirmed healthy.'
+            echo 'Open FadeHost > app > Deploys and use the last known-good deployment rollback; inspect Console before re-enabling auto-deploy.'
+            exit 1
+          fi

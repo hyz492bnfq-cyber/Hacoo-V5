@@ -1,6 +1,6 @@
 # HACOO BOT V6 — livraison consolidée
 
-Version 6.3.0 construite sur le code V5 fourni et durcie après audit du processus de déploiement. Cette livraison rassemble les fonctions de modération et de file persistante existantes, puis ajoute des services V6 testables. **Il s’agit d’une release candidate complète au niveau applicatif, pas d’une validation de production FadeHost** : les clés, droits Telegram, stockage persistant, HTTPS et comportement de l’hébergeur doivent encore être validés dans l’environnement réel.
+Version 6.3.1 construite sur le code V5 fourni et durcie après audit du processus de déploiement. Cette livraison rassemble les fonctions de modération et de file persistante existantes, puis ajoute des services V6 testables. **Il s’agit d’une release candidate complète au niveau applicatif, pas d’une validation de production FadeHost** : les clés, droits Telegram, stockage persistant, HTTPS et comportement de l’hébergeur doivent encore être validés dans l’environnement réel.
 
 ## Fonctions conservées de V5
 
@@ -39,6 +39,10 @@ V6 : `V6_AUTONOMY_ENABLED`, `V6_AUTONOMY_INTERVAL_MINUTES`, `V6_AUTONOMY_MAX_RUN
 - `V6_MULTICHANNEL_ENABLED=false` par défaut : seul `CHANNEL_ID` est actif.
 - `V6_AUTO_DEPLOY_ENABLED=false` par défaut. N’active ce réglage qu’après configuration GitHub/FadeHost et validation sur une branche de staging; il autorise l’action de push du tableau de bord, pas la publication autonome automatique de tous les candidats.
 - Ne jamais mettre les clés dans le dépôt, les fichiers HTML ou le chat. Utiliser uniquement les variables d’environnement FadeHost.
+
+## CI GitHub et déploiement FadeHost contrôlé (V6.3.1)
+
+Le fichier `.github/workflows/ci-fadehost.yml` exécute automatiquement `npm run check` et `npm test` sur les pushes et pull requests vers `main` et `staging`. Le déploiement depuis le workflow est **désactivé par défaut**. Pour le configurer depuis GitHub sans SSH, suis `AUTONOMIE_FADEHOST_CI.md` : secret `FADEHOST_TOKEN`, variables `FADEHOST_APP_ID`, `FADEHOST_HEALTH_URL`, puis variable `FADEHOST_AUTODEPLOY=true` après validation en staging. Si tu utilises ce workflow, désactive le redéploiement automatique sur push dans FadeHost pour éviter deux déploiements concurrents; le workflow déploiera le commit validé après les tests. Si le contrôle de santé échoue, le workflow échoue et demande de restaurer le dernier déploiement stable depuis l’onglet Deploys de FadeHost.
 
 ## Installation prudente
 

@@ -11,7 +11,7 @@
 
 ## Vérifications locales
 - `npm run check` : réussi.
-- `npm test` : 44 tests réussis, 0 échec.
+- `npm test` : 38 tests réussis, 0 échec.
 - Syntaxe du JavaScript intégré au tableau de bord vérifiée.
 - Ces contrôles ne remplacent pas un test réel avec Telegram, les clés IA et l’instance FadeHost.
 

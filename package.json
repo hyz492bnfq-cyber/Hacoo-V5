@@ -1,13 +1,14 @@
 {
   "name": "hacoo-bot-v6",
-  "version": "6.3.0",
+  "version": "6.3.1",
   "private": true,
-  "description": "HACOO BOT V6 — autonomie contrôlée, gouvernance et déploiement FadeHost via GitHub",
+  "description": "M2 HACOO BOT V6 — autonomie contrôlée, CI GitHub et déploiement FadeHost protégé",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && for f in lib/*.js; do node --check \"$f\" || exit 1; done",
-    "test": "node --test"
+    "check": "node --check index.js && for f in lib/*.js scripts/*.js; do node --check \"$f\" || exit 1; done && node scripts/check-dashboard.js",
+    "test": "node --test",
+    "check:dashboard": "node scripts/check-dashboard.js"
   },
   "engines": {
     "node": ">=20.0.0"
