@@ -1,3 +1,13 @@
+## 6.4.0 — Auto-développement itératif, tests isolés et Pull Requests brouillon
+
+- Le moteur choisit une cible uniquement dans une allowlist de modules non critiques disposant de tests ciblés.
+- Les candidats passent les contrôles statiques puis les tests ciblés dans une copie temporaire du dépôt, sans `.env`, `data.json`, workspace ni `node_modules`.
+- La génération peut corriger un candidat après un échec, avec 1 à 3 tentatives bornées et une limite de temps.
+- Les tâches répétitivement bloquées sont refroidies pendant 24 heures pour réduire les appels IA inutiles.
+- Option de création de Pull Request GitHub en brouillon; aucune fusion automatique.
+- Les cooldowns fournisseur après HTTP 429 sont persistés sur disque afin qu’un redémarrage ne relance pas immédiatement les appels.
+- Aucun code actif ni déploiement de production n’est modifié par la génération du candidat.
+
 ## 6.3.1 — CI GitHub et déploiement FadeHost après validation
 - Ajout d’un workflow GitHub Actions qui vérifie la syntaxe serveur/modules/scripts et exécute la suite de tests sur les pushes et pull requests vers `main` et `staging`.
 - Ajout de `scripts/check-dashboard.js` : la commande `npm run check` valide désormais aussi la syntaxe JavaScript inline du dashboard.

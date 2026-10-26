@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createEngineeringTask, listEngineeringTasks, cancelEngineeringTask, safeTarget, engineeringAgentStatus, runEngineeringTask, recoverInterruptedEngineeringTasks } = require('../lib/autonomous-agent');
+const { createEngineeringTask, listEngineeringTasks, cancelEngineeringTask, safeTarget, engineeringAgentStatus, runEngineeringTask, recoverInterruptedEngineeringTasks, runCandidateTests } = require('../lib/autonomous-agent');
 function fixture() { const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hacoo-agent-test-')); fs.mkdirSync(path.join(root,'lib'),{recursive:true}); fs.writeFileSync(path.join(root,'lib','daily-report.js'), "'use strict';\nmodule.exports = { ping: () => 'pong' };\n"); return root; }
 test('engineering task persists objective and source hash without editing production file', () => {
   const root = fixture();
@@ -56,4 +56,33 @@ test('interrupted deployment is flagged for review rather than retried blindly',
     assert.equal(listEngineeringTasks(root)[0].status,'interrupted_needs_review');
     assert.match(listEngineeringTasks(root)[0].error,/resultat de déploiement|résultat de déploiement/i);
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+
+test('candidate validation runs focused tests in an isolated copy and reports failures', () => {
+  const projectRoot = path.resolve(__dirname, '..');
+  const target = 'lib/command-planner.js';
+  const original = fs.readFileSync(path.join(projectRoot, target), 'utf8');
+  const good = runCandidateTests(projectRoot, target, original, { timeoutMs: 15000 });
+  assert.equal(good.ok, true, good.output);
+  assert.equal(good.status, 'passed');
+  const memoryTarget = 'lib/semantic-memory.js';
+  const memoryCode = fs.readFileSync(path.join(projectRoot, memoryTarget), 'utf8');
+  const memory = runCandidateTests(projectRoot, memoryTarget, memoryCode, { timeoutMs: 15000 });
+  assert.equal(memory.ok, true, memory.output);
+  const bad = runCandidateTests(projectRoot, target, "'use strict';\nmodule.exports = {};", { timeoutMs: 15000 });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.status, 'failed');
+  assert.match(bad.output, /not ok|fail|error/i);
+});
+
+
+test('engineering can select from safe tested targets without a manually fixed target', () => {
+  const projectRoot = path.resolve(__dirname, '..');
+  const status = engineeringAgentStatus(projectRoot, { V6_AUTONOMOUS_ENGINEERING_ENABLED: 'true' });
+  assert.equal(status.autoQueueEnabled, true);
+  assert.equal(status.automaticTargetConfigured, false);
+  assert.ok(status.safeTargets.includes('lib/adaptive-policy.js'));
+  assert.ok(status.safeTargets.includes('lib/publication-scheduler.js'));
+  assert.ok(status.safeTargets.includes('lib/semantic-memory.js'));
 });

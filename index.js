@@ -340,7 +340,8 @@ function rateLimit({ windowMs = 60000, max = 120, keyPrefix = 'api' } = {}) {
     next();
   };
 }
-app.use(rateLimit({ windowMs: 60000, max: 180, keyPrefix: 'global' }));
+// Les sondes de santé et les appels internes ne doivent pas consommer le quota du dashboard.
+// La limite API est appliquée après authentification, avec une marge compatible avec le polling UI.
 
 const pendingAlbums = new Map();
 
@@ -1030,7 +1031,7 @@ function geminiModelsInPriorityOrder() {
 function quotaCooldownMs(errorText, status) {
   const text = String(errorText || '').toLowerCase();
   // Google commonly identifies per-day limits with these quota metric names.
-  if (/perday|per_day|per day|requestsperday|requests_per_day|daily quota|daily limit/.test(text)) return 24 * 60 * 60 * 1000;
+  if (/perday|per_day|per day|requestsperday|requests_per_day|daily quota|daily limit|free_tier_requests|quota.*day|requests.*per day/.test(text)) return 24 * 60 * 60 * 1000;
   if (status === 429) return 60 * 1000;
   if (status >= 500) return 30 * 1000;
   return 0;
@@ -2459,11 +2460,23 @@ function auth(req, res, next) {
     }
   }
 
-  res.set(
-    'WWW-Authenticate',
-    'Basic realm="M2 HACOO BOT", charset="UTF-8"'
-  );
-
+  // Limiter uniquement les échecs d'authentification, jamais les actions d'un admin déjà connecté.
+  const ip = String(req.socket?.remoteAddress || 'unknown').slice(0, 80);
+  const now = Date.now();
+  const key = `auth-failure:${ip}`;
+  const windowMs = 5 * 60 * 1000;
+  let bucket = requestBuckets.get(key);
+  if (!bucket || now - bucket.start >= windowMs) bucket = { start: now, count: 0 };
+  bucket.count += 1;
+  requestBuckets.set(key, bucket);
+  if (requestBuckets.size > 2000) {
+    for (const [k, v] of requestBuckets) if (now - v.start >= windowMs) requestBuckets.delete(k);
+  }
+  if (bucket.count > 10) {
+    res.setHeader('Retry-After', String(Math.max(1, Math.ceil((windowMs - (now - bucket.start)) / 1000))));
+    return res.status(429).json({ error: 'Trop de tentatives de connexion. Attends quelques minutes avant de réessayer.' });
+  }
+  res.set('WWW-Authenticate', 'Basic realm="M2 HACOO BOT", charset="UTF-8"');
   return res.status(401).send('Authentification requise.');
 }
 
@@ -2498,8 +2511,11 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.use(rateLimit({ windowMs: 5 * 60 * 1000, max: 35, keyPrefix: 'dashboard' }));
 app.use(auth);
+// Les pages interrogent plusieurs endpoints en parallèle. 35 requêtes / 5 min
+// bloquait le dashboard autonome à lui seul (3 endpoints toutes les 30 s).
+// Garder une limite anti-abus raisonnable après authentification, sans bloquer l'usage normal.
+app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 300, keyPrefix: 'authenticated-api' }));
 
 app.get('/dashboard/autonomie', (_req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard-autonomie.html'));
@@ -2510,7 +2526,7 @@ app.get('/dashboard/autonomie', (_req, res) => {
 app.get('/api/v6/status', (_req, res) => {
   const channels = parseChannelRegistry();
   res.json({
-    version: '6.3.1',
+    version: '6.4.0',
     constitution: require('./lib/constitution').VERSION,
     providers: providerStatus(),
     lab: labStatus(__dirname),
@@ -2526,6 +2542,21 @@ app.get('/api/v6/status', (_req, res) => {
       pollingStartedAt: pollingStartedAt || null,
       connectedRecently: Boolean(lastTelegramOk && Number.isFinite(Date.parse(lastTelegramOk)) && Date.now() - Date.parse(lastTelegramOk) < 10 * 60 * 1000)
     }
+  });
+});
+
+// Vue agrégée pour le dashboard mobile : un seul appel au lieu de trois endpoints périodiques.
+app.get('/api/v6/overview', (_req, res) => {
+  const engine = autonomyStatus(__dirname);
+  const tasks = listEngineeringTasks(__dirname);
+  res.json({
+    system: {
+      version: '6.4.0',
+      telegram: { connectedRecently: Boolean(lastTelegramOk && Number.isFinite(Date.parse(lastTelegramOk)) && Date.now() - Date.parse(lastTelegramOk) < 10 * 60 * 1000) },
+      queue: { pending: (data.pendingJobs || []).length, paused: Boolean(data.botPaused || !data.enabled) }
+    },
+    engine,
+    tasks
   });
 });
 
@@ -2636,7 +2667,7 @@ app.post('/api/v6/command', async (req, res) => {
   const plan = planSafeCommand(req.body?.command);
   if (!plan.ok) return res.status(400).json(plan);
   try {
-    if (plan.action === 'status') return res.json({ ok: true, action: plan.action, result: { version: '6.3.1', enabled: data.enabled, paused: data.botPaused, pendingJobs: (data.pendingJobs || []).length, autonomy: autonomyStatus(__dirname) } });
+    if (plan.action === 'status') return res.json({ ok: true, action: plan.action, result: { version: '6.4.0', enabled: data.enabled, paused: data.botPaused, pendingJobs: (data.pendingJobs || []).length, autonomy: autonomyStatus(__dirname) } });
     if (plan.action === 'health') return res.json({ ok: true, action: plan.action, result: forecastIncidents(data) });
     if (plan.action === 'list_schedules') return res.json({ ok: true, action: plan.action, result: listSchedules(__dirname) });
     if (plan.action === 'list_proposals') {
@@ -2692,7 +2723,14 @@ app.post('/api/v6/autonomy/chat', async (req, res) => {
   const started = Date.now();
   try {
     const generated = await generateText(prompt, { maxTokens: 700, timeoutMs: 18000 });
-    if (!generated.ok) return res.status(503).json({ error: `Fournisseur IA indisponible (${generated.status}).` });
+    if (!generated.ok) {
+      if (generated.status === 'rate_limited' || generated.status === 'all_providers_rate_limited') {
+        const retryAfterMs = Math.max(1000, Number(generated.retryAfterMs || 60000));
+        res.setHeader('Retry-After', String(Math.ceil(retryAfterMs / 1000)));
+        return res.status(429).json({ error: `Le fournisseur IA a atteint sa limite temporaire. Aucun nouvel appel n’a été envoyé. Réessaie dans environ ${Math.max(1, Math.ceil(retryAfterMs / 60000))} min.`, retryAfterMs });
+      }
+      return res.status(503).json({ error: `Fournisseur IA indisponible (${generated.status}). Vérifie la clé, le modèle et le quota du fournisseur.` });
+    }
     appendAudit(__dirname, { type: 'autonomy_chat_message', message: 'Message envoyé au chat du centre de pilotage autonome.', details: { messageLength: message.length, provider: generated.provider, model: generated.model } });
     res.json({ ok: true, answer: String(generated.text || '').slice(0, 6000), provider: generated.provider, model: generated.model, latencyMs: Date.now() - started });
   } catch (error) {
@@ -2862,6 +2900,15 @@ app.post('/api/assistant/chat', async (req, res) => {
     res.json({ reply: String(parsed.reply || 'Voici ma proposition.').slice(0, 1200), settingsPatch: Object.keys(patch).length ? patch : null, model });
   } catch (error) {
     noteError(error);
+    if (error?.allModelsUnavailable) {
+      const now = Date.now();
+      const states = Object.values(data.geminiModelState || {});
+      const retryAt = states.map(item => Number(item.disabledUntil || 0)).filter(value => value > now).sort((a, b) => a - b)[0] || (now + 60000);
+      const retryAfterMs = Math.max(1000, retryAt - now);
+      const rateLimited = states.some(item => ['limitation temporaire', 'quota quotidien'].includes(item.reason));
+      res.setHeader('Retry-After', String(Math.ceil(retryAfterMs / 1000)));
+      return res.status(rateLimited ? 429 : 503).json({ error: rateLimited ? `Gemini a atteint sa limite temporaire ou quotidienne. Les appels sont mis en pause pour éviter de gaspiller le quota. Réessaie dans environ ${Math.max(1, Math.ceil(retryAfterMs / 60000))} min.` : 'Tous les modèles Gemini sont temporairement indisponibles. Réessaie plus tard.', retryAfterMs });
+    }
     res.status(502).json({ error: 'L’assistant IA n’a pas pu répondre : ' + String(error?.message || error).slice(0, 220) });
   }
 });
