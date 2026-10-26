@@ -38,3 +38,10 @@ test('queue age accepts numeric and ISO timestamps', () => {
   assert.ok(timestampOf(new Date(now - 60000).toISOString()) > 0);
   assert.equal(timestampOf('not-a-date'), 0);
 });
+
+
+test('model-selected engineering target is accepted only from the supplied allowlist', () => {
+  const raw = '{"title":"Améliorer une validation","rationale":"Une validation plus claire réduit les erreurs utilisateurs.","expectedBenefit":"Moins d’échecs","target":"lib/command-planner.js"}';
+  assert.equal(parseModelJson(raw, ['lib/command-planner.js']).target, 'lib/command-planner.js');
+  assert.equal(parseModelJson(raw, ['lib/daily-report.js']).target, null);
+});

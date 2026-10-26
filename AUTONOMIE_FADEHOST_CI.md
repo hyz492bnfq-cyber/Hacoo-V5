@@ -30,3 +30,6 @@
 
 - https://fadehost.com/docs/app-hosting/
 - https://fadehost.com/docs/cli/
+
+## Ajouts V6.4.0 — auto-développement contrôlé
+La version 6.4.0 ajoute une boucle de génération/correction bornée, les tests ciblés dans une copie isolée et la possibilité de créer une Pull Request GitHub en brouillon avec `V6_AUTONOMOUS_PR_ENABLED=true`. Cette option nécessite `V6_GITHUB_TOKEN`, `V6_GITHUB_OWNER` et `V6_GITHUB_REPO` avec les droits de création de branche, de commit et de Pull Request. La Pull Request n’est pas fusionnée automatiquement. Les cooldowns fournisseur après HTTP 429 sont persistés pour éviter les rafales d’appels après redémarrage.
