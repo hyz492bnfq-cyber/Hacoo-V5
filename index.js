@@ -11,7 +11,7 @@ const { appendAudit } = require('./lib/audit-log');
 const { autonomyStatus, runAutonomyCycle } = require('./lib/autonomy-engine');
 const { readControl, updateControl, readAudit } = require('./lib/autonomy-control');
 const { supervisorStatus, runSupervisorCycle } = require('./lib/autonomous-supervisor');
-const { autonomousReleaseStatus } = require('./lib/autonomous-release');
+const { autonomousReleaseStatus, deployAutonomousCandidate } = require('./lib/autonomous-release');
 const { parseChannelRegistry } = require('./lib/multichannel');
 const { inspectPublication } = require('./lib/prepublication');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
@@ -2711,19 +2711,34 @@ app.post('/api/v6/autonomy/chat', async (req, res) => {
   if (control.chatEnabled === false) return res.status(403).json({ error: 'Le chat autonome est désactivé.' });
   const message = String(req.body?.message || '').trim().slice(0, 3000);
   if (message.length < 2) return res.status(400).json({ error: 'Message trop court.' });
+  const deployIntent = /^(?:\s*)(?:déploie|deploie|deploy|mets? en production|lance le déploiement)(?:\s+(?:la|le|la dernière|dernière|dernier|la derniere|derniere)?\s*(?:version|candidat|release|dernière version|derniere version))?[.!\s]*$/i.test(message);
+  if (deployIntent) {
+    const releaseStatus = autonomousReleaseStatus();
+    if (!releaseStatus.enabled) {
+      return res.status(409).json({ ok: false, kind: 'deployment', answer: `Je ne peux pas encore déployer : ${releaseStatus.note} Vérifie les variables V6_AUTONOMOUS_DEPLOY_SAFE=true, V6_AUTO_DEPLOY_ENABLED=true, les identifiants GitHub, V6_DEPLOY_HEALTH_URL en HTTPS et V6_AUTONOMOUS_DEPLOY_ALLOWLIST.` });
+    }
+    const tasks = listEngineeringTasks(__dirname);
+    const candidateTask = tasks.find(task => ['candidate_ready', 'pull_request_ready'].includes(task.status) && task.candidateFile && task.target && task.candidateTests?.ok === true && task.staticReview?.ok === true);
+    if (!candidateTask) return res.status(409).json({ ok: false, kind: 'deployment', answer: 'Je n’ai pas trouvé de candidat récent dont les tests et les contrôles statiques sont validés. Demande-moi d’abord la modification, puis réessaie le déploiement.' });
+    try {
+      const result = await deployAutonomousCandidate(__dirname, candidateTask.candidateFile, candidateTask.target);
+      appendAudit(__dirname, { type: 'explicit_chat_deployment_request', message: result.ok ? 'Déploiement demandé explicitement dans le chat et traité.' : 'Demande explicite de déploiement bloquée par les contrôles.', details: { taskId: candidateTask.id, target: candidateTask.target, ok: result.ok, reason: result.reason || null } });
+      if (!result.ok) return res.status(409).json({ ok: false, kind: 'deployment', answer: `Le déploiement est bloqué : ${result.reason || 'un contrôle obligatoire a échoué'}. Rien ne sera déclaré déployé sans confirmation.` , deployment: result });
+      const confirmed = result.fadeHostRuntimeConfirmed === true;
+      return res.json({ ok: true, kind: 'deployment', answer: confirmed ? `C’est déployé. Les contrôles ont réussi et le service FadeHost répond correctement. (Commit ${result.commitSha || 'confirmé'}.)` : `Le commit a été envoyé à GitHub, mais je n’ai pas pu confirmer que FadeHost est opérationnel. Je ne peux donc pas annoncer un déploiement réussi.`, deployment: result });
+    } catch (error) {
+      return res.status(503).json({ ok: false, kind: 'deployment', answer: `Le déploiement n’a pas pu aboutir : ${String(error?.message || error).slice(0, 220)}.` });
+    }
+  }
   if (isEngineeringRequest(message)) {
     try {
       const report = await runProjectTask(__dirname, message);
       const testSummary = (report.validation?.tests?.checks || [])
         .map(check => `${check.name}: ${check.status}`)
         .join('\n');
-      const answer = [
-        report.status === 'validation_failed' ? 'Candidat préparé, mais les contrôles ont échoué : aucune branche ni PR créée.' : `Candidat validé : ${report.summary || 'modification multi-fichiers'}.`,
-        `Fichiers : ${report.files.map(file => file.path).join(', ')}`,
-        `Contrôles : ${testSummary || (report.validation?.static?.ok ? 'réussis' : 'échec')}`,
-        report.pullRequest?.ok ? `Pull Request : ${report.pullRequest.pullRequestUrl}` : (report.pullRequest?.reason || 'Aucune PR créée.'),
-        'Aucune fusion ni aucun déploiement n’a été effectué.'
-      ].join('\n');
+      const answer = report.status === 'validation_failed'
+        ? `J’ai préparé les modifications, mais les contrôles n’ont pas tous réussi. ${testSummary || 'La validation a échoué.'} Je n’ai créé ni branche ni PR. Rien n’a été fusionné ou déployé.`
+        : `C’est prêt : ${report.summary || 'les modifications ont été préparées'}. Les fichiers concernés sont ${report.files.map(file => file.path).join(', ') || 'ceux indiqués dans le rapport'}. ${testSummary ? `Vérifications : ${testSummary}.` : (report.validation?.static?.ok ? 'Les vérifications statiques sont réussies.' : 'La validation est terminée.') } ${report.pullRequest?.ok ? `J’ai créé la PR : ${report.pullRequest.pullRequestUrl}.` : (report.pullRequest?.reason || 'Je n’ai pas créé de PR.')} Rien n’a été fusionné ni déployé.`;
       return res.json({ ok: report.status !== 'validation_failed', kind: 'engineering', answer, task: report, latencyMs: 0 });
     } catch (error) {
       return res.status(409).json({ error: String(error?.message || error).slice(0, 700), kind: 'engineering' });
@@ -2732,16 +2747,19 @@ app.post('/api/v6/autonomy/chat', async (req, res) => {
   const events = readAudit(__dirname, 12).map(e => ({ time: e.time, type: e.type, message: String(e.message || '').slice(0, 180) }));
   const status = autonomyStatus(__dirname);
   const prompt = [
-    'Tu es l’assistant du centre de pilotage M2 HACOO BOT V6. Réponds en français, clairement et sans exagérer les capacités.',
-    'Tu peux expliquer l’état, diagnostiquer à partir des informations fournies et proposer un plan. Tu ne peux pas modifier le code, lancer une commande, supprimer des données ni déployer depuis cette conversation.',
-    'Distingue faits, hypothèses et étapes à vérifier. Ne promets jamais zéro problème.',
-    `État d’autonomie: ${JSON.stringify({ enabled: status.enabled, paused: status.paused, lastStatus: status.lastStatus, lastRunAt: status.lastRunAt, mode: status.mode })}`,
-    `Événements récents résumés: ${JSON.stringify(events)}`,
-    `Message administrateur: ${message}`
+    'Tu es l’assistant conversationnel du projet M2 HACOO BOT. Tu parles naturellement en français, comme une personne serviable dans une conversation normale.',
+    'RÈGLE DE STYLE PRIORITAIRE : réponds directement à ce que la personne vient de dire. Si elle dit « salut », réponds simplement par une salutation naturelle, par exemple « Salut ! Ça va ? Qu’est-ce que je peux faire pour toi ? ». Ne transforme jamais un salut ou une question simple en rapport de statut.',
+    'Par défaut, réponds en quelques phrases courtes et naturelles. N’utilise pas de tableau, de gros titre, de listes à puces, de sections, de dates techniques, de journaux d’événements ni de formatage de rapport, sauf si l’utilisateur demande explicitement ce format ou qu’il est vraiment nécessaire pour répondre.',
+    'Ne récite pas spontanément les données de diagnostic. Les informations d’état et les événements ci-dessous sont uniquement du contexte de référence : utilise-les seulement si la question porte dessus ou s’ils sont indispensables à la réponse.',
+    'Pour une question technique, explique simplement ce que tu sais, ce qui reste incertain et la prochaine étape utile. Ne prétends pas avoir exécuté une action que tu n’as pas réellement effectuée. Ne promets jamais zéro problème.',
+    'Tu peux expliquer l’état et diagnostiquer à partir des informations fournies, mais tu ne peux pas modifier le code, lancer une commande, supprimer des données ni déployer depuis cette conversation. Les demandes de développement sont traitées séparément par l’agent de développement.',
+    `Contexte d’état (à utiliser uniquement si pertinent) : ${JSON.stringify({ enabled: status.enabled, paused: status.paused, lastStatus: status.lastStatus, lastRunAt: status.lastRunAt, mode: status.mode })}`,
+    `Événements récents (à utiliser uniquement si pertinent) : ${JSON.stringify(events)}`,
+    `Message de l’utilisateur : ${message}`
   ].join('\n');
   const started = Date.now();
   try {
-    const generated = await generateText(prompt, { maxTokens: 700, timeoutMs: 18000 });
+    const generated = await generateText(prompt, { maxTokens: 450, timeoutMs: 18000 });
     if (!generated.ok) {
       if (generated.status === 'rate_limited' || generated.status === 'all_providers_rate_limited') {
         const retryAfterMs = Math.max(1000, Number(generated.retryAfterMs || 60000));

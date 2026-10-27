@@ -45,6 +45,23 @@ test('le chat reconnait les demandes de modification explicites', () => {
   assert.equal(isEngineeringRequest('Pourquoi la file est bloquée ?'), false);
 });
 
+test('le parseur accepte un JSON encadré et ignore les accolades dans les chaînes et le texte après', () => {
+  const response = 'Voici le plan : ```json\n' + JSON.stringify({
+    summary: 'Conserver {accolades} dans le texte',
+    files: [{ path: 'lib/sample.js', patches: [{ find: 'value = 1', replace: 'value = 2' }] }]
+  }) + '\n```\nFin.';
+  const plan = extractPatchPlan(response);
+  assert.equal(plan.summary, 'Conserver {accolades} dans le texte');
+  assert.equal(plan.files[0].patches[0].replace, 'value = 2');
+});
+
+test('un JSON mal formé expose un diagnostic de parsing sans recopier la réponse', () => {
+  assert.throws(
+    () => extractPatchPlan('{"summary": "secret-ish", "files": [}'),
+    error => /Plan de modifications JSON invalide/.test(error.message) && /position|property|JSON|Unexpected/i.test(error.message)
+  );
+});
+
 test('le plan accepte des patchs exacts, refuse les doublons et le remplacement intégral', () => {
   const plan = extractPatchPlan(JSON.stringify({
     summary: 'Mise à jour ciblée',

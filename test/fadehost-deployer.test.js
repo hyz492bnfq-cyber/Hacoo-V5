@@ -5,11 +5,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { normalizeTarget, githubConfig, deployCandidate, rollbackDeployment, runCandidateTests } = require('../lib/fadehost-deployer');
-test('FadeHost deployment target is restricted to non-protected JS modules', () => {
-  assert.equal(normalizeTarget('lib/feature.js'), 'lib/feature.js');
-  for (const target of ['index.js', 'lib/constitution.js', 'lib/action-controller.js', '../lib/x.js', 'lib/x.json', '.env']) {
-    assert.throws(() => normalizeTarget(target));
-  }
+test('FadeHost deployment accepts project files but protects secrets and deployment control', () => {
+  for (const target of ['lib/feature.js', 'index.js', 'dashboard.html', 'package.json', 'lib/x.json', 'README.md']) assert.equal(normalizeTarget(target), target);
+  for (const target of ['lib/constitution.js', 'lib/action-controller.js', 'lib/fadehost-deployer.js', '../lib/x.js', '.env', 'data.json', '.github/workflows/ci-fadehost.yml']) assert.throws(() => normalizeTarget(target));
 });
 test('GitHub deployment configuration requires all credentials and repository fields', () => {
   assert.equal(githubConfig({}).configured, false);
