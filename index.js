@@ -2657,7 +2657,7 @@ app.post('/api/v6/editorial/optimize', async (req, res) => {
     'TEXTE SOURCE NON FIABLE :', sourceText
   ].join('\n');
   const result = await generateText(prompt, { maxTokens: 900, timeoutMs: 18000 }, process.env);
-  if (!result.ok) return res.status(503).json({ error: 'Aucun fournisseur IA disponible pour l’optimisation éditoriale.' });
+  if (!result.ok) return res.status(503).json({ error: result.errorMessage || 'Aucun fournisseur IA disponible pour l’optimisation éditoriale.' });
   const proposedText = result.text.trim().slice(0, 3900);
   const quality = inspectPublication({ text: proposedText }, { bannedWords: data.bannedWords, blockedPhrases: data.blockedPhrases, recentHashes: data.publishedHashes || [] });
   appendAudit(__dirname, { type: 'editorial_optimization_proposed', message: 'Suggestion éditoriale générée; aucune publication automatique.', details: { provider: result.provider, model: result.model, qualityOk: quality.ok, sourceLength: sourceText.length, proposedLength: proposedText.length } });
@@ -2736,7 +2736,9 @@ app.post('/api/v6/autonomy/chat', async (req, res) => {
       const testSummary = (report.validation?.tests?.checks || [])
         .map(check => `${check.name}: ${check.status}`)
         .join('\n');
-      const answer = report.status === 'validation_failed'
+      const answer = report.status === 'no_changes'
+        ? `Aucune modification n’était nécessaire. ${report.summary}`
+        : report.status === 'validation_failed'
         ? `J’ai préparé les modifications, mais les contrôles n’ont pas tous réussi. ${testSummary || 'La validation a échoué.'} Je n’ai créé ni branche ni PR. Rien n’a été fusionné ou déployé.`
         : `C’est prêt : ${report.summary || 'les modifications ont été préparées'}. Les fichiers concernés sont ${report.files.map(file => file.path).join(', ') || 'ceux indiqués dans le rapport'}. ${testSummary ? `Vérifications : ${testSummary}.` : (report.validation?.static?.ok ? 'Les vérifications statiques sont réussies.' : 'La validation est terminée.') } ${report.pullRequest?.ok ? `J’ai créé la PR : ${report.pullRequest.pullRequestUrl}.` : (report.pullRequest?.reason || 'Je n’ai pas créé de PR.')} Rien n’a été fusionné ni déployé.`;
       return res.json({ ok: report.status !== 'validation_failed', kind: 'engineering', answer, task: report, latencyMs: 0 });
@@ -2766,7 +2768,7 @@ app.post('/api/v6/autonomy/chat', async (req, res) => {
         res.setHeader('Retry-After', String(Math.ceil(retryAfterMs / 1000)));
         return res.status(429).json({ error: `Le fournisseur IA a atteint sa limite temporaire. Aucun nouvel appel n’a été envoyé. Réessaie dans environ ${Math.max(1, Math.ceil(retryAfterMs / 60000))} min.`, retryAfterMs });
       }
-      return res.status(503).json({ error: `Fournisseur IA indisponible (${generated.status}). Vérifie la clé, le modèle et le quota du fournisseur.` });
+      return res.status(503).json({ error: generated.errorMessage || `Fournisseur IA indisponible (${generated.status}). Vérifie la clé, le modèle et le quota du fournisseur.` });
     }
     appendAudit(__dirname, { type: 'autonomy_chat_message', message: 'Message envoyé au chat du centre de pilotage autonome.', details: { messageLength: message.length, provider: generated.provider, model: generated.model } });
     res.json({ ok: true, answer: String(generated.text || '').slice(0, 6000), provider: generated.provider, model: generated.model, latencyMs: Date.now() - started });
