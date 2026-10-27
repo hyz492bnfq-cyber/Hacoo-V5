@@ -24,6 +24,7 @@ const { proposeAdaptivePolicy } = require('./lib/adaptive-policy');
 const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
+const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 
 let sharp;
 try {
@@ -2710,6 +2711,24 @@ app.post('/api/v6/autonomy/chat', async (req, res) => {
   if (control.chatEnabled === false) return res.status(403).json({ error: 'Le chat autonome est désactivé.' });
   const message = String(req.body?.message || '').trim().slice(0, 3000);
   if (message.length < 2) return res.status(400).json({ error: 'Message trop court.' });
+  if (isEngineeringRequest(message)) {
+    try {
+      const report = await runProjectTask(__dirname, message);
+      const testSummary = (report.validation?.tests?.checks || [])
+        .map(check => `${check.name}: ${check.status}`)
+        .join('\n');
+      const answer = [
+        report.status === 'validation_failed' ? 'Candidat préparé, mais les contrôles ont échoué : aucune branche ni PR créée.' : `Candidat validé : ${report.summary || 'modification multi-fichiers'}.`,
+        `Fichiers : ${report.files.map(file => file.path).join(', ')}`,
+        `Contrôles : ${testSummary || (report.validation?.static?.ok ? 'réussis' : 'échec')}`,
+        report.pullRequest?.ok ? `Pull Request : ${report.pullRequest.pullRequestUrl}` : (report.pullRequest?.reason || 'Aucune PR créée.'),
+        'Aucune fusion ni aucun déploiement n’a été effectué.'
+      ].join('\n');
+      return res.json({ ok: report.status !== 'validation_failed', kind: 'engineering', answer, task: report, latencyMs: 0 });
+    } catch (error) {
+      return res.status(409).json({ error: String(error?.message || error).slice(0, 700), kind: 'engineering' });
+    }
+  }
   const events = readAudit(__dirname, 12).map(e => ({ time: e.time, type: e.type, message: String(e.message || '').slice(0, 180) }));
   const status = autonomyStatus(__dirname);
   const prompt = [

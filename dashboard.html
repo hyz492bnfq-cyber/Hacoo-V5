@@ -867,7 +867,7 @@ let chatHist=[];
 function bubbleHtml(role,text,err){return `<div class="bub ${role==='me'?'me':'bot'} ${err?'err':''}">${esc(text)}</div>`;}
 function openChat(prefill){
  openSheet('Parler à l’IA',`<div class="fgrid">
-  <p class="small muted">Elle explique l’état du bot, analyse un incident et propose un plan. Elle ne peut rien modifier, lancer ni déployer depuis ce chat.</p>
+  <p class="small muted">Elle répond aux questions et peut préparer des changements multi-fichiers. Les tests passent avant l’ouverture d’une PR; rien n’est fusionné ni déployé automatiquement.</p>
   <div id="chatBox" class="chatbox" style="max-height:44dvh"></div>
   <form id="chatForm" class="composer"><textarea id="chatInput" rows="2" maxlength="3000" placeholder="Pourquoi la file est bloquée ? Analyse les erreurs récentes…" aria-label="Message"></textarea><button class="btn primary" type="submit">Envoyer</button></form>
   <p class="tiny muted">Utilise le fournisseur IA configuré et peut consommer du quota. Ne colle jamais de secrets.</p>
@@ -879,7 +879,7 @@ function openChat(prefill){
    e.preventDefault();const message=inp.value.trim();if(!message)return;
    chatHist.push({role:'me',text:message});inp.value='';chatHist.push({role:'bot',text:'…'});paint();
    const sendBtn=$('button[type=submit]',body);sendBtn.disabled=true;
-   try{const r=await post('/api/v6/autonomy/chat',{message},{timeout:60000});chatHist[chatHist.length-1]={role:'bot',text:r.answer};}
+   try{const r=await post('/api/v6/autonomy/chat',{message},{timeout:300000});chatHist[chatHist.length-1]={role:'bot',text:r.answer};}
    catch(err){chatHist[chatHist.length-1]={role:'bot',text:'Je n’ai pas pu répondre : '+err.message,err:true};}
    finally{sendBtn.disabled=false;paint();}
   });
