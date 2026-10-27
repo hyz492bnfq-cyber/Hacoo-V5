@@ -40,9 +40,13 @@ V6 : `V6_AUTONOMY_ENABLED`, `V6_AUTONOMY_INTERVAL_MINUTES`, `V6_AUTONOMY_MAX_RUN
 - `V6_AUTO_DEPLOY_ENABLED=false` par défaut. N’active ce réglage qu’après configuration GitHub/FadeHost et validation sur une branche de staging; il autorise l’action de push du tableau de bord, pas la publication autonome automatique de tous les candidats.
 - Ne jamais mettre les clés dans le dépôt, les fichiers HTML ou le chat. Utiliser uniquement les variables d’environnement FadeHost.
 
-## CI GitHub et déploiement FadeHost contrôlé (V6.4.0)
+## CI GitHub et déploiement FadeHost verrouillé (V6.4.0)
 
-Le fichier `.github/workflows/ci-fadehost.yml` exécute automatiquement `npm run check` et `npm test` sur les pushes et pull requests vers `main` et `staging`. Le déploiement depuis le workflow est **désactivé par défaut**. Pour le configurer depuis GitHub sans SSH, suis `AUTONOMIE_FADEHOST_CI.md` : secret `FADEHOST_TOKEN`, variables `FADEHOST_APP_ID`, `FADEHOST_HEALTH_URL`, puis variable `FADEHOST_AUTODEPLOY=true` après validation en staging. Si tu utilises ce workflow, désactive le redéploiement automatique sur push dans FadeHost pour éviter deux déploiements concurrents; le workflow déploiera le commit validé après les tests. Si le contrôle de santé échoue, le workflow échoue et demande de restaurer le dernier déploiement stable depuis l’onglet Deploys de FadeHost.
+Le fichier `.github/workflows/ci-fadehost.yml` valide les pushes et pull requests vers `main` et `staging` avec `npm ci`, `npm audit --audit-level=high`, `npm run check` et `npm test`. Le lockfile rend l’installation reproductible; le contrôle de configuration vérifie les fichiers essentiels et les portes d’autonomie désactivées par défaut.
+
+Le déploiement de production est **verrouillé**, pas seulement désactivé par une variable. La documentation officielle de FadeHost indique que `fadehost apps deploy <app>` récupère le dernier commit de la branche, sans option documentée pour épingler le SHA testé. À l’audit du 27 octobre 2026, `main` n’est pas protégée et l’API GitHub refuse de consulter ses règles de protection sur ce dépôt privé. Le workflow n’a donc aucun job de déploiement; si `FADEHOST_AUTODEPLOY=true` est défini, il échoue explicitement au lieu de déployer. N’active pas le redéploiement sur push dans FadeHost.
+
+Les secrets Actions actuellement présents sont `FADEHOST_TOKEN` et `FADEHOST_APP`; aucune variable Actions n’est configurée. Le workflow de validation ne lit aucun de ces secrets. Ne crée pas `FADEHOST_APP_ID` ni `FADEHOST_AUTODEPLOY` pour contourner le verrou. Voir `AUTONOMIE_FADEHOST_CI.md` pour les limites et les réglages à effectuer avant tout premier déploiement contrôlé.
 
 ## Installation prudente
 
@@ -52,15 +56,17 @@ Le cahier de référence est fourni dans `CAHIER_DES_CHARGES_V6.md`; le bilan de
 2. Télécharger une sauvegarde des fichiers applicatifs, `data.json` et de ses `.bak`.
 3. Extraire cette archive et transférer les fichiers du projet dans le dossier de l’application. Conserver le `data.json` existant; ne pas écraser les données par un fichier vide.
 4. Vérifier les variables dans FadeHost, et que le stockage utilisé par `DATA_FILE` est persistant.
-5. Dans la console : `npm install`, `npm run check`, `npm test`, puis `npm start`. Définis `TZ=Europe/Paris` si tu veux que l’heure du rapport quotidien suive le fuseau français; sinon l’heure suit le fuseau du processus.
+5. Dans la console : `npm ci`, `npm run check`, `npm test`, puis `npm start`. Définis `TZ=Europe/Paris` si tu veux que l’heure du rapport quotidien suive le fuseau français; sinon l’heure suit le fuseau du processus.
 6. Vérifier les logs, `/health`, le tableau de bord, les API et les permissions du bot Telegram. Tester d’abord sur un canal privé de test.
 7. Ne pas supprimer la sauvegarde V5 tant que les tests de production ne sont pas terminés.
 
 ## Contrôle local de cette archive
 
-- `npm run check` : syntaxe JavaScript de l’application et des modules.
-- `npm test` : tests unitaires de politiques, file, fournisseurs, planification, mémoire, commandes, sécurité des candidats et diagnostics.
-- Les 28 tests unitaires de cette archive passent dans l’environnement de génération. Ils ne valident pas à eux seuls les API réelles ni le fonctionnement de FadeHost. Les tests n’appellent pas les API réelles et ne valident pas les droits Telegram, les clés FadeHost, l’HTTPS, le stockage persistant ou la compatibilité exacte de l’environnement d’hébergement.
+- `npm ci` : installation depuis le lockfile.
+- `npm run check` : syntaxe JavaScript, dashboards et vérification statique de la configuration.
+- `npm audit --audit-level=high` : échec si une vulnérabilité élevée ou critique est détectée.
+- `npm test` : tests unitaires, incluant l’usage de `sharp` pour le hachage d’images et les portes de déploiement.
+- Ces contrôles locaux ne valident pas les API réelles, les droits Telegram, le stockage persistant ni le runtime FadeHost.
 
 ## Limites de sécurité non négociables
 
@@ -80,7 +86,7 @@ L’adaptateur optionnel `lib/fadehost-deployer.js` teste un candidat dans une c
 
 Le cycle autonome peut proposer une amélioration, sélectionner une cible uniquement dans une allowlist de modules non critiques disposant de tests ciblés, générer un candidat isolé, lancer les tests du module, transmettre les échecs au modèle pour une correction bornée (1 à 3 tentatives), puis créer une Pull Request GitHub en brouillon si cette option est activée. Les fichiers actifs ne sont pas remplacés par la génération. La fusion et le déploiement de production restent des étapes séparées et contrôlées; aucun accès arbitraire au dépôt ou au serveur n’est donné au modèle.
 
-- `V6_AUTONOMOUS_DEPLOY_SAFE=false` : porte dédiée au déploiement autonome, désactivée par défaut.
+- `V6_AUTONOMOUS_DEPLOY_SAFE=false` : le déploiement autonome reste verrouillé dans cette version; ces anciennes portes ne peuvent pas contourner la CI, l’épinglage du SHA et la protection de branche.
 - `V6_AUTO_DEPLOY_ENABLED=false` : porte existante du push GitHub, désactivée par défaut.
 - `V6_AUTONOMOUS_DEPLOY_ALLOWLIST=` : liste explicite et séparée par des virgules de cibles `lib/*.js` autorisées. Les fichiers de gouvernance, `index.js`, le tableau de bord, les dépendances et les données sont interdits.
 - `V6_DEPLOY_HEALTH_URL=` : URL publique HTTPS de santé, obligatoire pour autoriser le déploiement autonome; utiliser de préférence `/health/ready`.

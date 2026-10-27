@@ -86,3 +86,9 @@ test('engineering can select from safe tested targets without a manually fixed t
   assert.ok(status.safeTargets.includes('lib/publication-scheduler.js'));
   assert.ok(status.safeTargets.includes('lib/semantic-memory.js'));
 });
+
+test('engineering tasks can create review PRs but cannot directly deploy a candidate', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'autonomous-agent.js'), 'utf8');
+  assert.match(source, /createDraftPullRequest/);
+  assert.doesNotMatch(source, /\bdeployCandidate\b|\bdeployAutonomousCandidate\b/);
+});

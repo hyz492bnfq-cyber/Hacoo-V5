@@ -1,15 +1,23 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateAutonomousTarget, inspectGeneratedCode, autonomousReleaseStatus } = require('../lib/autonomous-release');
+const { validateAutonomousTarget, inspectGeneratedCode, autonomousReleaseStatus, deployAutonomousCandidate } = require('../lib/autonomous-release');
 const { healthCheckConfig, verifyRuntimeHealth } = require('../lib/fadehost-deployer');
 
-test('autonomous deployment is disabled by default and requires both switches', () => {
+test('autonomous deployment stays locked even when all legacy switches are enabled', async () => {
   assert.equal(autonomousReleaseStatus({}).enabled, false);
   const configured = { V6_AUTONOMOUS_DEPLOY_SAFE: 'true', V6_AUTO_DEPLOY_ENABLED: 'true', V6_AUTONOMOUS_DEPLOY_ALLOWLIST: 'lib/helper.js', V6_DEPLOY_HEALTH_URL: 'https://example.com/health' };
-  assert.equal(autonomousReleaseStatus(configured).enabled, true);
+  const status = autonomousReleaseStatus(configured);
+  assert.equal(status.enabled, false);
+  assert.equal(status.mode, 'candidate-and-draft-pr-only');
+  assert.equal(status.automaticRollback, false);
+  assert.equal(status.configured.safeMode, true);
   assert.equal(autonomousReleaseStatus({ ...configured, V6_DEPLOY_HEALTH_URL: '' }).enabled, false);
   assert.equal(autonomousReleaseStatus({ V6_AUTONOMOUS_DEPLOY_SAFE: 'true', V6_AUTO_DEPLOY_ENABLED: 'false', V6_AUTONOMOUS_DEPLOY_ALLOWLIST: 'lib/helper.js' }).enabled, false);
+  const attempt = await deployAutonomousCandidate('/tmp/hacoo-unused', 'workspace/candidates/candidate.js', 'lib/helper.js', configured);
+  assert.equal(attempt.ok, false);
+  assert.equal(attempt.blocked, true);
+  assert.match(attempt.reason, /verrouillé|bloqué/i);
 });
 
 test('only exact allowlisted noncritical lib modules can be auto-deployed', () => {

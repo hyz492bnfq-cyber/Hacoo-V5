@@ -1,35 +1,61 @@
-# V6.3.1 — CI et déploiement FadeHost depuis GitHub
+# CI HACOO BOT et limites du déploiement FadeHost
 
-## Ce que cette version ajoute
+## Contrôles automatisés
 
-- `npm run check` vérifie maintenant la syntaxe du serveur, de tous les modules et scripts, ainsi que le JavaScript inline du dashboard.
-- GitHub Actions exécute `npm run check` et `npm test` sur les pushes et pull requests vers `main` et `staging`.
-- Le déploiement FadeHost après validation est désactivé par défaut et ne se déclenche que sur un push vers `main` si `FADEHOST_AUTODEPLOY=true` est défini dans les variables GitHub.
-- Après le déploiement, le workflow attend un HTTP 200 à l'URL de santé HTTPS configurée.
+Le workflow `.github/workflows/ci-fadehost.yml` s’exécute sur les pushes et pull requests vers `main` et `staging`, ainsi qu’à la demande. Il :
 
-## Configuration avec accès au panneau uniquement
+1. installe Node.js 20;
+2. installe exactement les versions du lockfile avec `npm ci`;
+3. exécute `npm audit --audit-level=high`;
+4. vérifie les fichiers essentiels, les variables documentées et les portes d’autonomie;
+5. contrôle la syntaxe du serveur, des modules, des scripts et des dashboards;
+6. lance toute la suite `npm test`.
 
-1. Dans le dépôt GitHub, ouvre **Settings → Secrets and variables → Actions**.
-2. Dans **Secrets**, ajoute `FADEHOST_TOKEN` avec un jeton FadeHost à portée minimale. Ne le mets jamais dans le dépôt ni dans un fichier `.env` versionné.
-3. Dans **Variables**, ajoute `FADEHOST_APP_ID` avec l'identifiant ou le nom exact de l'application visible dans FadeHost.
-4. Ajoute `FADEHOST_HEALTH_URL` avec l'URL publique HTTPS qui répond `200` uniquement lorsque l'application est prête, idéalement `https://<ton-domaine>/health/ready`.
-5. Laisse `FADEHOST_AUTODEPLOY` absent ou à `false` pendant les premiers essais.
-6. Pousse la version sur une branche de staging et ouvre **Actions** pour vérifier que syntaxe et tests passent.
-7. Déploie staging depuis FadeHost, puis teste le bot Telegram, les logs, le dashboard et `/health/ready`.
-8. Prépare et teste un rollback avec **FadeHost → application → Deploys** avant toute activation.
-9. Pour activer les déploiements automatiques validés par CI, définis la variable GitHub `FADEHOST_AUTODEPLOY` à `true` seulement après les essais de staging. L'application FadeHost doit suivre la même branche que le workflow (ici `main`).
+Un échec d’une étape obligatoire fait échouer le job. Le workflow conserve les permissions GitHub à `contents: read`.
 
-## Limites connues et comportement sûr
+## Pourquoi aucun déploiement automatique n’est activé
 
-- Un échec du contrôle post-déploiement fait échouer le workflow et donne la procédure de rollback dans le journal. Ce workflow n'exécute pas de rollback automatique via une API FadeHost non documentée.
-- Le moteur interne `lib/fadehost-deployer.js` possède un rollback de contenu pour un fichier auxiliaire précis après un échec du contrôle runtime; cela ne remplace pas un rollback de déploiement complet sur FadeHost.
-- Ne confonds pas le succès du workflow avec la preuve que toutes les fonctions métier Telegram marchent. Teste le bot sur un canal privé avant production.
-- Cette pipeline automatise la validation et peut automatiser le déploiement après configuration, mais elle ne rend pas l'IA libre de modifier tous les fichiers. Les modules de gouvernance, `index.js`, le dashboard, les secrets et les données restent protégés.
+La documentation officielle de FadeHost décrit `fadehost apps deploy <app>` comme une commande qui « pull[s] the latest commit ». Elle ne documente pas d’option pour déployer un SHA précis. Une vérification de SHA avant la commande ne supprimerait pas la course entre le contrôle et le pull.
 
-## Documentation FadeHost
+À l’audit du 27 octobre 2026, `main` n’est pas protégée. L’API GitHub répond que la protection des branches de ce dépôt privé nécessite GitHub Pro ou un dépôt public; la visibilité du dépôt n’a pas été modifiée. Le déploiement FadeHost automatique sur chaque push pourrait donc publier un commit avant que ses contrôles aient fini.
 
-- https://fadehost.com/docs/app-hosting/
-- https://fadehost.com/docs/cli/
+En conséquence :
 
-## Ajouts V6.4.0 — auto-développement contrôlé
-La version 6.4.0 ajoute une boucle de génération/correction bornée, les tests ciblés dans une copie isolée et la possibilité de créer une Pull Request GitHub en brouillon avec `V6_AUTONOMOUS_PR_ENABLED=true`. Cette option nécessite `V6_GITHUB_TOKEN`, `V6_GITHUB_OWNER` et `V6_GITHUB_REPO` avec les droits de création de branche, de commit et de Pull Request. La Pull Request n’est pas fusionnée automatiquement. Les cooldowns fournisseur après HTTP 429 sont persistés pour éviter les rafales d’appels après redémarrage.
+- le workflow ne contient aucun appel de déploiement FadeHost;
+- définir `FADEHOST_AUTODEPLOY=true` fait échouer le workflow sur un push vers `main` au lieu de déclencher un déploiement;
+- le redéploiement automatique sur push dans FadeHost doit rester désactivé;
+- aucune fusion automatique, aucun déploiement réel et aucun rollback de production n’ont été effectués.
+
+## État des secrets et variables GitHub
+
+L’API GitHub confirme uniquement les noms, jamais les valeurs :
+
+- secrets Actions présents : `FADEHOST_TOKEN`, `FADEHOST_APP`;
+- variables Actions présentes : aucune.
+
+Le workflow de validation ne lit pas ces secrets. Ne crée pas une variable `FADEHOST_APP_ID` pour reproduire l’ancien workflow et ne colle jamais de valeur secrète dans un commit, un log ou une conversation.
+
+## Réglages requis avant une première mise en production
+
+1. Obtenir une méthode FadeHost prise en charge qui déploie exactement le SHA ayant passé la CI, ou une architecture équivalente qui prouve que seul un commit validé est déployable.
+2. Activer une protection applicable à `main`, avec CI comme contrôle requis et des restrictions sur les pushs directs. L’API n’a pas permis de consulter ou configurer ces règles dans l’offre actuelle du dépôt privé.
+3. Vérifier dans FadeHost le dépôt, la branche, la version Node.js, la commande de démarrage (`npm start`), le stockage persistant, les variables et l’auto-deploy. Aucun connecteur FadeHost n’est disponible dans cette conversation; ces paramètres n’ont pas été lus.
+4. Tester dans une application/canal Telegram de staging : `/health/ready`, logs, dashboard, routes authentifiées, persistance de `data.json`, droits Telegram et procédure de retour arrière.
+5. Après ces preuves, concevoir et tester un job de déploiement lié au SHA validé. Ne pas réactiver l’ancien job basé sur le dernier commit de la branche.
+
+`/health/ready` renvoie un succès uniquement si le processus n’est pas en arrêt, si le token Telegram est configuré et si une connexion Telegram récente est enregistrée. Le retour HTTP 200 du simple `/health` ne suffit pas à prouver que le bot est connecté.
+
+## Portes d’autonomie de l’application
+
+Dans `.env.example`, les valeurs par défaut de `V6_AUTONOMOUS_ENGINEERING_ENABLED`, `V6_AUTONOMOUS_PR_ENABLED`, `V6_AUTONOMOUS_DEPLOY_SAFE` et `V6_AUTO_DEPLOY_ENABLED` sont `false`. L’agent d’ingénierie produit des candidats et, si explicitement activé, une Pull Request en brouillon; il ne pousse plus directement un candidat vers une branche de déploiement. La fusion et la publication restent des actions distinctes.
+
+Commandes locales :
+
+```sh
+npm ci
+npm audit --audit-level=high
+npm run check
+npm test
+```
+
+La CI et ces tests ne prouvent pas le bon fonctionnement du déploiement FadeHost, les droits Telegram ou la santé du bot en production.
