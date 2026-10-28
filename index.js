@@ -2766,7 +2766,9 @@ app.post('/api/v6/autonomy/chat', async (req, res) => {
         res.setHeader('Retry-After', String(Math.ceil(retryAfterMs / 1000)));
         return res.status(429).json({ error: `Le fournisseur IA a atteint sa limite temporaire. Aucun nouvel appel n’a été envoyé. Réessaie dans environ ${Math.max(1, Math.ceil(retryAfterMs / 60000))} min.`, retryAfterMs });
       }
-      return res.status(503).json({ error: `Fournisseur IA indisponible (${generated.status}). Vérifie la clé, le modèle et le quota du fournisseur.` });
+      const detail = generated.errorDetail || generated.message;
+      const detailMsg = detail ? ` : ${detail}` : '';
+      return res.status(503).json({ error: `Fournisseur IA indisponible (${generated.status})${detailMsg}. Vérifie la clé, le modèle et le quota du fournisseur.` });
     }
     appendAudit(__dirname, { type: 'autonomy_chat_message', message: 'Message envoyé au chat du centre de pilotage autonome.', details: { messageLength: message.length, provider: generated.provider, model: generated.model } });
     res.json({ ok: true, answer: String(generated.text || '').slice(0, 6000), provider: generated.provider, model: generated.model, latencyMs: Date.now() - started });
