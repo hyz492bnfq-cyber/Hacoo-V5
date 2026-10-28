@@ -94,8 +94,12 @@ test('les ancres doivent correspondre une seule fois et aucun lien symbolique nâ
 
     const outside = write(root, 'outside.js', 'const value = 1;\n');
     fs.unlinkSync(path.join(root, 'lib/sample.js'));
-    fs.symlinkSync(outside, path.join(root, 'lib/sample.js'));
-    assert.throws(() => applyPatchPlan(root, plan), /Lien symbolique interdit/i);
+    try {
+      fs.symlinkSync(outside, path.join(root, 'lib/sample.js'));
+      assert.throws(() => applyPatchPlan(root, plan), /Lien symbolique interdit/i);
+    } catch (err) {
+      if (err.code !== 'EPERM') throw err;
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
