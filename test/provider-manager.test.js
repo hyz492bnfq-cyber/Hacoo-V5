@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { providerStatus, testProvider } = require('../lib/provider-manager');
+const { providerStatus, testProvider, callProvider } = require('../lib/provider-manager');
 
 test('provider status reports configuration without exposing API keys', () => {
   const status = providerStatus({ GEMINI_API_KEY: 'secret-g', GROQ_API_KEY: '', OPENROUTER_API_KEY: 'secret-o' });
@@ -20,6 +20,47 @@ test('unconfigured provider is not called', async () => {
   assert.equal(result.keyVariable, 'GROQ_API_KEY');
 });
 
+
+test('structured plan responses stay complete beyond the former 12,000-character cutoff', async () => {
+  const originalFetch = global.fetch;
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hacoo-provider-json-'));
+  const plan = JSON.stringify({
+    summary: 'long plan',
+    files: [{ path: 'lib/sample.js', patches: [{ find: 'a', replace: 'b'.repeat(13000) }] }]
+  });
+  const requests = [];
+  global.fetch = async (url, options) => {
+    const request = JSON.parse(options.body);
+    requests.push({ url, request });
+    const body = url.includes('generativelanguage.googleapis.com')
+      ? { candidates: [{ content: { parts: [{ text: plan }] } }] }
+      : { choices: [{ message: { content: plan } }] };
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+  const cooldownFile = path.join(temp, 'cooldowns.json');
+  const providers = [
+    ['gemini', { GEMINI_API_KEY: 'test-key', GEMINI_MODEL: 'test-model' }],
+    ['groq', { GROQ_API_KEY: 'test-key', GROQ_MODEL: 'test-model' }],
+    ['openrouter', { OPENROUTER_API_KEY: 'test-key', OPENROUTER_MODEL: 'test-model' }]
+  ];
+  try {
+    for (const [provider, credentials] of providers) {
+      const result = await callProvider(provider, 'Return a JSON plan', { maxTokens: 6000, jsonMode: true }, {
+        ...credentials, V6_PROVIDER_COOLDOWN_FILE: cooldownFile
+      });
+      assert.equal(result.ok, true, provider);
+      assert.equal(result.text, plan, provider);
+      assert.deepEqual(JSON.parse(result.text), JSON.parse(plan));
+    }
+    assert.equal(requests[0].request.generationConfig.responseMimeType, 'application/json');
+    for (const { request } of requests.slice(1)) {
+      assert.deepEqual(request.response_format, { type: 'json_object' });
+    }
+  } finally {
+    global.fetch = originalFetch;
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
 
 test('provider cooldown prevents repeated calls after HTTP 429', async () => {
   const originalFetch = global.fetch;
