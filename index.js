@@ -2811,7 +2811,7 @@ app.post('/api/v6/providers/test', async (_req, res) => {
 });
 
 app.post('/api/v6/providers/test/:provider', async (req, res) => {
-  const allowed = ['gemini', 'groq', 'openrouter', 'nvidia'];
+  const allowed = ['gemini', 'groq', 'openrouter', 'nvidia', 'nemotron', 'minimax'];
   if (!allowed.includes(req.params.provider)) return res.status(400).json({ error: 'Fournisseur inconnu.' });
   const result = await testProvider(req.params.provider);
   appendAudit(__dirname, { type: 'provider_test', message: `Test fournisseur ${req.params.provider}.`, details: { id: result.id, ok: result.ok, status: result.status, httpStatus: result.httpStatus, latencyMs: result.latencyMs } });
