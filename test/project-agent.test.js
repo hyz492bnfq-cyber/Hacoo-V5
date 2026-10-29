@@ -82,6 +82,36 @@ test('le plan accepte des patchs exacts, refuse les doublons et le remplacement 
   })));
 });
 
+test('un patch mal formé expose un diagnostic précis et les alias usuels sont acceptés', () => {
+  // Cas réel observé : le modèle répond avec un find vide pour créer une fonctionnalité entière.
+  assert.throws(
+    () => extractPatchPlan(JSON.stringify({
+      summary: 'Ajout de fonctionnalité',
+      files: [{ path: 'lib/text-replacements.js', patches: [{ find: '', replace: 'function replaceText() {}' }] }]
+    })),
+    error => /Patch n°1 de lib\/text-replacements\.js invalide : "find" manquant ou vide/.test(error.message) && /extrait exact et unique/.test(error.message)
+  );
+  assert.throws(
+    () => extractPatchPlan(JSON.stringify({
+      files: [{ path: 'lib/sample.js', patches: [{ find: 'value = 1' }] }]
+    })),
+    error => /Patch n°1 de lib\/sample\.js invalide : "replace" manquant/.test(error.message)
+  );
+  assert.throws(
+    () => extractPatchPlan(JSON.stringify({
+      files: [{ path: 'lib/sample.js', patches: ['const x = 1;'] }]
+    })),
+    error => /Patch n°1 de lib\/sample\.js invalide : attendu un objet/.test(error.message)
+  );
+  // Alias usuels renvoyés par les modèles : tolérés pour éviter les échecs inutiles.
+  const aliased = extractPatchPlan(JSON.stringify({
+    summary: 'Alias',
+    files: [{ path: 'lib/sample.js', patches: [{ old: 'value: 1', after: 'value: 2' }] }]
+  }));
+  assert.equal(aliased.files[0].patches[0].find, 'value: 1');
+  assert.equal(aliased.files[0].patches[0].replace, 'value: 2');
+});
+
 test('les ancres doivent correspondre une seule fois et aucun lien symbolique n’est suivi', () => {
   const root = makeRoot();
   try {
