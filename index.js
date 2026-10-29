@@ -5,7 +5,7 @@ const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { providerStatus, testProvider, testConfiguredProviders } = require('./lib/provider-manager');
+const { activeProviders, testProvider, testConfiguredProviders } = require('./lib/provider-manager');
 const { labStatus, createProposal, generateCandidate, listCandidates } = require('./lib/self-development-lab');
 const { appendAudit } = require('./lib/audit-log');
 const { autonomyStatus, runAutonomyCycle } = require('./lib/autonomy-engine');
@@ -2529,7 +2529,7 @@ app.get('/api/v6/status', (_req, res) => {
   res.json({
     version: '6.4.0',
     constitution: require('./lib/constitution').VERSION,
-    providers: providerStatus(),
+    providers: activeProviders(),
     lab: labStatus(__dirname),
     autonomy: autonomyStatus(__dirname),
     supervisor: supervisorStatus(__dirname, data),
@@ -2645,7 +2645,7 @@ app.post('/api/v6/report/run', async (_req, res) => {
 app.get('/api/v6/diagnostics', (_req, res) => {
   const forecast = forecastIncidents(data);
   const adaptive = proposeAdaptivePolicy(data);
-  res.json({ forecast, adaptive, queue: { pending: (data.pendingJobs || []).length, paused: Boolean(data.botPaused || !data.enabled) }, providerStatus: providerStatus().map(({ id, configured, model }) => ({ id, configured, model })) });
+  res.json({ forecast, adaptive, queue: { pending: (data.pendingJobs || []).length, paused: Boolean(data.botPaused || !data.enabled) }, providerStatus: activeProviders().map(({ id, configured, model }) => ({ id, configured, model })) });
 });
 
 app.post('/api/v6/editorial/optimize', async (req, res) => {
@@ -2807,11 +2807,11 @@ app.post('/api/v6/providers/test', async (_req, res) => {
   appendAudit(__dirname, { type: 'provider_test_requested', message: 'Test de connectivité API demandé depuis le tableau de bord.' });
   const results = await testConfiguredProviders();
   appendAudit(__dirname, { type: 'provider_test_completed', message: 'Tests API terminés.', details: { results: results.map(({ id, ok, status, httpStatus, latencyMs }) => ({ id, ok, status, httpStatus, latencyMs })) } });
-  res.json({ results, configured: providerStatus() });
+  res.json({ results, configured: activeProviders() });
 });
 
 app.post('/api/v6/providers/test/:provider', async (req, res) => {
-  const allowed = ['gemini', 'groq', 'openrouter', 'nvidia', 'nemotron', 'minimax'];
+  const allowed = ['gemini', 'nemotron', 'minimax'];
   if (!allowed.includes(req.params.provider)) return res.status(400).json({ error: 'Fournisseur inconnu.' });
   const result = await testProvider(req.params.provider);
   appendAudit(__dirname, { type: 'provider_test', message: `Test fournisseur ${req.params.provider}.`, details: { id: result.id, ok: result.ok, status: result.status, httpStatus: result.httpStatus, latencyMs: result.latencyMs } });

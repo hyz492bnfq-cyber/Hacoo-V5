@@ -23,6 +23,31 @@ test('provider status reports configuration without exposing API keys', () => {
   assert.equal(nemotronStatus.find(x => x.id === 'nemotron').keyVariable, 'NVIDIA_APIR');
 });
 
+test('les fournisseurs legacy sont absents du tableau de bord (liste active)', async () => {
+  const { activeProviders, testConfiguredProviders } = require('../lib/provider-manager');
+  const env = { OPENROUTER_API_KEY: 'legacy-key', NVIDIA_API: 'shared-key', GEMINI_API_KEY: 'g' };
+  const active = activeProviders(env);
+  assert.deepEqual(active.map(x => x.id), ['gemini', 'nemotron', 'minimax']);
+  assert.equal(active.find(x => x.id === 'minimax').configured, true, 'MiniMax reutilise NVIDIA_API dans la liste active');
+
+  const originalFetch = global.fetch;
+  const calledUrls = [];
+  try {
+    const bodyByHost = (url) => /generativelanguage\.googleapis\.com/.test(String(url))
+      ? { candidates: [{ content: { parts: [{ text: 'OK' }] }, finishReason: 'STOP' }] }
+      : { choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }] };
+    global.fetch = async (url) => {
+      calledUrls.push(String(url));
+      return { ok: true, status: 200, text: async () => JSON.stringify(bodyByHost(url)), headers: { get: () => null } };
+    };
+    const tested = await testConfiguredProviders(env);
+    assert.deepEqual(tested.map(x => x.id).sort(), ['gemini', 'minimax'], 'Tout tester ignore les fournisseurs legacy');
+    assert.equal(calledUrls.some(u => /api\.groq\.com|openrouter\.ai/.test(u)), false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('unconfigured provider is not called', async () => {
   const result = await testProvider('groq', {});
   assert.equal(result.ok, false);
