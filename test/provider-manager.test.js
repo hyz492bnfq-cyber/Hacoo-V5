@@ -81,33 +81,32 @@ test('provider cooldown prevents repeated calls after HTTP 429', async () => {
   }
 });
 
-test('generateText bascule automatiquement vers le fournisseur suivant en cas de quota ou d erreur API', async () => {
+test('generateText bascule automatiquement vers le modele Gemini suivant en cas d erreur API', async () => {
   const originalFetch = global.fetch;
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hacoo-provider-failover-'));
   try {
     let calls = 0;
-    global.fetch = async () => {
+    global.fetch = async (url, init) => {
       calls += 1;
+      const parsed = JSON.parse(init.body);
       if (calls === 1) {
-        // Groq : quota / rate limit
-        return new Response(JSON.stringify({ error: { message: 'insufficient_quota' } }), { status: 429, headers: { 'Content-Type': 'application/json', 'retry-after': '30' } });
+        // Gemini : modele principal indisponible -> failover sur le modele suivant
+        return new Response(JSON.stringify({ error: { message: 'google/gemini-2.5-flash is not a valid model ID', code: 'invalid_model' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
       }
-      // NVIDIA : succès
-      return new Response(JSON.stringify({ choices: [{ message: { content: '{"summary":"ok"}' }, finish_reason: 'stop' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      // Gemini fallback : succes
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"summary":"ok"}' }] }, finishReason: 'STOP' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     };
 
     const env = {
-      GROQ_API_KEY: 'test-groq-key',
-      GROQ_MODEL: 'llama-3.3-70b-versatile',
-      NVIDIA_API: 'test-nvidia-key',
-      NVIDIA_MODEL: 'nvidia/llama-3.1-nv-instruct',
+      GEMINI_API_KEY: 'test-gemini-key',
+      GEMINI_MODEL: 'gemini-2.5-flash',
+      GEMINI_FALLBACK_MODELS: 'gemini-2.5-flash',
       V6_PROVIDER_COOLDOWN_FILE: path.join(temp, 'cooldowns.json')
     };
-    const res = await generateText('Génère une fonction TypeScript pour l endpoint API', { maxTokens: 900 }, env);
+    const res = await generateText('Fais un plan editorial', { maxTokens: 900 }, env);
     assert.equal(res.ok, true);
-    assert.equal(res.provider, 'nvidia');
-    assert.equal(res.model, 'nvidia/llama-3.1-nv-instruct');
-    assert.equal(calls, 2, 'Le premier fournisseur en échec doit déclencher le basculement vers le fournisseur suivant');
+    assert.equal(res.provider, 'gemini');
+    assert.equal(calls, 2, 'Le modele principal en echec doit declarer le basculement sur le modele suivant');
   } finally {
     global.fetch = originalFetch;
     fs.rmSync(temp, { recursive: true, force: true });
