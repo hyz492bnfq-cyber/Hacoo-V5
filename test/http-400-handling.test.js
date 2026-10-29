@@ -230,6 +230,44 @@ test('OpenRouter : HTTP 400 sur response_format replie sans response_format et r
   }
 });
 
+test('OpenRouter : HTTP 400 sur modèle invalide google/gemma-4-31b replie sur le fallback valide', async () => {
+  const originalFetch = global.fetch;
+  const env = { OPENROUTER_API_KEY: 'test-openrouter-key', OPENROUTER_MODEL: 'google/gemma-4-31b' };
+  let calls = 0;
+  const payloads = [];
+
+  try {
+    global.fetch = async (url, init) => {
+      calls += 1;
+      const parsed = JSON.parse(init.body);
+      payloads.push(parsed);
+
+      if (calls === 1) {
+        return new Response(JSON.stringify({
+          error: {
+            message: 'google/gemma-4-31b is not a valid model ID',
+            type: 'invalid_request_error',
+            code: 'invalid_model'
+          }
+        }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: '{"summary":"fallback ok"}' }, finish_reason: 'stop' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const res = await callProvider('openrouter', 'Génère un ajout', { maxTokens: 900 }, env);
+    assert.equal(res.ok, true);
+    assert.equal(calls, 2);
+    assert.equal(payloads[0].model, 'google/gemma-4-31b');
+    assert.equal(payloads[1].model, 'meta-llama/llama-3.3-70b-instruct', 'Le modèle de repli doit être un modèle OpenRouter valide');
+    assert.equal(res.model, 'meta-llama/llama-3.3-70b-instruct');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test('Gemini : HTTP 404 sur modèle introuvable replie sur GEMINI_FALLBACK_MODELS', async () => {
   const originalFetch = global.fetch;
   const env = {
