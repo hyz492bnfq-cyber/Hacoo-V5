@@ -14,6 +14,7 @@ const { supervisorStatus, runSupervisorCycle } = require('./lib/autonomous-super
 const { autonomousReleaseStatus, deployAutonomousCandidate } = require('./lib/autonomous-release');
 const { parseChannelRegistry } = require('./lib/multichannel');
 const { inspectPublication } = require('./lib/prepublication');
+const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
 const { remember: rememberMemory, list: listMemory } = require('./lib/semantic-memory');
 const { inspectCandidate, stageCandidate } = require('./lib/deployment-manager');
@@ -111,6 +112,8 @@ const DEFAULTS = {
   blockedDomains: [],
   allowedDomains: [],
 
+  textReplacements: [],
+
   retentionDays: 30,
   logHistory: true,
   pauseOnErrorBurst: true,
@@ -191,12 +194,17 @@ function normalizeData(saved) {
   delete out['test' + 'Mode'];
 
   for (const key of [
-    'bannedWords', 'blockedPhrases', 'blockedDomains', 'allowedDomains',
+    'bannedWords', 'blockedPhrases', 'blockedDomains', 'allowedDomains', 'textReplacements',
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
     'processedMessageIds', 'ownMessageIds', 'aiEvents'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
+  }
+
+  {
+    const replacements = normalizeReplacements(out.textReplacements);
+    out.textReplacements = replacements.ok ? replacements.replacements : [];
   }
 
   for (const key of Object.keys(DEFAULTS)) {
@@ -1758,19 +1766,24 @@ async function processMessages(ctx, messages) {
 
   let cleaned = false;
 
+  const enabledReplacements = (Array.isArray(data.textReplacements) ? data.textReplacements : [])
+    .filter(rule => rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0);
+
   if (
     data.cleanHashtags ||
     data.cleanLinks ||
     data.cleanMentions ||
     data.cleanEmptyLines ||
     data.cleanEmojis ||
-    data.formatEnabled
+    data.formatEnabled ||
+    enabledReplacements.length
   ) {
     for (const message of messages) {
       const original = msgText(message);
       const hasCleaning = data.cleanHashtags || data.cleanLinks || data.cleanMentions || data.cleanEmptyLines || data.cleanEmojis;
       const cleanedText = hasCleaning ? cleanText(original) : original;
-      const changed = formatPostText(cleanedText);
+      const replacedText = enabledReplacements.length ? applyTextReplacements(cleanedText, data.textReplacements).text : cleanedText;
+      const changed = formatPostText(replacedText);
 
       if (changed !== original) {
         try {
@@ -3033,7 +3046,8 @@ app.get('/api/state', (_req, res) => {
       bannedWords: data.bannedWords,
       blockedPhrases: data.blockedPhrases,
       blockedDomains: data.blockedDomains,
-      allowedDomains: data.allowedDomains
+      allowedDomains: data.allowedDomains,
+      textReplacements: data.textReplacements
     }
   });
 });
@@ -3178,6 +3192,22 @@ app.post('/api/rules', (req, res) => {
       allowedDomains: data.allowedDomains
     }
   });
+});
+
+// Remplacements de texte : remplace la liste complète (désactivés conservés).
+app.post('/api/text-replacements', (req, res) => {
+  const result = normalizeReplacements(req.body?.replacements);
+  if (!result.ok) return res.status(400).json({ error: result.error });
+
+  data.textReplacements = result.replacements;
+  saveData();
+  appendAudit(__dirname, {
+    type: 'text_replacements_updated',
+    message: 'Liste de remplacements de texte mise à jour depuis le tableau de bord.',
+    details: { count: result.replacements.length, enabled: result.replacements.filter(rule => rule.enabled).length }
+  });
+
+  res.json({ ok: true, textReplacements: data.textReplacements });
 });
 
 app.post('/api/undo/:id', async (req, res) => {

@@ -359,6 +359,13 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
         <div id="ruleList" class="rulechips"></div>
       </div></div></details>
 
+    <details class="group" id="g-replacements"><summary><span class="gi">🔁</span><div><b>Remplacement de texte</b><span class="s" id="s-replacements"></span></div></summary>
+      <div class="gbody"><div class="subsec">
+        <p class="small muted">Chaque publication du canal est vérifiée : si un texte d'origine y figure, il est remplacé par ton texte. S'applique aux textes et légendes des posts ainsi qu'aux publications programmées.</p>
+        <button class="btn primary block" id="addReplacement" type="button">+ Ajouter un remplacement</button>
+        <div id="replacementList" class="list"></div>
+      </div></div></details>
+
     <details class="group" id="g-data"><summary><span class="gi">🗄️</span><div><b>Données et sauvegarde</b><span class="s" id="s-data"></span></div></summary>
       <div class="gbody">
         <div class="subsec"><div><label class="lb" for="retentionDays">Durée de conservation de l’historique</label><select id="retentionDays"><option value="7">7 jours</option><option value="30">30 jours</option><option value="90">90 jours</option></select></div></div>
@@ -952,9 +959,29 @@ function renderSettings(){
  $('#s-content').textContent=[['allowText','Texte'],['allowPhotos','Photos'],['allowVideos','Vidéos'],['allowDocuments','Docs']].filter(x=>s[x[0]]).map(x=>x[1]).join(', ')||'Rien d’autorisé';
  $('#s-format').textContent=s.formatEnabled?'Activée':'Désactivée';
  const rl=S.state.rules||{};$('#s-rules').textContent=`${['bannedWords','blockedPhrases','blockedDomains','allowedDomains'].reduce((n,k)=>n+(rl[k]||[]).length,0)} entrée(s)`;
+ const reps=rl.textReplacements||[];$('#s-replacements').textContent=reps.length?`${reps.filter(r=>r.enabled!==false).length} activé(s) sur ${reps.length}`:'Désactivé';
  $('#s-data').textContent=`Historique ${s.retentionDays||30} jours`;
- renderRules();
+ renderRules();renderReplacements();
 }
+function renderReplacements(){
+ const items=S.state?.rules?.textReplacements||[];
+ $('#replacementList').innerHTML=items.length?items.map((r,i)=>`<div class="item"><div class="row between"><span class="small break"><b>${esc(r.find)}</b> → ${r.enabled!==false?esc(r.replace||'(vide)'):'<span class="muted">(désactivé)</span>'}</span></div><div class="btnrow gap"><button class="btn sm" data-rtoggle="${i}" type="button">${r.enabled!==false?'Désactiver':'Activer'}</button><button class="btn sm danger" data-rdel="${i}" type="button">Supprimer</button></div></div>`).join(''):'<div class="empty">Aucun remplacement défini.</div>';
+}
+ function saveReplacements(list){
+  return post('/api/text-replacements',{replacements:list}).then(async()=>{toast('Remplacements enregistrés ✓','ok');await loadCore();});
+ }
+$('#addReplacement').addEventListener('click',()=>openSheet('Nouveau remplacement',`<div class="fgrid">
+ <div><label class="lb" for="repFind">Texte d'origine (présent dans la publication)</label><input id="repFind" type="text" maxlength="300" placeholder="Ex. 12345678" aria-label="Texte d origine"></div>
+ <div><label class="lb" for="repReplace">Texte de substitution</label><input id="repReplace" type="text" maxlength="600" placeholder="Ex. 87654321" aria-label="Texte de substitution"></div>
+ <div class="btnrow"><button class="btn primary" data-c="save" type="button">Enregistrer</button></div>
+</div>`,body=>{
+ body.querySelector('[data-c=save]').addEventListener('click',async()=>{
+  const find=body.querySelector('#repFind').value,replace=body.querySelector('#repReplace').value;
+  const list=(S.state?.rules?.textReplacements||[]).map(r=>({find:r.find,replace:r.replace,enabled:r.enabled!==false}));
+  list.push({find,replace,enabled:true});
+  try{await saveReplacements(list);closeSheet();}catch(err){toast(err.message,'bad');}
+ });
+}));
 function renderFormatPreview(){
  const g=id=>$('#'+id).value;const code=g('formatPromoCode')||'M2REPS';
  $('#formatPreview').textContent=`${g('formatTitlePrefix')}Nom du produit${g('formatTitleSuffix')}\n${g('formatCouponTemplate').replace(/\{code\}/gi,code)}\n\n${g('formatLinkPrefix')}https://c.onlyaff.app/EXEMPLE`;
@@ -993,6 +1020,22 @@ $('#ruleList').addEventListener('click',async e=>{
  const b=e.target.closest('[data-rm]');if(!b)return;const i=Number(b.dataset.rm),v=(S.state.rules[ruleKey]||[])[i];
  if(!await confirmSheet(`Supprimer « ${v} » ?`,{title:'Supprimer la règle',ok:'Supprimer',danger:true}))return;
  try{await post('/api/rules',{list:ruleKey,index:i,action:'remove'});toast('Règle supprimée','ok');await loadCore();}catch(err){toast(err.message,'bad');}
+});
+$('#replacementList').addEventListener('click',async e=>{
+ const tg=e.target.closest('[data-rtoggle]'),del=e.target.closest('[data-rdel]');
+ const items=(S.state?.rules?.textReplacements||[]).map(r=>({find:r.find,replace:r.replace,enabled:r.enabled!==false}));
+ if(tg){
+  const i=Number(tg.dataset.rtoggle);if(!items[i])return;
+  items[i].enabled=!items[i].enabled;
+  try{await saveReplacements(items);}catch(err){toast(err.message,'bad');}
+  return;
+ }
+ if(del){
+  const i=Number(del.dataset.rdel),item=items[i];if(!item)return;
+  if(!await confirmSheet(`Supprimer le remplacement « ${item.find} » ?`,{title:'Supprimer le remplacement',ok:'Supprimer',danger:true}))return;
+  items.splice(i,1);
+  try{await saveReplacements(items);}catch(err){toast(err.message,'bad');}
+ }
 });
 $('#restoreBtn').addEventListener('click',async()=>{
  const f=$('#restoreFile').files[0];if(!f){toast('Choisis d’abord un fichier de sauvegarde.','bad');return;}

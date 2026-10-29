@@ -118,6 +118,9 @@ test('les ancres doivent correspondre une seule fois et aucun lien symbolique n�
     write(root, 'lib/sample.js', 'const value = 1;\nmodule.exports = value;\n');
     const plan = { files: [{ path: 'lib/sample.js', patches: [{ find: 'value', replace: 'count' }] }] };
     assert.throws(() => applyPatchPlan(root, plan), /absente ou ambiguë/i);
+    assert.throws(() => applyPatchPlan(root, plan), /2 occurrences/, 'le diagnostic ambigu indique le nombre d occurrences exactes');
+    write(root, 'lib/sample.js', 'const value = 1;\nmodule.exports = value;\n');
+    assert.throws(() => applyPatchPlan(root, { files: [{ path: 'lib/sample.js', patches: [{ find: 'Valeur inexistante', replace: 'x' }] }] }), /0 occurrence/, 'le diagnostic absent indique zero occurrence');
     write(root, 'lib/sample.js', 'const value = 1;\n');
     const valid = applyPatchPlan(root, plan);
     assert.equal(valid[0].content, 'const count = 1;\n');
@@ -135,13 +138,13 @@ test('les ancres doivent correspondre une seule fois et aucun lien symbolique n�
   }
 });
 
-test('le contrôle syntaxique bloque un candidat JavaScript invalide', () => {
-  const result = validateCandidate('', [{ path: 'lib/sample.js', original: '', content: 'const = ;\n' }]);
+test('le contrôle syntaxique bloque un candidat JavaScript invalide', async () => {
+  const result = await validateCandidate('', [{ path: 'lib/sample.js', original: '', content: 'const = ;\n' }]);
   assert.equal(result.ok, false);
   assert.match(result.errors.join(' '), /syntaxe invalide|SyntaxError/);
 });
 
-test('la suite isolée ne reçoit ni data.json, ni .env, ni variables secrètes', () => {
+test('la suite isolée ne reçoit ni data.json, ni .env, ni variables secrètes', async () => {
   const root = makeRoot();
   const previous = process.env.HACOO_TEST_SECRET;
   try {
@@ -162,7 +165,7 @@ test('la suite isolée ne reçoit ni data.json, ni .env, ni variables secrètes'
       "  assert.equal(process.env.HACOO_TEST_SECRET, undefined);",
       '});'
     ].join('\n'));
-    const result = runCandidateChecks(root, [], { timeoutMs: 20000 });
+    const result = await runCandidateChecks(root, [], { timeoutMs: 20000 });
     assert.equal(result.ok, true, JSON.stringify(result.checks));
     assert.equal(result.checks[0].name, 'scripts/check-dashboard.js');
     assert.equal(result.checks.at(-1).name, 'Suite complète node --test');
