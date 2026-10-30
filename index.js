@@ -17,6 +17,7 @@ const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
 const { cleanPresentationLine } = require('./lib/presentation-cleaner');
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
+const { productLinks, replaceProductLink } = require('./lib/manual-link');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
 const { remember: rememberMemory, list: listMemory } = require('./lib/semantic-memory');
 const { inspectCandidate, stageCandidate } = require('./lib/deployment-manager');
@@ -2335,6 +2336,7 @@ function manualPublicationSummary(item) {
     id: item.id, type: item.type, text: item.text || '',
     receivedAt: item.receivedAt, status: item.status,
     group: item.group || '',
+    productLinks: productLinks(item.text || ''),
     messageCount: item.messages?.length || 0,
     media: (item.messages || []).map(message => ({
       type: msgMediaType(message),
@@ -3263,9 +3265,21 @@ app.put('/api/manual-publications/:id', (req, res) => {
   const item = data.manualPublications.find(entry => entry.id === id);
   if (!item) return res.status(404).json({ error: 'Publication introuvable ou déjà publiée.' });
   if (['publishing', 'published'].includes(item.status)) return res.status(409).json({ error: 'Cette publication ne peut plus être modifiée dans son état actuel.' });
-  if (typeof req.body?.text !== 'string' || req.body.text.length > 4000) return res.status(400).json({ error: 'Texte invalide (4 000 caractères maximum).' });
+  if (typeof req.body?.text !== 'string') return res.status(400).json({ error: 'Texte invalide.' });
   const oldText = item.text || '';
-  const nextText = req.body.text.replace(/\u0000/g, '');
+  let nextText = req.body.text.replace(/\u0000/g, '');
+  if (req.body.productLink !== undefined) {
+    if (typeof req.body.productLink !== 'string' || req.body.productLink.length > 2000) return res.status(400).json({ error: 'Lien produit invalide.' });
+    const productLink = req.body.productLink.trim();
+    if (productLink) {
+      try {
+        const parsed = new URL(productLink);
+        if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('protocol');
+      } catch { return res.status(400).json({ error: 'Le lien affilié doit commencer par http:// ou https://.' }); }
+      nextText = replaceProductLink(nextText, productLink);
+    }
+  }
+  if (nextText.length > 4000) return res.status(400).json({ error: 'Texte invalide (4 000 caractères maximum).' });
   if (req.body.group !== undefined && typeof req.body.group !== 'string') return res.status(400).json({ error: 'Groupe invalide.' });
   const firstMessage = item.messages?.[0];
   const isCaption = Boolean(firstMessage && (firstMessage.photo || firstMessage.video || firstMessage.document || firstMessage.animation || firstMessage.audio || firstMessage.voice));

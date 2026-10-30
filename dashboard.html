@@ -314,6 +314,9 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
       <div class="small muted" id="manualEditorMeta"></div>
       <label class="lb" for="manualEditorGroup">Groupe / campagne</label>
       <input id="manualEditorGroup" maxlength="80" type="text" placeholder="Ex. Sneakers octobre (facultatif)">
+      <label class="lb" for="manualEditorLink">Lien produit / lien affilié</label>
+      <input id="manualEditorLink" maxlength="2000" type="url" placeholder="https://…">
+      <div class="small muted">Colle ici ton lien affilié complet : il remplacera le premier lien de la publication.</div>
       <label class="lb" for="manualEditorText">Texte / légende / lien affilié</label>
       <textarea id="manualEditorText" rows="9" maxlength="4000" placeholder="Texte de la publication…"></textarea>
       <div class="row between"><button class="btn" id="manualEditorCancel" type="button">Annuler</button><button class="btn primary" id="manualEditorSave" type="button">Enregistrer les modifications</button></div>
@@ -557,7 +560,7 @@ function renderManual(){
   <div class="manual-media">${(x.media||[]).map((m,i)=>m.type==='photo'?`<img loading="lazy" src="/api/manual-publications/${encodeURIComponent(x.id)}/media/${i}" alt="Photo de la publication">`:``).join('')}</div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div>
   ${x.status==='delete_failed'?'<p class="small" style="color:var(--danger)">La sauvegarde est faite, mais la suppression du message original doit être vérifiée. La publication est bloquée pour éviter un doublon.</p>':''}
   ${x.status==='uncertain'?'<p class="small" style="color:var(--danger)">Résultat d’envoi incertain : vérifie le canal Telegram avant de choisir une action.</p>':''}
-  <div class="manual-actions"><button class="btn sm" data-manual-action="up">↑ Ordre</button><button class="btn sm" data-manual-action="down">↓ Ordre</button><button class="btn sm" data-manual-action="edit">Modifier</button><button class="btn sm" data-manual-action="preview">Aperçu</button><button class="btn sm primary" data-manual-action="publish" ${['publishing','uncertain','delete_failed'].includes(x.status)?'disabled':''}>Publier</button>${x.status==='delete_failed'?'<button class="btn sm" data-manual-action="retry-delete">Réessayer suppression</button>':''}${x.status==='uncertain'?'<button class="btn sm" data-manual-action="confirm-sent">Confirmé publié</button><button class="btn sm" data-manual-action="confirm-not-sent">Non publié : réactiver</button>':''}<button class="btn sm danger" data-manual-action="delete">Corbeille</button></div>
+  <div class="manual-actions"><button class="btn sm" data-manual-action="up">↑ Ordre</button><button class="btn sm" data-manual-action="down">↓ Ordre</button>${x.productLinks?.[0]?`<a class="btn sm" href="${esc(x.productLinks[0])}" target="_blank" rel="noopener noreferrer">Ouvrir le produit</a>`:''}<button class="btn sm" data-manual-action="edit">Modifier</button><button class="btn sm" data-manual-action="preview">Aperçu</button><button class="btn sm primary" data-manual-action="publish" ${['publishing','uncertain','delete_failed'].includes(x.status)?'disabled':''}>Publier</button>${x.status==='delete_failed'?'<button class="btn sm" data-manual-action="retry-delete">Réessayer suppression</button>':''}${x.status==='uncertain'?'<button class="btn sm" data-manual-action="confirm-sent">Confirmé publié</button><button class="btn sm" data-manual-action="confirm-not-sent">Non publié : réactiver</button>':''}<button class="btn sm danger" data-manual-action="delete">Corbeille</button></div>
  </article>`).join(''):'<div class="empty">Aucune publication en attente. Active le mode manuel pour intercepter les prochaines publications.</div>';
  $('#manualTrashList').innerHTML=manualTrash.length?manualTrash.map(x=>`<article class="manual-card"><div class="row between"><b>${esc(x.group||'Publication supprimée')}</b><span class="manual-status">Corbeille</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div><div class="manual-actions"><button class="btn sm" data-manual-restore="${esc(x.id)}">Restaurer dans la file</button></div></article>`).join(''):'<div class="empty">La corbeille est vide.</div>';
  $('#manualHistoryList').innerHTML=manualHistory.length?manualHistory.map(x=>`<article class="manual-card"><div class="row between"><b>Publication envoyée</b><span class="manual-status">Publiée</span></div><div class="manual-meta"><span>${esc(fdate(x.publishedAt||x.receivedAt))}</span><span>${nf(x.messageCount)} élément(s)</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div></article>`).join(''):'<div class="empty">Aucune publication manuelle envoyée pour le moment.</div>';
@@ -568,9 +571,9 @@ async function loadManual(){
 }
 function openManualEditor(item){
  manualEditingId=item.id;$('#manualEditor').classList.remove('hidden');$('#manualEditorMeta').textContent=`Reçue le ${fdate(item.receivedAt)} · ${item.messageCount} élément(s)`;
- $('#manualEditorGroup').value=item.group||'';$('#manualEditorText').value=item.text||'';$('#manualEditorText').maxLength=(item.type==='text'?4000:1024);$('#manualEditorText').focus();
+ $('#manualEditorGroup').value=item.group||'';$('#manualEditorLink').value=item.productLinks?.[0]||'';$('#manualEditorText').value=item.text||'';$('#manualEditorText').maxLength=(item.type==='text'?4000:1024);$('#manualEditorText').focus();
 }
-function closeManualEditor(){manualEditingId=null;$('#manualEditor').classList.add('hidden');$('#manualEditorGroup').value='';$('#manualEditorText').value='';}
+function closeManualEditor(){manualEditingId=null;$('#manualEditor').classList.add('hidden');$('#manualEditorGroup').value='';$('#manualEditorLink').value='';$('#manualEditorText').value='';}
 $('#manualModeSwitch').addEventListener('click',async()=>{
  const on=!Boolean(S.state?.settings?.manualPublicationMode);
  if(on&&!confirm('Activer le mode manuel ? Les prochains messages entrants seront sauvegardés puis supprimés du canal.'))return;
@@ -583,7 +586,7 @@ $('#manualEditorCancel').addEventListener('click',closeManualEditor);
 $('#manualEditorSave').addEventListener('click',async()=>{
  if(!manualEditingId)return;
  const btn=$('#manualEditorSave');btn.disabled=true;
- try{await api('/api/manual-publications/'+encodeURIComponent(manualEditingId),{method:'PUT',body:JSON.stringify({text:$('#manualEditorText').value,group:$('#manualEditorGroup').value})});toast('Modifications enregistrées.','ok');closeManualEditor();await loadManual();}
+ try{await api('/api/manual-publications/'+encodeURIComponent(manualEditingId),{method:'PUT',body:JSON.stringify({text:$('#manualEditorText').value,group:$('#manualEditorGroup').value,productLink:$('#manualEditorLink').value})});toast('Modifications enregistrées.','ok');closeManualEditor();await loadManual();}
  catch(e){toast(e.message,'bad');}finally{btn.disabled=false;}
 });
 $('#manualPendingList').addEventListener('click',async e=>{
