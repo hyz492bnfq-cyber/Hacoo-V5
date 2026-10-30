@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication } = require('../lib/manual-publication');
+const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('../lib/manual-publication');
 
 test('albums Telegram : photos/vidéos ensemble et documents homogènes seulement', () => {
   assert.equal(supportsTelegramMediaGroup([{ photo: {} }, { video: {} }]), true);
@@ -31,4 +31,9 @@ test('un échec de finalisation conserve la publication capturée', () => {
   assert.equal(item.status, 'delete_failed');
   assert.match(item.deleteError, /disque indisponible/);
   assert.equal(item.savedAt, '2026-10-30T10:00:00.000Z');
+});
+
+test('un message supprimé par le contrôle anti-doublon ne doit pas entrer dans la file manuelle', () => {
+  assert.equal(interceptedMessagesWereRemoved([{ message_id: 10 }], new Set([10])), true);
+  assert.equal(interceptedMessagesWereRemoved([{ message_id: 11 }], new Set([10])), false);
 });

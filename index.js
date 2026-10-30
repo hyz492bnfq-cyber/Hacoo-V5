@@ -28,7 +28,7 @@ const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
-const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication } = require('./lib/manual-publication');
+const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 
 let sharp;
@@ -1394,6 +1394,7 @@ function findTextDuplicate(text, groupId, messageId, photoFileId = null) {
   let bestScore = -1;
 
   for (const item of data.textSeen) {
+    if (messageId && item.messageId === messageId) continue;
     if (groupId && item.groupId === groupId) continue;
     if (hasConflictingProductCategories(text, item.original || item.key)) continue;
     if (hasConflictingProductColors(text, item.original || item.key)) continue;
@@ -1892,7 +1893,7 @@ function flushPhotoGroup() {
   if (!group.photos.length) {
     clearPersistedPhotoGroup(group);
     if (group.mode === 'manual') {
-      captureManualPublication(group.ctx, [group.anchor]).catch(noteError);
+      interceptManualPublication(group.ctx, [group.anchor]).catch(noteError);
     } else {
       enqueueProcessMessages(group.ctx, [group.anchor]);
     }
@@ -1901,7 +1902,7 @@ function flushPhotoGroup() {
 
   if (group.mode === 'manual') {
     const messages = [group.anchor, ...group.photos].sort((a, b) => a.message_id - b.message_id);
-    captureManualPublication(group.ctx, messages)
+    interceptManualPublication(group.ctx, messages)
       .then(() => clearPersistedPhotoGroup(group))
       .catch(error => {
         noteError(error);
@@ -2267,7 +2268,7 @@ function schedulePendingAlbum(groupId, album) {
     pendingAlbums.delete(groupId);
     const messages = album.messages.sort((a, b) => a.message_id - b.message_id);
     if (data.manualPublicationMode) {
-      captureManualPublication(album.ctx, messages).catch(error => {
+      interceptManualPublication(album.ctx, messages).catch(error => {
         noteError(error);
         notifyAdmin(`Interception de l'album à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
       }).finally(() => removePersistedAlbum(groupId));
@@ -2404,6 +2405,20 @@ async function captureManualPublication(ctx, messages) {
     throw error;
   }
 }
+async function interceptManualPublication(ctx, messages) {
+  const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
+  // Le mode manuel applique le même anti-doublon que le mode automatique.
+  // Un doublon certain est supprimé et ne rejoint jamais la file ; un doute
+  // reste publié dans la file pour validation humaine.
+  if (data.duplicates) {
+    await processMessages(ctx, ordered);
+    if (interceptedMessagesWereRemoved(ordered, removedIds)) {
+      return { queued: false, reason: 'duplicate_or_moderation' };
+    }
+  }
+  await captureManualPublication(ctx, ordered);
+  return { queued: true };
+}
 function safeManualId(value) {
   return String(value || '').slice(0, 500);
 }
@@ -2503,7 +2518,7 @@ function queueChannelPost(ctx) {
     const mode = data.manualPublicationMode ? 'manual' : 'automatic';
     if (observeForPhotoGroup(ctx, message, mode)) return;
     if (mode === 'manual') {
-      captureManualPublication(ctx, [message]).catch(error => {
+      interceptManualPublication(ctx, [message]).catch(error => {
         noteError(error);
         notifyAdmin(`Interception du message ${message.message_id} à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
       });
