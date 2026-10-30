@@ -16,6 +16,7 @@ const { parseChannelRegistry } = require('./lib/multichannel');
 const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
 const { cleanPresentationLine } = require('./lib/presentation-cleaner');
+const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
 const { remember: rememberMemory, list: listMemory } = require('./lib/semantic-memory');
 const { inspectCandidate, stageCandidate } = require('./lib/deployment-manager');
@@ -735,18 +736,6 @@ function stripFormattingMarkers(value) {
   return cleanPresentationLine(value);
 }
 
-function isExistingPromoLine(value) {
-  const line = String(value || '').trim();
-  if (!line) return false;
-  // On ne supprime que les lignes clairement promotionnelles. Les références,
-  // tailles, couleurs et codes produit sans contexte promotionnel sont conservés.
-  if (/(?:code\s*promo|promo(?:tionnel)?\s*code|promo\s*code|coupon|code\s*de\s*réduction|code\s*réduction|use\s*code|discount\s*code)/iu.test(line)) return true;
-  // Codes connus qui ont pu être ajoutés par d'anciens formats, avec ou sans emoji.
-  const knownCodes = ['M2REPS', 'LINKCREW10', 'REAL150', '560RIL'];
-  const normalized = line.replace(/[🎁🎟️🔥✨👉🏼⭐️:：\s]/gu, '').toUpperCase();
-  return knownCodes.some(code => normalized === code || normalized === `-${code}`);
-}
-
 function formatPostText(text) {
   if (!data.formatEnabled) return String(text || '');
   const original = String(text || '');
@@ -777,7 +766,9 @@ function formatPostText(text) {
   cleanTitle = cleanPresentationLine(cleanTitle);
   lines[titleIndex] = `${prefix}${cleanTitle}${suffix}`;
 
-  let couponInserted = false;
+  // Scanner le texte complet AVANT d'ajouter le coupon configuré : le code
+  // reçu est souvent situé après le titre et doit rester l'unique code affiché.
+  let couponInserted = hasExistingPromoLine(lines, titleIndex);
   const output = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
