@@ -2320,11 +2320,24 @@ async function captureManualPublication(ctx, messages) {
   const id = `${CHANNEL_ID}:${ordered.map(m => m.message_id).join('-')}`;
   if (data.manualPublications.some(item => item.id === id) ||
       data.manualPublicationHistory.some(item => item.id === id)) return;
+  const originalText = manualPublicationText(ordered);
+  const formattedText = formatPostText(originalText);
+  const savedMessages = clone(ordered);
+  // Le mode manuel contourne le traitement automatique : appliquer ici le
+  // même format, et supprimer les entités dont les offsets ont changé.
+  if (formattedText !== originalText && savedMessages[0]) {
+    const first = savedMessages[0];
+    if (first.text !== undefined || (!first.caption && !first.photo && !first.video && !first.document)) first.text = formattedText;
+    else first.caption = formattedText;
+    delete first.entities;
+    delete first.caption_entities;
+  }
   const item = {
     id, type: manualPublicationType(ordered),
-    messages: clone(ordered),
-    text: manualPublicationText(ordered),
-    originalText: manualPublicationText(ordered),
+    messages: savedMessages,
+    text: formattedText,
+    originalText,
+    formattedAt: formattedText !== originalText ? new Date().toISOString() : null,
     receivedAt: new Date().toISOString(),
     status: 'saving',
     edited: false,
@@ -2368,6 +2381,20 @@ function safeManualId(value) {
 async function publishManualPublication(item) {
   if (!item || item.status === 'publishing' || item.status === 'published') throw new Error('Cette publication est déjà en cours ou déjà publiée.');
   if (item.status === 'uncertain') throw new Error('Résultat incertain : vérifie d’abord le canal Telegram pour éviter un doublon.');
+  // Couvre aussi les publications qui étaient déjà dans la file avant
+  // l'ajout du formatage au moment de la capture.
+  const finalText = formatPostText(item.text || '');
+  if (finalText !== (item.text || '')) {
+    item.text = finalText;
+    item.formattedAt = new Date().toISOString();
+    const first = item.messages?.[0];
+    if (first) {
+      if (first.text !== undefined || (!first.caption && !first.photo && !first.video && !first.document)) first.text = finalText;
+      else first.caption = finalText;
+      delete first.entities;
+      delete first.caption_entities;
+    }
+  }
   item.status = 'publishing';
   item.publishStartedAt = new Date().toISOString();
   saveNow();
