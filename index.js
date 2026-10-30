@@ -55,7 +55,7 @@ const ALBUM_QUIET_MS = 5000;
 const ALBUM_MAX_WAIT_MS = 60000;
 const WINDOW_OPTIONS = [1, 5, 15, 30, 60, 180, 360];
 const RETENTION_OPTIONS = [7, 30, 90];
-const GROUP_WINDOW_MS = 20000; // durée maximale pour rattacher des photos sans texte
+const GROUP_WINDOW_MS = 90000; // contexte texte conservé au plus 90 s pour les images seules
 const GROUP_QUIET_MS = 5000;  // silence après la dernière photo avant de publier l’album
 
 if (
@@ -105,7 +105,8 @@ const DEFAULTS = {
   allowDocuments: true,
   allowText: true,
 
-  groupPhotos: false,
+  groupPhotos: true,
+  groupPhotosContextVersion: 2,
 
   formatEnabled: false,
   formatTitlePrefix: '🛍️ ',
@@ -231,6 +232,12 @@ function normalizeData(saved) {
   out.retentionDays = RETENTION_OPTIONS.includes(Number(out.retentionDays))
     ? Number(out.retentionDays) : 30;
   if (!['exact', 'similar'].includes(out.duplicateMode)) out.duplicateMode = 'similar';
+  // Migration demandée : les images seules utilisent désormais le dernier
+  // texte comme contexte pendant 90 secondes. Le réglage reste désactivable.
+  if (saved.groupPhotosContextVersion !== 2) {
+    out.groupPhotos = true;
+    out.groupPhotosContextVersion = 2;
+  }
 
   const threshold = Number(out.similarityThreshold);
   out.similarityThreshold = Number.isFinite(threshold)
@@ -1838,6 +1845,7 @@ function persistPhotoGroup(group) {
     photos: clone(group.photos || []),
     startedAt: group.startedAt,
     lastMessageAt: group.lastMessageAt,
+    mode: group.mode || 'automatic',
     attempts: Number(group.attempts || 0),
     // Durable send journal: never blindly resend a chunk whose result is ambiguous.
     sendState: group.sendState || 'collecting',
@@ -1887,7 +1895,29 @@ function flushPhotoGroup() {
 
   clearTimeout(group.timer);
 
-  if (!group.photos.length) { clearPersistedPhotoGroup(group); return; }
+  if (!group.photos.length) {
+    clearPersistedPhotoGroup(group);
+    if (group.mode === 'manual') {
+      captureManualPublication(group.ctx, [group.anchor]).catch(noteError);
+    } else {
+      enqueueProcessMessages(group.ctx, [group.anchor]);
+    }
+    return;
+  }
+
+  if (group.mode === 'manual') {
+    const messages = [group.anchor, ...group.photos].sort((a, b) => a.message_id - b.message_id);
+    captureManualPublication(group.ctx, messages)
+      .then(() => clearPersistedPhotoGroup(group))
+      .catch(error => {
+        noteError(error);
+        // Les originaux restent présents si la première sauvegarde échoue.
+        // Conserver le groupe permet une reprise après redémarrage.
+        persistPhotoGroup(group);
+        notifyAdmin(`Regroupement manuel à vérifier : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
+      });
+    return;
+  }
 
   regroupPhotos(group).catch(error => {
     noteError(error);
@@ -1917,22 +1947,25 @@ function observeEditedChannelPost(ctx) {
   persistPhotoGroup(photoGroup);
 }
 
-function observeForPhotoGroup(ctx, message) {
+function observeForPhotoGroup(ctx, message, mode = 'automatic') {
   if (!data.groupPhotos || !data.enabled || data.botPaused) {
     if (photoGroup) flushPhotoGroup();
-    return;
+    return false;
   }
 
   const isPhoto = Boolean(message.photo?.length);
   const hasText = Boolean(msgText(message).trim());
 
-  if (isPhoto && hasText && !message.media_group_id) {
+  // Tout texte (seul ou légende d'une photo) ouvre un nouveau contexte. Il
+  // clôt donc le précédent : aucune image ne traverse deux publications.
+  if (hasText && !message.media_group_id) {
     flushPhotoGroup();
 
     photoGroup = {
       ctx,
       anchor: message,
       photos: [],
+      mode,
       startedAt: Date.now(),
       lastMessageAt: Date.now(),
       timer: null
@@ -1940,7 +1973,7 @@ function observeForPhotoGroup(ctx, message) {
 
     persistPhotoGroup(photoGroup);
     schedulePhotoGroupFlush();
-    return;
+    return true;
   }
 
   if (
@@ -1954,10 +1987,11 @@ function observeForPhotoGroup(ctx, message) {
     photoGroup.lastMessageAt = Date.now();
     persistPhotoGroup(photoGroup);
     schedulePhotoGroupFlush();
-    return;
+    return true;
   }
 
   flushPhotoGroup();
+  return false;
 }
 
 async function telegramRateLimitRetry(operation, label) {
@@ -1998,18 +2032,17 @@ async function regroupPhotos(group) {
   // Si l'analyse a supprimé la publication principale, on ne touche à rien
   if (removedIds.has(anchor.message_id)) { clearPersistedPhotoGroup(group); return; }
 
-  const items = [
-    anchor,
-    ...group.photos.filter(m => !removedIds.has(m.message_id))
-  ].sort((a, b) => a.message_id - b.message_id);
+  const sourceMessages = [anchor, ...group.photos.filter(m => !removedIds.has(m.message_id))]
+    .sort((a, b) => a.message_id - b.message_id);
+  const items = sourceMessages.filter(message => Boolean(message.photo?.length));
 
-  if (items.length < 2) { clearPersistedPhotoGroup(group); return; }
+  if (!items.length) { clearPersistedPhotoGroup(group); return; }
 
-  const caption = anchor.caption || '';
+  const caption = msgText(anchor);
 
 
   let finalCaption = caption;
-  let entities = anchor.caption_entities;
+  let entities = anchor.caption_entities || anchor.entities;
 
   if (anyCleaningEnabled()) {
     finalCaption = cleanText(caption);
@@ -2093,7 +2126,7 @@ async function regroupPhotos(group) {
   let failed = 0;
   let lastError = '';
 
-  for (const message of items) {
+  for (const message of sourceMessages) {
     try {
       await ctx.api.deleteMessage(message.chat.id, message.message_id);
       rememberId(removedIds, message.message_id);
@@ -2268,6 +2301,7 @@ function restorePersistentWork() {
       messages: record.messages,
       startedAt: Number(record.startedAt) || Date.now(),
       lastMessageAt: Number(record.lastMessageAt) || Date.now(),
+      mode: record.mode || 'automatic',
       timer: null
     };
     pendingAlbums.set(record.groupId, album);
@@ -2280,6 +2314,7 @@ function restorePersistentWork() {
       photos: Array.isArray(data.pendingPhotoGroup.photos) ? data.pendingPhotoGroup.photos : [],
       startedAt: Number(data.pendingPhotoGroup.startedAt) || Date.now(),
       lastMessageAt: Number(data.pendingPhotoGroup.lastMessageAt) || Date.now(),
+      mode: data.pendingPhotoGroup.mode || 'automatic',
       attempts: Number(data.pendingPhotoGroup.attempts || 0),
       sendState: data.pendingPhotoGroup.sendState || 'collecting',
       nextChunkIndex: Number(data.pendingPhotoGroup.nextChunkIndex || 0),
@@ -2471,15 +2506,14 @@ function queueChannelPost(ctx) {
 
   const groupId = message.media_group_id;
   if (!groupId) {
-    if (data.manualPublicationMode) {
+    const mode = data.manualPublicationMode ? 'manual' : 'automatic';
+    if (observeForPhotoGroup(ctx, message, mode)) return;
+    if (mode === 'manual') {
       captureManualPublication(ctx, [message]).catch(error => {
         noteError(error);
         notifyAdmin(`Interception du message ${message.message_id} à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
       });
-      return;
-    }
-    observeForPhotoGroup(ctx, message);
-    enqueueProcessMessages(ctx, [message]);
+    } else enqueueProcessMessages(ctx, [message]);
     return;
   }
 
@@ -3661,6 +3695,7 @@ app.post('/api/retry-pending', (_req, res) => {
       photos: Array.isArray(data.pendingPhotoGroup.photos) ? data.pendingPhotoGroup.photos : [],
       startedAt: Number(data.pendingPhotoGroup.startedAt) || Date.now(),
       lastMessageAt: Number(data.pendingPhotoGroup.lastMessageAt) || Date.now(),
+      mode: data.pendingPhotoGroup.mode || 'automatic',
       attempts: Number(data.pendingPhotoGroup.attempts || 0),
       sendState: data.pendingPhotoGroup.sendState || 'collecting',
       nextChunkIndex: Number(data.pendingPhotoGroup.nextChunkIndex || 0),
@@ -3717,6 +3752,7 @@ app.post('/api/album/resolve', (req, res) => {
     photos: Array.isArray(record.photos) ? record.photos : [],
     startedAt: Number(record.startedAt) || Date.now(),
     lastMessageAt: Number(record.lastMessageAt) || Date.now(),
+    mode: record.mode || 'automatic',
     attempts: Number(record.attempts || 0),
     sendState: record.sendState,
     nextChunkIndex: Number(record.nextChunkIndex || 0),
