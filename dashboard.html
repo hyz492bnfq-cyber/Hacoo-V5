@@ -47,7 +47,7 @@ main{padding:14px 14px calc(var(--nav) + var(--safe-b) + 26px);max-width:760px;m
 .card p.small{margin-top:2px}
 
 /* Bottom nav */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);background:rgba(14,20,33,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:6px 6px calc(6px + var(--safe-b))}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(6,1fr);background:rgba(14,20,33,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:6px 6px calc(6px + var(--safe-b))}
 .tabbar button{position:relative;border:0;background:none;color:var(--muted);display:grid;justify-items:center;gap:2px;padding:6px 2px;border-radius:14px;min-height:52px;font-size:11px;font-weight:600}
 .tabbar button .ic{font-size:21px;line-height:1.1}
 .tabbar button.active{color:var(--text);background:var(--s2)}
@@ -211,6 +211,14 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 }
 @media(max-width:360px){.tiles{gap:8px}.tile{padding:12px;min-height:96px}.kpi .v{font-size:24px}.tabbar button{font-size:10px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+
+.manual-card{border:1px solid var(--line);background:var(--s1);border-radius:var(--r);padding:14px;display:grid;gap:10px}
+.manual-media{display:flex;gap:8px;flex-wrap:wrap}.manual-media img{width:112px;height:112px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.manual-card .manual-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;color:var(--text);font-size:13px}
+.manual-actions{display:flex;gap:8px;flex-wrap:wrap}
+.manual-meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.manual-status{font-size:11px;border-radius:999px;padding:4px 8px;background:var(--s3);color:var(--text)}
+.manual-status.pending{color:var(--ok)} .manual-status.failed,.manual-status.delete_failed{color:var(--danger)}
 </style>
 </head>
 <body>
@@ -283,6 +291,37 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
       <h3 style="margin-top:6px">Quotas et modèles IA</h3>
       <div id="aiEventList" class="list"></div>
     </div>
+  </section>
+
+
+  <!-- CENTRE DE PUBLICATIONS -->
+  <section class="tab" id="tab-publications" aria-label="Centre de publications">
+    <div class="sec-title"><span>Centre de publications</span><span class="badge" id="manualPendingCount">0</span></div>
+    <div class="card stack">
+      <div class="row between"><div><b>Mode publication manuelle</b><p class="small muted">Intercepte les nouveaux posts du canal, les sauvegarde puis les retire du canal.</p></div><button class="sw" id="manualModeSwitch" role="switch" aria-checked="false" type="button" aria-label="Mode publication manuelle"></button></div>
+      <p class="small muted">Un album Telegram est plusieurs photos ou vidéos envoyées en une seule fois : Hacoo attend la fin de leur arrivée, conserve leur ordre et les place comme une publication unique dans cette file.</p>
+      <div class="small muted" id="manualModeHint">Mode désactivé : le bot conserve son fonctionnement automatique habituel.</div>
+    </div>
+    <div class="row between"><h3>Publications en attente</h3><button class="btn sm" id="refreshManual" type="button">Actualiser</button></div>
+    <div class="grid kpis" style="margin-bottom:14px">
+      <div class="kpi"><span>En attente</span><b id="manualKpiPending">0</b></div>
+      <div class="kpi"><span>Publiées</span><b id="manualKpiPublished">0</b></div>
+      <div class="kpi"><span>En échec</span><b id="manualKpiFailed">0</b></div>
+    </div>
+    <div id="manualEditor" class="card stack hidden">
+      <div class="row between"><h3>Modifier la publication</h3><button class="iconbtn" id="manualEditorClose" type="button" aria-label="Fermer">✕</button></div>
+      <div class="small muted" id="manualEditorMeta"></div>
+      <label class="lb" for="manualEditorGroup">Groupe / campagne</label>
+      <input id="manualEditorGroup" maxlength="80" type="text" placeholder="Ex. Sneakers octobre (facultatif)">
+      <label class="lb" for="manualEditorText">Texte / légende / lien affilié</label>
+      <textarea id="manualEditorText" rows="9" maxlength="4000" placeholder="Texte de la publication…"></textarea>
+      <div class="row between"><button class="btn" id="manualEditorCancel" type="button">Annuler</button><button class="btn primary" id="manualEditorSave" type="button">Enregistrer les modifications</button></div>
+    </div>
+    <div id="manualPendingList" class="list"></div>
+    <div class="sec-title" style="margin-top:24px">Corbeille</div>
+    <div id="manualTrashList" class="list"></div>
+    <div class="sec-title" style="margin-top:24px">Historique des publications manuelles</div>
+    <div id="manualHistoryList" class="list"></div>
   </section>
 
   <!-- RÉGLAGES -->
@@ -433,6 +472,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 <nav class="tabbar" id="tabbar" aria-label="Navigation">
   <button class="active" data-tab="home" type="button"><span class="ic">🏠</span>Accueil<span class="badge hidden" id="badgeHome"></span></button>
   <button data-tab="orders" type="button"><span class="ic">🎯</span>Ordres<span class="badge hidden" id="badgeOrders"></span></button>
+  <button data-tab="publications" type="button"><span class="ic">📨</span>Publications</button>
   <button data-tab="activity" type="button"><span class="ic">📜</span>Activité</button>
   <button data-tab="settings" type="button"><span class="ic">⚙️</span>Réglages</button>
   <button data-tab="ai" type="button"><span class="ic">🤖</span>IA</button>
@@ -499,6 +539,89 @@ async function api(url,options={}){
  return body;
 }
 const post=(url,body={},o={})=>api(url,{method:'POST',body:JSON.stringify(body),...o});
+
+let manualItems=[],manualHistory=[],manualTrash=[],manualEditingId=null;
+const manualStatusLabel=s=>({pending:'En attente',saving:'Sauvegarde',publishing:'Publication en cours',published:'Publiée',failed:'Échec',delete_failed:'Suppression à vérifier',uncertain:'Envoi à vérifier'}[s]||s||'—');
+function renderManual(){
+ const sw=$('#manualModeSwitch');
+ if(sw){const on=Boolean(S.state?.settings?.manualPublicationMode);sw.classList.toggle('on',on);sw.setAttribute('aria-checked',String(on));}
+ $('#manualModeHint').textContent=S.state?.settings?.manualPublicationMode?'Mode actif : les nouvelles publications entrantes sont sauvegardées avant suppression du canal.':'Mode désactivé : le bot conserve son fonctionnement automatique habituel.';
+ $('#manualPendingCount').textContent=nf(manualItems.length);
+ $('#manualKpiPending').textContent=nf(manualItems.filter(x=>['pending','delete_failed','saving'].includes(x.status)).length);
+ $('#manualKpiPublished').textContent=nf(manualHistory.length);
+ $('#manualKpiFailed').textContent=nf(manualItems.filter(x=>x.status==='failed'||x.status==='delete_failed'||x.status==='uncertain').length);
+ $('#manualPendingList').innerHTML=manualItems.length?manualItems.map(x=>`<article class="manual-card" data-manual-id="${esc(x.id)}">
+  <div class="row between"><b>${esc(({album:'Album',photo:'Photo',video:'Vidéo',document:'Document',text:'Texte'}[x.type]||'Publication'))}</b><span class="manual-status ${esc(x.status)}">${esc(manualStatusLabel(x.status))}</span></div>
+  <div class="manual-meta"><span>Reçue ${esc(fdate(x.receivedAt))}</span>${x.group?`<span>Groupe : ${esc(x.group)}</span>`:''}<span>${nf(x.messageCount)} élément(s)</span><span>${nf((x.media||[]).filter(m=>m.fileId).length)} média(s)</span></div>
+  <div class="manual-media">${(x.media||[]).map((m,i)=>m.type==='photo'?`<img loading="lazy" src="/api/manual-publications/${encodeURIComponent(x.id)}/media/${i}" alt="Photo de la publication">`:``).join('')}</div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div>
+  ${x.status==='delete_failed'?'<p class="small" style="color:var(--danger)">La sauvegarde est faite, mais la suppression du message original doit être vérifiée. La publication est bloquée pour éviter un doublon.</p>':''}
+  ${x.status==='uncertain'?'<p class="small" style="color:var(--danger)">Résultat d’envoi incertain : vérifie le canal Telegram avant de choisir une action.</p>':''}
+  <div class="manual-actions"><button class="btn sm" data-manual-action="up">↑ Ordre</button><button class="btn sm" data-manual-action="down">↓ Ordre</button><button class="btn sm" data-manual-action="edit">Modifier</button><button class="btn sm" data-manual-action="preview">Aperçu</button><button class="btn sm primary" data-manual-action="publish" ${['publishing','uncertain','delete_failed'].includes(x.status)?'disabled':''}>Publier</button>${x.status==='delete_failed'?'<button class="btn sm" data-manual-action="retry-delete">Réessayer suppression</button>':''}${x.status==='uncertain'?'<button class="btn sm" data-manual-action="confirm-sent">Confirmé publié</button><button class="btn sm" data-manual-action="confirm-not-sent">Non publié : réactiver</button>':''}<button class="btn sm danger" data-manual-action="delete">Corbeille</button></div>
+ </article>`).join(''):'<div class="empty">Aucune publication en attente. Active le mode manuel pour intercepter les prochaines publications.</div>';
+ $('#manualTrashList').innerHTML=manualTrash.length?manualTrash.map(x=>`<article class="manual-card"><div class="row between"><b>${esc(x.group||'Publication supprimée')}</b><span class="manual-status">Corbeille</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div><div class="manual-actions"><button class="btn sm" data-manual-restore="${esc(x.id)}">Restaurer dans la file</button></div></article>`).join(''):'<div class="empty">La corbeille est vide.</div>';
+ $('#manualHistoryList').innerHTML=manualHistory.length?manualHistory.map(x=>`<article class="manual-card"><div class="row between"><b>Publication envoyée</b><span class="manual-status">Publiée</span></div><div class="manual-meta"><span>${esc(fdate(x.publishedAt||x.receivedAt))}</span><span>${nf(x.messageCount)} élément(s)</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div></article>`).join(''):'<div class="empty">Aucune publication manuelle envoyée pour le moment.</div>';
+}
+async function loadManual(){
+ try{const r=await api('/api/manual-publications');manualItems=r.pending||[];manualHistory=r.history||[];manualTrash=r.trash||[];renderManual();}
+ catch(e){$('#manualPendingList').innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
+}
+function openManualEditor(item){
+ manualEditingId=item.id;$('#manualEditor').classList.remove('hidden');$('#manualEditorMeta').textContent=`Reçue le ${fdate(item.receivedAt)} · ${item.messageCount} élément(s)`;
+ $('#manualEditorGroup').value=item.group||'';$('#manualEditorText').value=item.text||'';$('#manualEditorText').maxLength=(item.type==='text'?4000:1024);$('#manualEditorText').focus();
+}
+function closeManualEditor(){manualEditingId=null;$('#manualEditor').classList.add('hidden');$('#manualEditorGroup').value='';$('#manualEditorText').value='';}
+$('#manualModeSwitch').addEventListener('click',async()=>{
+ const on=!Boolean(S.state?.settings?.manualPublicationMode);
+ if(on&&!confirm('Activer le mode manuel ? Les prochains messages entrants seront sauvegardés puis supprimés du canal.'))return;
+ try{await post('/api/settings',{manualPublicationMode:on});toast(on?'Mode publication manuelle activé.':'Mode publication manuelle désactivé.','ok');await loadCore();await loadManual();}
+ catch(e){toast(e.message,'bad');}
+});
+$('#refreshManual').addEventListener('click',loadManual);
+$('#manualEditorClose').addEventListener('click',closeManualEditor);
+$('#manualEditorCancel').addEventListener('click',closeManualEditor);
+$('#manualEditorSave').addEventListener('click',async()=>{
+ if(!manualEditingId)return;
+ const btn=$('#manualEditorSave');btn.disabled=true;
+ try{await api('/api/manual-publications/'+encodeURIComponent(manualEditingId),{method:'PUT',body:JSON.stringify({text:$('#manualEditorText').value,group:$('#manualEditorGroup').value})});toast('Modifications enregistrées.','ok');closeManualEditor();await loadManual();}
+ catch(e){toast(e.message,'bad');}finally{btn.disabled=false;}
+});
+$('#manualPendingList').addEventListener('click',async e=>{
+ const btn=e.target.closest('[data-manual-action]');if(!btn)return;
+ const card=btn.closest('[data-manual-id]'),id=card?.dataset.manualId,item=manualItems.find(x=>x.id===id);if(!item)return;
+ const action=btn.dataset.manualAction;
+ if(action==='up'||action==='down'){
+  btn.disabled=true;try{await post('/api/manual-publications/'+encodeURIComponent(id)+'/move',{direction:action});await loadManual();}
+  catch(err){toast(err.message,'bad');}return;
+ }
+ if(action==='edit'){openManualEditor(item);return;}
+ if(action==='preview'){openSheet('Aperçu de la publication',`<div class="stack"><div class="small muted">${esc(fdate(item.receivedAt))} · ${esc(item.type)}</div><div class="manual-text">${esc(item.text||'Publication sans texte')}</div><p class="small muted">${nf((item.media||[]).filter(m=>m.fileId).length)} média(s) conservé(s). L’aperçu média complet dépend du type de fichier Telegram.</p></div>`);return;}
+ if(action==='retry-delete'){
+  btn.disabled=true;try{await post('/api/manual-publications/'+encodeURIComponent(id)+'/retry-delete');toast('Suppression confirmée. Publication prête.','ok');await loadManual();}
+  catch(err){toast(err.message,'bad');await loadManual();}return;
+ }
+ if(action==='confirm-sent'||action==='confirm-not-sent'){
+  const sent=action==='confirm-sent';
+  if(!confirm(sent?'Confirme seulement après avoir vérifié que cette publication est bien sur le canal.':'Confirme seulement après avoir vérifié que cette publication n’est pas sur le canal.'))return;
+  btn.disabled=true;try{const r=await post('/api/manual-publications/'+encodeURIComponent(id)+'/resolve',{action:sent?'confirm_sent':'confirm_not_sent'});toast(r.message,'ok');await loadManual();}
+  catch(err){toast(err.message,'bad');await loadManual();}return;
+ }
+ if(action==='publish'){
+  if(!confirm('Publier cette version sur le canal Telegram ?'))return;
+  btn.disabled=true;try{await post('/api/manual-publications/'+encodeURIComponent(id)+'/publish');toast('Publication envoyée.','ok');closeManualEditor();await loadManual();await loadCore();}
+  catch(err){toast(err.message,'bad');await loadManual();}return;
+ }
+ if(action==='delete'){
+  if(!confirm('Supprimer définitivement cette publication de la file d’attente ?'))return;
+  btn.disabled=true;try{await api('/api/manual-publications/'+encodeURIComponent(id),{method:'DELETE'});toast('Publication retirée de la file.','ok');await loadManual();}
+  catch(err){toast(err.message,'bad');}
+ }
+});
+$('#manualTrashList').addEventListener('click',async e=>{
+ const btn=e.target.closest('[data-manual-restore]');if(!btn)return;
+ btn.disabled=true;try{await post('/api/manual-publications/trash/'+encodeURIComponent(btn.dataset.manualRestore)+'/restore');toast('Publication restaurée dans la file.','ok');await loadManual();}
+ catch(err){toast(err.message,'bad');}
+});
+
 
 /* ============ UI : toast, feuille, confirmation ============ */
 let toastTimer;
@@ -1174,6 +1297,7 @@ function showTab(name){
  window.scrollTo({top:0});
  if(name==='ai'&&!S.loadedAI)loadAI();else if(name==='ai')loadAI();
  if(name==='orders'&&!S.loadedAI)loadAI();
+ if(name==='publications')loadManual();
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
 $('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.loadedAI)loadAI();});
@@ -1181,8 +1305,8 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCore()
 setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadCore();},30000);
 renderOrderLog();
 const first=(location.hash||'').slice(1);
-if(['home','orders','activity','settings','ai'].includes(first))showTab(first);
-loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();});
+if(['home','orders','activity','settings','ai','publications'].includes(first))showTab(first);
+loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();});
 </script>
 </body>
 </html>

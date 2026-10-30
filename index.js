@@ -26,6 +26,7 @@ const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
+const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication } = require('./lib/manual-publication');
 
 let sharp;
 try {
@@ -48,8 +49,10 @@ const GEMINI_FALLBACK_MODELS = String(process.env.GEMINI_FALLBACK_MODELS || 'gem
 const GEMINI_TIMEOUT_MS = 12000;
 
 const MAX_HISTORY = 3000;
-const ALBUM_WAIT_MS = 2500;
-const ALBUM_MAX_WAIT_MS = 25000;
+// Telegram livre normalement les morceaux d'un album ensemble, mais un délai
+// réseau peut les espacer. On attend la fin réelle de l'arrivée avant action.
+const ALBUM_QUIET_MS = 5000;
+const ALBUM_MAX_WAIT_MS = 60000;
 const WINDOW_OPTIONS = [1, 5, 15, 30, 60, 180, 360];
 const RETENTION_OPTIONS = [7, 30, 90];
 const GROUP_WINDOW_MS = 20000; // durée maximale pour rattacher des photos sans texte
@@ -70,6 +73,10 @@ if (
 const DEFAULTS = {
   enabled: true,
   botPaused: false,
+  manualPublicationMode: false,
+  manualPublications: [],
+  manualPublicationHistory: [],
+  manualPublicationTrash: [],
 
   hashtags: false,
   dashLines: false,
@@ -197,7 +204,7 @@ function normalizeData(saved) {
     'bannedWords', 'blockedPhrases', 'blockedDomains', 'allowedDomains', 'textReplacements',
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
-    'processedMessageIds', 'ownMessageIds', 'aiEvents'
+    'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
@@ -2222,14 +2229,25 @@ function removePersistedAlbum(groupId) {
 
 function schedulePendingAlbum(groupId, album) {
   clearTimeout(album.timer);
-  const elapsed = Date.now() - album.startedAt;
-  const remainingMaxWait = Math.max(0, ALBUM_MAX_WAIT_MS - elapsed);
-  const wait = Math.min(ALBUM_WAIT_MS, remainingMaxWait);
+  const wait = nextAlbumWaitMs({
+    startedAt: album.startedAt,
+    lastMessageAt: album.lastMessageAt,
+    quietMs: ALBUM_QUIET_MS,
+    maxWaitMs: ALBUM_MAX_WAIT_MS
+  });
   album.timer = setTimeout(() => {
     if (pendingAlbums.get(groupId) !== album) return;
     pendingAlbums.delete(groupId);
-    enqueueProcessMessages(album.ctx, album.messages.sort((a, b) => a.message_id - b.message_id));
-    removePersistedAlbum(groupId);
+    const messages = album.messages.sort((a, b) => a.message_id - b.message_id);
+    if (data.manualPublicationMode) {
+      captureManualPublication(album.ctx, messages).catch(error => {
+        noteError(error);
+        notifyAdmin(`Interception de l'album à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
+      }).finally(() => removePersistedAlbum(groupId));
+    } else {
+      enqueueProcessMessages(album.ctx, messages);
+      removePersistedAlbum(groupId);
+    }
   }, wait);
 }
 
@@ -2274,6 +2292,150 @@ function restorePersistentWork() {
   }
 }
 
+
+function manualPublicationType(messages) {
+  if (messages.length > 1) return 'album';
+  return msgMediaType(messages[0] || {});
+}
+function manualPublicationText(messages) {
+  return messages.map(message => message.text || message.caption || '').filter(Boolean).join('\n');
+}
+function manualPublicationSummary(item) {
+  return {
+    id: item.id, type: item.type, text: item.text || '',
+    receivedAt: item.receivedAt, status: item.status,
+    group: item.group || '',
+    messageCount: item.messages?.length || 0,
+    media: (item.messages || []).map(message => ({
+      type: msgMediaType(message),
+      fileId: message.photo?.at(-1)?.file_id || message.video?.file_id || message.document?.file_id || message.animation?.file_id || message.audio?.file_id || null
+    }))
+  };
+}
+function recoverManualPublications() {
+  return recoverInterruptedPublications(data.manualPublications);
+}
+async function captureManualPublication(ctx, messages) {
+  const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
+  const id = `${CHANNEL_ID}:${ordered.map(m => m.message_id).join('-')}`;
+  if (data.manualPublications.some(item => item.id === id) ||
+      data.manualPublicationHistory.some(item => item.id === id)) return;
+  const item = {
+    id, type: manualPublicationType(ordered),
+    messages: clone(ordered),
+    text: manualPublicationText(ordered),
+    originalText: manualPublicationText(ordered),
+    receivedAt: new Date().toISOString(),
+    status: 'saving',
+    edited: false,
+    edits: [],
+    sourceMessageIds: ordered.map(m => m.message_id)
+  };
+  // Sauvegarde durable AVANT toute suppression du canal.
+  data.manualPublications.push(item);
+  saveNow();
+  try {
+    const failed = [];
+    for (const message of ordered) {
+      try {
+        await ctx.api.deleteMessage(message.chat.id, message.message_id);
+        rememberId(removedIds, message.message_id);
+      } catch (error) {
+        const description = String(error?.description || error?.message || error).slice(0, 300);
+        if (/message to delete not found|message_id_invalid|message not found/i.test(description)) {
+          rememberId(removedIds, message.message_id);
+        } else failed.push(description);
+      }
+    }
+    item.status = failed.length ? 'delete_failed' : 'pending';
+    item.deleteError = failed[0] || null;
+    item.savedAt = new Date().toISOString();
+    saveNow();
+    if (failed.length) {
+      notifyAdmin(`Publication sauvegardée dans le Centre de publications, mais sa suppression du canal a échoué. ID : ${id}. ${failed[0]}`).catch(() => {});
+    }
+  } catch (error) {
+    // La première sauvegarde a déjà réussi avant toute suppression Telegram.
+    // Conserver la publication même si la finalisation échoue évite toute perte.
+    preserveCapturedPublication(item, error);
+    try { saveNow(); } catch {}
+    throw error;
+  }
+}
+function safeManualId(value) {
+  return String(value || '').slice(0, 500);
+}
+async function publishManualPublication(item) {
+  if (!item || item.status === 'publishing' || item.status === 'published') throw new Error('Cette publication est déjà en cours ou déjà publiée.');
+  if (item.status === 'uncertain') throw new Error('Résultat incertain : vérifie d’abord le canal Telegram pour éviter un doublon.');
+  item.status = 'publishing';
+  item.publishStartedAt = new Date().toISOString();
+  saveNow();
+  const messages = [...(item.messages || [])].sort((a, b) => a.message_id - b.message_id);
+  try {
+    const sentIds = [];
+    if (supportsTelegramMediaGroup(messages)) {
+      const media = messages.map((m, index) => {
+        const entry = m.photo ? { type: 'photo', media: m.photo.at(-1).file_id }
+          : m.video ? { type: 'video', media: m.video.file_id }
+          : { type: 'document', media: m.document.file_id };
+        if (index === 0) {
+          entry.caption = item.text || '';
+          if (m.caption_entities?.length) entry.caption_entities = m.caption_entities;
+        } else if (m.caption) {
+          entry.caption = m.caption;
+          if (m.caption_entities?.length) entry.caption_entities = m.caption_entities;
+        }
+        return entry;
+      });
+      for (let offset = 0; offset < media.length; offset += 10) {
+        const result = await bot.api.sendMediaGroup(CHANNEL_ID, media.slice(offset, offset + 10));
+        for (const sent of result || []) if (sent?.message_id) {
+          sentIds.push(sent.message_id); rememberOwnMessageId(sent.message_id);
+        }
+      }
+    } else {
+      for (let index = 0; index < messages.length; index++) {
+        const m = messages[index];
+        const caption = index === 0 ? (item.text || '') : (m.caption || '');
+        let sent;
+        if (m.photo) sent = await bot.api.sendPhoto(CHANNEL_ID, m.photo.at(-1).file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
+        else if (m.video) sent = await bot.api.sendVideo(CHANNEL_ID, m.video.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
+        else if (m.document) sent = await bot.api.sendDocument(CHANNEL_ID, m.document.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
+        else if (m.animation) sent = await bot.api.sendAnimation(CHANNEL_ID, m.animation.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
+        else if (m.audio) sent = await bot.api.sendAudio(CHANNEL_ID, m.audio.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
+        else if (m.voice) sent = await bot.api.sendVoice(CHANNEL_ID, m.voice.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
+        else if (m.sticker) sent = await bot.api.sendSticker(CHANNEL_ID, m.sticker.file_id);
+        else if (index === 0) sent = await bot.api.sendMessage(CHANNEL_ID, item.text || '', { entities: m.entities || undefined, link_preview_options: { is_disabled: false } });
+        if (sent?.message_id) { sentIds.push(sent.message_id); rememberOwnMessageId(sent.message_id); }
+      }
+    }
+    item.status = 'published';
+    item.publishedAt = new Date().toISOString();
+    item.sentMessageIds = sentIds;
+    item.lastError = null;
+    data.manualPublications = data.manualPublications.filter(entry => entry.id !== item.id);
+    data.manualPublicationHistory.push(item);
+    data.manualPublicationHistory = data.manualPublicationHistory.slice(-MAX_HISTORY);
+    recordHistory({ action: 'manual_published', reason: 'Publication envoyée manuellement depuis le Centre de publications', messageId: item.sourceMessageIds?.[0], text: String(item.text || '').slice(0, 300) });
+    saveNow();
+    return item;
+  } catch (error) {
+    const code = Number(error?.error_code || error?.status || 0);
+    const description = String(error?.description || error?.message || error).slice(0, 400);
+    // Un échec réseau/serveur peut arriver après acceptation par Telegram :
+    // interdire un renvoi aveugle pour éviter une double publication.
+    item.status = code === 400 || code === 429 ? 'failed' : 'uncertain';
+    item.lastError = description;
+    item.publishUncertainAt = item.status === 'uncertain' ? new Date().toISOString() : null;
+    saveNow();
+    if (item.status === 'uncertain') {
+      notifyAdmin(`Résultat de publication incertain pour ${item.id}. Vérifie le canal avant toute nouvelle action. Aucun renvoi automatique n'a été effectué.`).catch(() => {});
+    }
+    throw error;
+  }
+}
+
 function queueChannelPost(ctx) {
   const message = ctx.channelPost;
   if (!message || String(message.chat.id) !== CHANNEL_ID) return;
@@ -2282,6 +2444,13 @@ function queueChannelPost(ctx) {
 
   const groupId = message.media_group_id;
   if (!groupId) {
+    if (data.manualPublicationMode) {
+      captureManualPublication(ctx, [message]).catch(error => {
+        noteError(error);
+        notifyAdmin(`Interception du message ${message.message_id} à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
+      });
+      return;
+    }
     observeForPhotoGroup(ctx, message);
     enqueueProcessMessages(ctx, [message]);
     return;
@@ -2986,6 +3155,165 @@ app.post('/api/assistant/apply', (req, res) => {
   res.json({ ok: true, settings: Object.fromEntries(allowed.map(key => [key, data[key]])) });
 });
 
+
+app.get('/api/manual-publications', (_req, res) => {
+  res.json({
+    enabled: Boolean(data.manualPublicationMode),
+    pending: (data.manualPublications || []).map(manualPublicationSummary),
+    history: (data.manualPublicationHistory || []).slice(-200).reverse().map(manualPublicationSummary),
+    trash: (data.manualPublicationTrash || []).slice(-200).reverse().map(manualPublicationSummary)
+  });
+});
+
+app.get('/api/manual-publications/:id/media/:index', async (req, res) => {
+  const item = data.manualPublications.find(entry => entry.id === safeManualId(req.params.id));
+  if (!item) return res.status(404).end();
+  const index = Number(req.params.index);
+  const message = Number.isInteger(index) && index >= 0 ? item.messages?.[index] : null;
+  const photo = message?.photo?.at(-1);
+  if (!photo?.file_id) return res.status(404).end();
+  try {
+    const file = await bot.api.getFile(photo.file_id);
+    if (!file.file_path) return res.status(404).end();
+    const response = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`);
+    if (!response.ok) return res.status(502).end();
+    const contentType = String(response.headers.get('content-type') || 'image/jpeg').split(';')[0];
+    if (!contentType.startsWith('image/')) return res.status(415).end();
+    const buffer = await readResponseLimited(response, 10 * 1024 * 1024);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(buffer);
+  } catch (error) {
+    res.status(502).json({ error: 'Impossible de charger cet aperçu média.' });
+  }
+});
+app.put('/api/manual-publications/:id', (req, res) => {
+  const id = safeManualId(req.params.id);
+  const item = data.manualPublications.find(entry => entry.id === id);
+  if (!item) return res.status(404).json({ error: 'Publication introuvable ou déjà publiée.' });
+  if (['publishing', 'published'].includes(item.status)) return res.status(409).json({ error: 'Cette publication ne peut plus être modifiée dans son état actuel.' });
+  if (typeof req.body?.text !== 'string' || req.body.text.length > 4000) return res.status(400).json({ error: 'Texte invalide (4 000 caractères maximum).' });
+  const oldText = item.text || '';
+  const nextText = req.body.text.replace(/\u0000/g, '');
+  if (req.body.group !== undefined && typeof req.body.group !== 'string') return res.status(400).json({ error: 'Groupe invalide.' });
+  const firstMessage = item.messages?.[0];
+  const isCaption = Boolean(firstMessage && (firstMessage.photo || firstMessage.video || firstMessage.document || firstMessage.animation || firstMessage.audio || firstMessage.voice));
+  if (isCaption && nextText.length > 1024) return res.status(400).json({ error: 'La légende Telegram est limitée à 1 024 caractères.' });
+  if (oldText !== nextText) {
+    item.edits = Array.isArray(item.edits) ? item.edits : [];
+    item.edits.push({ at: new Date().toISOString(), oldText, newText: nextText });
+    item.edits = item.edits.slice(-50);
+    item.text = nextText;
+  if (typeof req.body.group === 'string') item.group = req.body.group.replace(/\u0000/g, '').trim().slice(0, 80);
+    item.edited = true;
+    // Met à jour le texte/caption sur le premier message tout en gardant le payload média.
+    const first = item.messages?.[0];
+    if (first) {
+      if (first.text !== undefined || (!first.caption && !first.photo && !first.video && !first.document)) first.text = nextText;
+      else first.caption = nextText;
+      // Les offsets d'entités peuvent devenir invalides après édition du texte.
+      delete first.entities;
+      delete first.caption_entities;
+    }
+  }
+  item.updatedAt = new Date().toISOString();
+  saveNow();
+  res.json({ ok: true, publication: manualPublicationSummary(item) });
+});
+app.post('/api/manual-publications/:id/move', (req, res) => {
+  const index = data.manualPublications.findIndex(entry => entry.id === safeManualId(req.params.id));
+  if (index < 0) return res.status(404).json({ error: 'Publication introuvable.' });
+  const direction = String(req.body?.direction || '');
+  const target = direction === 'up' ? index - 1 : direction === 'down' ? index + 1 : -1;
+  if (target < 0 || target >= data.manualPublications.length) return res.status(409).json({ error: 'Cette publication est déjà à cette position.' });
+  [data.manualPublications[index], data.manualPublications[target]] = [data.manualPublications[target], data.manualPublications[index]];
+  saveNow();
+  res.json({ ok: true });
+});
+
+app.post('/api/manual-publications/:id/retry-delete', async (req, res) => {
+  const item = data.manualPublications.find(entry => entry.id === safeManualId(req.params.id));
+  if (!item) return res.status(404).json({ error: 'Publication introuvable.' });
+  const errors = [];
+  for (const message of item.messages || []) {
+    try {
+      await bot.api.deleteMessage(message.chat.id, message.message_id);
+      rememberId(removedIds, message.message_id);
+    } catch (error) {
+      const description = String(error?.description || error?.message || error);
+      if (/message to delete not found|message_id_invalid|message not found/i.test(description)) {
+        rememberId(removedIds, message.message_id);
+      } else errors.push(description.slice(0, 250));
+    }
+  }
+  item.status = errors.length ? 'delete_failed' : 'pending';
+  item.deleteError = errors[0] || null;
+  item.deleteRetriedAt = new Date().toISOString();
+  saveNow();
+  res.status(errors.length ? 409 : 200).json({ ok: !errors.length, error: errors[0] || null });
+});
+app.post('/api/manual-publications/:id/publish', async (req, res) => {
+  const item = data.manualPublications.find(entry => entry.id === safeManualId(req.params.id));
+  if (!item) return res.status(404).json({ error: 'Publication introuvable.' });
+  try {
+    await publishManualPublication(item);
+    res.json({ ok: true, message: 'Publication envoyée.', publication: manualPublicationSummary(item) });
+  } catch (error) {
+    res.status(409).json({ error: String(error?.message || error).slice(0, 400), status: item.status });
+  }
+});
+app.post('/api/manual-publications/:id/resolve', (req, res) => {
+  const item = data.manualPublications.find(entry => entry.id === safeManualId(req.params.id));
+  if (!item) return res.status(404).json({ error: 'Publication introuvable.' });
+  if (item.status !== 'uncertain') return res.status(409).json({ error: 'Cette publication ne nécessite pas de vérification manuelle.' });
+  const action = String(req.body?.action || '');
+  if (action === 'confirm_not_sent') {
+    item.status = 'pending';
+    item.resolvedAt = new Date().toISOString();
+    item.lastError = null;
+    saveNow();
+    return res.json({ ok: true, message: 'Absence d’envoi confirmée : la publication peut être renvoyée manuellement.' });
+  }
+  if (action === 'confirm_sent') {
+    item.status = 'published';
+    item.publishedAt = new Date().toISOString();
+    item.resolvedAt = item.publishedAt;
+    data.manualPublications = data.manualPublications.filter(entry => entry.id !== item.id);
+    data.manualPublicationHistory.push(item);
+    data.manualPublicationHistory = data.manualPublicationHistory.slice(-MAX_HISTORY);
+    recordHistory({ action: 'manual_publish_confirmed', reason: 'Publication confirmée manuellement après résultat incertain', messageId: item.sourceMessageIds?.[0], text: String(item.text || '').slice(0, 300) });
+    saveNow();
+    return res.json({ ok: true, message: 'Publication marquée comme envoyée après vérification manuelle.' });
+  }
+  return res.status(400).json({ error: 'Action de vérification invalide.' });
+});
+app.delete('/api/manual-publications/:id', (req, res) => {
+  const id = safeManualId(req.params.id);
+  const index = data.manualPublications.findIndex(entry => entry.id === id);
+  if (index < 0) return res.status(404).json({ error: 'Publication introuvable.' });
+  if (data.manualPublications[index].status === 'publishing') return res.status(409).json({ error: 'Publication en cours d’envoi.' });
+  const [item] = data.manualPublications.splice(index, 1);
+  item.previousStatus = item.status;
+  item.status = 'trashed';
+  item.trashedAt = new Date().toISOString();
+  data.manualPublicationTrash.push(item);
+  data.manualPublicationTrash = data.manualPublicationTrash.slice(-MAX_HISTORY);
+  saveNow();
+  res.json({ ok: true });
+});
+app.post('/api/manual-publications/trash/:id/restore', (req, res) => {
+  const index = data.manualPublicationTrash.findIndex(entry => entry.id === safeManualId(req.params.id));
+  if (index < 0) return res.status(404).json({ error: 'Publication introuvable dans la corbeille.' });
+  const [item] = data.manualPublicationTrash.splice(index, 1);
+  item.status = item.previousStatus || 'pending';
+  delete item.previousStatus;
+  item.restoredAt = new Date().toISOString();
+  data.manualPublications.push(item);
+  saveNow();
+  res.json({ ok: true });
+});
+
 app.get('/api/state', (_req, res) => {
   trimHistory();
 
@@ -3003,7 +3331,10 @@ app.get('/api/state', (_req, res) => {
       pendingAlbums: undefined,
       pendingPhotoGroup: undefined,
       processedMessageIds: undefined,
-      ownMessageIds: undefined
+      ownMessageIds: undefined,
+      manualPublications: undefined,
+      manualPublicationHistory: undefined,
+      manualPublicationTrash: undefined
     },
 
     runtime: {
@@ -3027,7 +3358,10 @@ app.get('/api/state', (_req, res) => {
       geminiModel: GEMINI_MODEL,
       geminiModels: geminiModelsInPriorityOrder().map(model => ({ model, ...(data.geminiModelState[model] || {}) })),
       aiEvents: (data.aiEvents || []).slice(-100).reverse(),
-      channelId: CHANNEL_ID
+      channelId: CHANNEL_ID,
+      manualPublicationMode: Boolean(data.manualPublicationMode),
+      manualPending: (data.manualPublications || []).length,
+      manualPublished: (data.manualPublicationHistory || []).length
     },
 
     history: data.deletions
@@ -3055,6 +3389,7 @@ app.get('/api/state', (_req, res) => {
 app.post('/api/settings', (req, res) => {
   const allowedBooleans = [
     'enabled',
+    'manualPublicationMode',
     'hashtags',
     'dashLines',
     'blockLinks',
@@ -3458,7 +3793,9 @@ const httpServer = app.listen(PORT, () => {
 
 (async () => {
   const uncertainSchedules = recoverSendingSchedules(__dirname);
+  const uncertainManualPublications = recoverManualPublications();
   if (uncertainSchedules) appendAudit(__dirname, { type: 'schedule_recovery', message: 'Des publications en cours avant arrêt sont passées en vérification manuelle.', details: { count: uncertainSchedules } });
+  if (uncertainManualPublications) appendAudit(__dirname, { type: 'manual_publication_recovery', message: 'Des publications manuelles interrompues sont passées en vérification manuelle.', details: { count: uncertainManualPublications } });
   pollingStartedAt = new Date().toISOString();
 
   data.stats.startedAt =

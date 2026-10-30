@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && for f in lib/*.js scripts/*.js; do node --check \"$f\" || exit 1; done && node scripts/check-dashboard.js && node scripts/check-config.js",
+    "check": "node scripts/check-all.js",
     "test": "node --test",
     "check:dashboard": "node scripts/check-dashboard.js",
     "check:config": "node scripts/check-config.js"
