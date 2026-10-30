@@ -12,3 +12,7 @@ test('retire les anciennes décorations en bordure avant de reformater', () => {
 test('préserve un emoji informatif au milieu du texte', () => {
   assert.equal(cleanPresentationLine('Veste avec logo ⭐ discret', { edgesOnly: true }), 'Veste avec logo ⭐ discret');
 });
+
+test('le nettoyage de présentation ne retire jamais une URL', () => {
+  assert.equal(cleanPresentationLine('🔥 https://example.test/produit ✨'), 'https://example.test/produit');
+});

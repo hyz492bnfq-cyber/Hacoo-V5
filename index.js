@@ -783,13 +783,12 @@ function formatPostText(text) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Supprime/remplace toutes les anciennes lignes promo, mais garde le code
-    // produit et les autres détails qui ne sont pas explicitement promotionnels.
+    // Conserver le code promo reçu : le format ne doit pas remplacer une offre
+    // existante par le code configuré. On nettoie seulement ses décorations.
     if (isExistingPromoLine(trimmed)) {
-      if (couponLine && !couponInserted) {
-        output.push(couponLine);
-        couponInserted = true;
-      }
+      const preservedCoupon = cleanPresentationLine(line, { edgesOnly: true });
+      if (preservedCoupon) output.push(preservedCoupon);
+      couponInserted = true;
       continue;
     }
 
@@ -802,7 +801,9 @@ function formatPostText(text) {
       continue;
     }
 
-    // Les liens gardent leur URL et reçoivent un seul préfixe de présentation.
+    // Un lien est toujours conservé par le formateur : seul son préfixe
+    // décoratif est remplacé. Son retrait relève uniquement du réglage séparé
+    // « Supprimer les liens ».
     const cleanLinkLine = cleanPresentationLine(trimmed);
     if (/^(?:https?:\/\/|www\.)\S+/iu.test(cleanLinkLine) && linkPrefix) {
       output.push(linkPrefix + cleanLinkLine);
