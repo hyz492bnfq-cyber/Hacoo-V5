@@ -15,6 +15,7 @@ const { autonomousReleaseStatus, deployAutonomousCandidate } = require('./lib/au
 const { parseChannelRegistry } = require('./lib/multichannel');
 const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
+const { cleanPresentationLine } = require('./lib/presentation-cleaner');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
 const { remember: rememberMemory, list: listMemory } = require('./lib/semantic-memory');
 const { inspectCandidate, stageCandidate } = require('./lib/deployment-manager');
@@ -731,12 +732,7 @@ function cleanText(text) {
 }
 
 function stripFormattingMarkers(value) {
-  // Retire uniquement les marqueurs de présentation utilisés par le format.
-  // Les emojis informatifs et le contenu des autres lignes ne sont pas touchés.
-  return String(value || '')
-    .replace(/(?:🛍️?|🤩|‼️?|🔥|🎟️?|🎁|🔗|👉🏼?|🚨|⭐️?)/gu, '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
+  return cleanPresentationLine(value);
 }
 
 function isExistingPromoLine(value) {
@@ -778,10 +774,7 @@ function formatPostText(text) {
   }
   // Retire aussi les anciens emojis décoratifs inconnus en bordure du titre
   // (ex. 😍 ou ✨), sans toucher aux emojis situés au milieu du nom.
-  cleanTitle = cleanTitle
-    .replace(/^(?:[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\u{1F3FB}-\u{1F3FF}]+\s*)+/u, '')
-    .replace(/(?:\s*[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D\u{1F3FB}-\u{1F3FF}]+)+$/u, '');
-  cleanTitle = stripFormattingMarkers(cleanTitle);
+  cleanTitle = cleanPresentationLine(cleanTitle);
   lines[titleIndex] = `${prefix}${cleanTitle}${suffix}`;
 
   let couponInserted = false;
@@ -810,11 +803,12 @@ function formatPostText(text) {
     }
 
     // Les liens gardent leur URL et reçoivent un seul préfixe de présentation.
-    const cleanLinkLine = stripFormattingMarkers(trimmed);
+    const cleanLinkLine = cleanPresentationLine(trimmed);
     if (/^(?:https?:\/\/|www\.)\S+/iu.test(cleanLinkLine) && linkPrefix) {
       output.push(linkPrefix + cleanLinkLine);
     } else {
-      output.push(line);
+      const cleanBodyLine = cleanPresentationLine(line, { edgesOnly: true });
+      if (cleanBodyLine) output.push(cleanBodyLine);
     }
   }
   return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
