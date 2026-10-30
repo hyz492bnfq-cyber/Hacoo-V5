@@ -27,6 +27,7 @@ const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication } = require('./lib/manual-publication');
+const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 
 let sharp;
 try {
@@ -948,24 +949,16 @@ async function imageHash(ctx, message) {
   }
 }
 
-function hashDistance(a, b) {
-  if (!a || !b || a.length !== b.length) return 999;
-
-  let distance = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) distance++;
-  }
-
-  return distance;
-}
-
-function colorSimilarity(a, b) {
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== 24 || b.length !== 24) return null;
-  let distance = 0;
-  for (let i = 0; i < 24; i++) distance += Math.abs(Number(a[i]) - Number(b[i]));
-  // Chaque canal est un histogramme normalisé (somme 1), distance L1 max = 6.
-  return Math.max(0, Math.min(1, 1 - distance / 6));
+function visualEvidenceForDuplicate(messages, candidate) {
+  const currentIds = new Set((messages || []).map(message => message.message_id));
+  const current = (data.imageHashes || []).filter(item => currentIds.has(item.messageId));
+  // Sans photo dans la publication actuelle, le contrôle visuel ne s'applique pas.
+  if (!current.length) return { strong: true, reason: 'Publication sans photo' };
+  const previous = (data.imageHashes || []).filter(item =>
+    (candidate?.messageId != null && item.messageId === candidate.messageId) ||
+    (candidate?.photoFileId && item.fileId === candidate.photoFileId)
+  );
+  return strongVisualDuplicateEvidence(current, previous);
 }
 
 function extractProductUrls(value = '') {
@@ -1749,6 +1742,21 @@ async function processMessages(ctx, messages) {
         messageId: first.message_id, groupId, confidence: Number(data.similarityThreshold),
         aiReason: result.reviewCandidate.reason
       });
+    }
+
+    if (match) {
+      const visual = visualEvidenceForDuplicate(messages, match);
+      if (!visual.strong) {
+        if (data.logHistory) addDuplicate({
+          reason: 'Candidat de doublon conservé : les photos ne prouvent pas le même article/couleur',
+          type: 'Candidat texte ou IA', action: 'review',
+          originalText: match.text || '', duplicateText: text.slice(0, 500),
+          originalMessageId: match.messageId || null, messageId: first.message_id,
+          groupId, confidence: result.confidence || 0, aiReason: visual.reason
+        });
+        console.log(`Publication conservée : ${visual.reason}`);
+        match = null;
+      }
     }
 
     if (match) {
