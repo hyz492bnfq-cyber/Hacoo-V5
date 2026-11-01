@@ -580,6 +580,11 @@ function rememberManualPosition(id){const card=$(`[data-manual-id="${CSS.escape(
 function restoreManualPosition(){const restore=manualRestorePosition;manualRestorePosition=null;if(restore)requestAnimationFrame(()=>{const card=$(`[data-manual-id="${CSS.escape(restore.id)}"]`);if(card)window.scrollBy(0,card.getBoundingClientRect().top-restore.top);});}
 function updateManualItem(item){const index=manualItems.findIndex(entry=>entry.id===item.id);if(index>=0)manualItems[index]=item;const card=$(`[data-manual-id="${CSS.escape(item.id)}"]`);if(card){const text=card.querySelector('.manual-text');if(text)text.textContent=item.text||'Publication sans texte';}}
 function replaceFirstProductLink(text,link){const url=/https?:\/\/[^\s<>"']+/iu;return url.test(text)?text.replace(url,link):(text.trim()?`${text.trim()}\n${link}`:link);}
+async function readAffiliateLink(){
+ try{if(navigator.clipboard?.readText){const link=(await navigator.clipboard.readText()).trim();if(link)return link;}}catch{}
+ return prompt('Le navigateur bloque le presse-papiers automatique. Colle ton lien affilié ici (Ctrl+V) :','')?.trim()||null;
+}
+function validateAffiliateLink(link){if(!link)return null;if(link.length>2000)throw new Error('Le lien copié est trop long.');const parsed=new URL(link);if(!['https:','http:'].includes(parsed.protocol))throw new Error('Copie un lien http:// ou https:// valide.');return link;}
 $('#manualModeSwitch').addEventListener('click',async()=>{
  const on=!Boolean(S.state?.settings?.manualPublicationMode);
  if(on&&!confirm('Activer le mode manuel ? Les prochains messages entrants seront sauvegardés puis supprimés du canal.'))return;
@@ -591,10 +596,7 @@ $('#manualEditorClose').addEventListener('click',cancelManualEditor);
 $('#manualEditorCancel').addEventListener('click',cancelManualEditor);
 $('#manualEditorPasteAffiliate').addEventListener('click',async()=>{
  try{
-  if(!navigator.clipboard?.readText)throw new Error('Le presse-papiers n’est pas accessible dans ce navigateur.');
-  const link=(await navigator.clipboard.readText()).trim();
-  if(link.length>2000)throw new Error('Le lien copié est trop long.');
-  const parsed=new URL(link);if(!['https:','http:'].includes(parsed.protocol))throw new Error('Copie un lien http:// ou https:// valide.');
+  const link=validateAffiliateLink(await readAffiliateLink());if(!link)return;
   $('#manualEditorLink').value=link;
   $('#manualEditorText').value=replaceFirstProductLink($('#manualEditorText').value,link);
   toast('Lien affilié remplacé dans la publication. Enregistre pour confirmer.','ok');
@@ -616,10 +618,7 @@ $('#manualPendingList').addEventListener('click',async e=>{
  }
  if(action==='affiliate'){
   btn.disabled=true;try{
-   if(!navigator.clipboard?.readText)throw new Error('Le presse-papiers n’est pas accessible dans ce navigateur.');
-   const link=(await navigator.clipboard.readText()).trim();
-   if(link.length>2000)throw new Error('Le lien copié est trop long.');
-   const parsed=new URL(link);if(!['https:','http:'].includes(parsed.protocol))throw new Error('Copie un lien http:// ou https:// valide.');
+   const link=validateAffiliateLink(await readAffiliateLink());if(!link)return;
    rememberManualPosition(id);const result=await api('/api/manual-publications/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({text:item.text||'',group:item.group||'',productLink:link})});
    updateManualItem(result.publication);toast('Lien affilié remplacé.','ok');restoreManualPosition();
   }catch(err){toast(err.message||'Impossible de lire le presse-papiers.','bad');}finally{btn.disabled=false;}return;
