@@ -564,19 +564,21 @@ function renderManual(){
  </article>`).join(''):'<div class="empty">Aucune publication en attente. Active le mode manuel pour intercepter les prochaines publications.</div>';
  $('#manualTrashList').innerHTML=manualTrash.length?manualTrash.map(x=>`<article class="manual-card"><div class="row between"><b>${esc(x.group||'Publication supprimée')}</b><span class="manual-status">Corbeille</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div><div class="manual-actions"><button class="btn sm" data-manual-restore="${esc(x.id)}">Restaurer dans la file</button></div></article>`).join(''):'<div class="empty">La corbeille est vide.</div>';
  $('#manualHistoryList').innerHTML=manualHistory.length?manualHistory.map(x=>`<article class="manual-card"><div class="row between"><b>Publication envoyée</b><span class="manual-status">Publiée</span></div><div class="manual-meta"><span>${esc(fdate(x.publishedAt||x.receivedAt))}</span><span>${nf(x.messageCount)} élément(s)</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div></article>`).join(''):'<div class="empty">Aucune publication manuelle envoyée pour le moment.</div>';
- const restore=manualRestorePosition;manualRestorePosition=null;
- if(restore)requestAnimationFrame(()=>{const card=$(`[data-manual-id="${CSS.escape(restore.id)}"]`);if(card)window.scrollBy(0,card.getBoundingClientRect().top-restore.top);});
+ restoreManualPosition();
 }
 async function loadManual(){
  try{const r=await api('/api/manual-publications');manualItems=r.pending||[];manualHistory=r.history||[];manualTrash=r.trash||[];renderManual();}
  catch(e){$('#manualPendingList').innerHTML=`<div class="empty">${esc(e.message)}</div>`;}
 }
 function openManualEditor(item){
- manualEditingId=item.id;$('#manualEditor').classList.remove('hidden');$('#manualEditorMeta').textContent=`Reçue le ${fdate(item.receivedAt)} · ${item.messageCount} élément(s)`;
+ rememberManualPosition(item.id);manualEditingId=item.id;$('#manualEditor').classList.remove('hidden');$('#manualEditorMeta').textContent=`Reçue le ${fdate(item.receivedAt)} · ${item.messageCount} élément(s)`;
  $('#manualEditorGroup').value=item.group||'';$('#manualEditorLink').value=item.productLinks?.[0]||'';$('#manualEditorText').value=item.text||'';$('#manualEditorText').maxLength=(item.type==='text'?4000:1024);$('#manualEditorText').focus();
 }
 function closeManualEditor(){manualEditingId=null;$('#manualEditor').classList.add('hidden');$('#manualEditorGroup').value='';$('#manualEditorLink').value='';$('#manualEditorText').value='';}
+function cancelManualEditor(){manualRestorePosition=null;closeManualEditor();}
 function rememberManualPosition(id){const card=$(`[data-manual-id="${CSS.escape(id)}"]`);if(card)manualRestorePosition={id,top:card.getBoundingClientRect().top};}
+function restoreManualPosition(){const restore=manualRestorePosition;manualRestorePosition=null;if(restore)requestAnimationFrame(()=>{const card=$(`[data-manual-id="${CSS.escape(restore.id)}"]`);if(card)window.scrollBy(0,card.getBoundingClientRect().top-restore.top);});}
+function updateManualItem(item){const index=manualItems.findIndex(entry=>entry.id===item.id);if(index>=0)manualItems[index]=item;const card=$(`[data-manual-id="${CSS.escape(item.id)}"]`);if(card){const text=card.querySelector('.manual-text');if(text)text.textContent=item.text||'Publication sans texte';}}
 function replaceFirstProductLink(text,link){const url=/https?:\/\/[^\s<>"']+/iu;return url.test(text)?text.replace(url,link):(text.trim()?`${text.trim()}\n${link}`:link);}
 $('#manualModeSwitch').addEventListener('click',async()=>{
  const on=!Boolean(S.state?.settings?.manualPublicationMode);
@@ -585,8 +587,8 @@ $('#manualModeSwitch').addEventListener('click',async()=>{
  catch(e){toast(e.message,'bad');}
 });
 $('#refreshManual').addEventListener('click',loadManual);
-$('#manualEditorClose').addEventListener('click',closeManualEditor);
-$('#manualEditorCancel').addEventListener('click',closeManualEditor);
+$('#manualEditorClose').addEventListener('click',cancelManualEditor);
+$('#manualEditorCancel').addEventListener('click',cancelManualEditor);
 $('#manualEditorPasteAffiliate').addEventListener('click',async()=>{
  try{
   if(!navigator.clipboard?.readText)throw new Error('Le presse-papiers n’est pas accessible dans ce navigateur.');
@@ -601,7 +603,7 @@ $('#manualEditorPasteAffiliate').addEventListener('click',async()=>{
 $('#manualEditorSave').addEventListener('click',async()=>{
  if(!manualEditingId)return;
  const btn=$('#manualEditorSave');btn.disabled=true;
- try{rememberManualPosition(manualEditingId);await api('/api/manual-publications/'+encodeURIComponent(manualEditingId),{method:'PUT',body:JSON.stringify({text:$('#manualEditorText').value,group:$('#manualEditorGroup').value,productLink:$('#manualEditorLink').value})});toast('Modifications enregistrées.','ok');closeManualEditor();await loadManual();}
+ try{const id=manualEditingId;const result=await api('/api/manual-publications/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({text:$('#manualEditorText').value,group:$('#manualEditorGroup').value,productLink:$('#manualEditorLink').value})});updateManualItem(result.publication);toast('Modifications enregistrées.','ok');closeManualEditor();restoreManualPosition();}
  catch(e){toast(e.message,'bad');}finally{btn.disabled=false;}
 });
 $('#manualPendingList').addEventListener('click',async e=>{
@@ -618,8 +620,8 @@ $('#manualPendingList').addEventListener('click',async e=>{
    const link=(await navigator.clipboard.readText()).trim();
    if(link.length>2000)throw new Error('Le lien copié est trop long.');
    const parsed=new URL(link);if(!['https:','http:'].includes(parsed.protocol))throw new Error('Copie un lien http:// ou https:// valide.');
-   rememberManualPosition(id);await api('/api/manual-publications/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({text:item.text||'',group:item.group||'',productLink:link})});
-   toast('Lien affilié remplacé.','ok');await loadManual();
+   rememberManualPosition(id);const result=await api('/api/manual-publications/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({text:item.text||'',group:item.group||'',productLink:link})});
+   updateManualItem(result.publication);toast('Lien affilié remplacé.','ok');restoreManualPosition();
   }catch(err){toast(err.message||'Impossible de lire le presse-papiers.','bad');}finally{btn.disabled=false;}return;
  }
  if(action==='edit'){openManualEditor(item);return;}
