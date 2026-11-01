@@ -216,6 +216,8 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 .manual-media{display:flex;gap:8px;flex-wrap:wrap}.manual-media img{width:112px;height:112px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
 .manual-card .manual-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;color:var(--text);font-size:13px}
 .manual-actions{display:flex;gap:8px;flex-wrap:wrap}
+.manual-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.manual-links .btn{min-height:46px;padding:9px;font-size:14.5px}
+.manual-product{background:#173759;border-color:#28598a;color:#d6e9ff}.manual-affiliate{background:#3a275b;border-color:#6b4b96;color:#eadcff}
 .manual-meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:11px}
 .manual-status{font-size:11px;border-radius:999px;padding:4px 8px;background:var(--s3);color:var(--text)}
 .manual-status.pending{color:var(--ok)} .manual-status.failed,.manual-status.delete_failed{color:var(--danger)}
@@ -560,7 +562,8 @@ function renderManual(){
   <div class="manual-media">${(x.media||[]).map((m,i)=>m.type==='photo'?`<img loading="lazy" src="/api/manual-publications/${encodeURIComponent(x.id)}/media/${i}" alt="Photo de la publication">`:``).join('')}</div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div>
   ${x.status==='delete_failed'?'<p class="small" style="color:var(--danger)">La sauvegarde est faite, mais la suppression du message original doit être vérifiée. La publication est bloquée pour éviter un doublon.</p>':''}
   ${x.status==='uncertain'?'<p class="small" style="color:var(--danger)">Résultat d’envoi incertain : vérifie le canal Telegram avant de choisir une action.</p>':''}
-  <div class="manual-actions"><button class="btn sm" data-manual-action="up">↑ Ordre</button><button class="btn sm" data-manual-action="down">↓ Ordre</button>${x.productLinks?.[0]?`<a class="btn sm" href="${esc(x.productLinks[0])}" target="_blank" rel="noopener noreferrer">Ouvrir le produit</a>`:''}<button class="btn sm" data-manual-action="affiliate">Lien affilié</button><button class="btn sm" data-manual-action="edit">Modifier</button><button class="btn sm" data-manual-action="preview">Aperçu</button><button class="btn sm primary" data-manual-action="publish" ${['publishing','uncertain','delete_failed'].includes(x.status)?'disabled':''}>Publier</button>${x.status==='delete_failed'?'<button class="btn sm" data-manual-action="retry-delete">Réessayer suppression</button>':''}${x.status==='uncertain'?'<button class="btn sm" data-manual-action="confirm-sent">Confirmé publié</button><button class="btn sm" data-manual-action="confirm-not-sent">Non publié : réactiver</button>':''}<button class="btn sm danger" data-manual-action="delete">Corbeille</button></div>
+  <div class="manual-actions manual-links">${x.productLinks?.[0]?`<a class="btn manual-product" href="${esc(x.productLinks[0])}" target="_blank" rel="noopener noreferrer">Ouvrir le produit</a>`:''}<button class="btn manual-affiliate" data-manual-action="affiliate">Lien affilié</button></div>
+  <div class="manual-actions"><button class="btn sm" data-manual-action="edit">Modifier</button><button class="btn sm primary" data-manual-action="publish" ${['publishing','uncertain','delete_failed'].includes(x.status)?'disabled':''}>Publier</button><button class="btn sm danger" data-manual-action="delete">Corbeille</button>${x.status==='delete_failed'?'<button class="btn sm" data-manual-action="retry-delete">Réessayer suppression</button>':''}${x.status==='uncertain'?'<button class="btn sm" data-manual-action="confirm-sent">Confirmé publié</button><button class="btn sm" data-manual-action="confirm-not-sent">Non publié : réactiver</button>':''}</div>
  </article>`).join(''):'<div class="empty">Aucune publication en attente. Active le mode manuel pour intercepter les prochaines publications.</div>';
  $('#manualTrashList').innerHTML=manualTrash.length?manualTrash.map(x=>`<article class="manual-card"><div class="row between"><b>${esc(x.group||'Publication supprimée')}</b><span class="manual-status">Corbeille</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div><div class="manual-actions"><button class="btn sm" data-manual-restore="${esc(x.id)}">Restaurer dans la file</button></div></article>`).join(''):'<div class="empty">La corbeille est vide.</div>';
  $('#manualHistoryList').innerHTML=manualHistory.length?manualHistory.map(x=>`<article class="manual-card"><div class="row between"><b>Publication envoyée</b><span class="manual-status">Publiée</span></div><div class="manual-meta"><span>${esc(fdate(x.publishedAt||x.receivedAt))}</span><span>${nf(x.messageCount)} élément(s)</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div></article>`).join(''):'<div class="empty">Aucune publication manuelle envoyée pour le moment.</div>';
@@ -612,10 +615,6 @@ $('#manualPendingList').addEventListener('click',async e=>{
  const btn=e.target.closest('[data-manual-action]');if(!btn)return;
  const card=btn.closest('[data-manual-id]'),id=card?.dataset.manualId,item=manualItems.find(x=>x.id===id);if(!item)return;
  const action=btn.dataset.manualAction;
- if(action==='up'||action==='down'){
-  btn.disabled=true;try{await post('/api/manual-publications/'+encodeURIComponent(id)+'/move',{direction:action});await loadManual();}
-  catch(err){toast(err.message,'bad');}return;
- }
  if(action==='affiliate'){
   btn.disabled=true;try{
    const link=validateAffiliateLink(await readAffiliateLink());if(!link)return;
@@ -624,7 +623,6 @@ $('#manualPendingList').addEventListener('click',async e=>{
   }catch(err){toast(err.message||'Impossible de lire le presse-papiers.','bad');}finally{btn.disabled=false;}return;
  }
  if(action==='edit'){openManualEditor(item);return;}
- if(action==='preview'){openSheet('Aperçu de la publication',`<div class="stack"><div class="small muted">${esc(fdate(item.receivedAt))} · ${esc(item.type)}</div><div class="manual-text">${esc(item.text||'Publication sans texte')}</div><p class="small muted">${nf((item.media||[]).filter(m=>m.fileId).length)} média(s) conservé(s). L’aperçu média complet dépend du type de fichier Telegram.</p></div>`);return;}
  if(action==='retry-delete'){
   btn.disabled=true;try{await post('/api/manual-publications/'+encodeURIComponent(id)+'/retry-delete');toast('Suppression confirmée. Publication prête.','ok');await loadManual();}
   catch(err){toast(err.message,'bad');await loadManual();}return;
