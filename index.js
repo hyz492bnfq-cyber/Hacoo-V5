@@ -733,6 +733,20 @@ function cleanText(text) {
   return output.replace(/[ \t]{2,}/g, ' ').trim();
 }
 
+// Toutes les transformations appliquées aux publications automatiques doivent
+// aussi être enregistrées dans la file manuelle. Garder ce chemin unique évite
+// qu'un réglage actif (nettoyage, remplacement ou format) soit oublié.
+function transformPublicationText(text) {
+  const original = String(text || '');
+  const hasCleaning = data.cleanHashtags || data.cleanLinks || data.cleanMentions || data.cleanEmptyLines || data.cleanEmojis;
+  const cleanedText = hasCleaning ? cleanText(original) : original;
+  const hasReplacements = Array.isArray(data.textReplacements) && data.textReplacements.some(rule =>
+    rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0
+  );
+  const replacedText = hasReplacements ? applyTextReplacements(cleanedText, data.textReplacements).text : cleanedText;
+  return formatPostText(replacedText);
+}
+
 function stripFormattingMarkers(value) {
   return cleanPresentationLine(value);
 }
@@ -1776,9 +1790,6 @@ async function processMessages(ctx, messages) {
 
   let cleaned = false;
 
-  const enabledReplacements = (Array.isArray(data.textReplacements) ? data.textReplacements : [])
-    .filter(rule => rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0);
-
   if (
     data.cleanHashtags ||
     data.cleanLinks ||
@@ -1786,14 +1797,11 @@ async function processMessages(ctx, messages) {
     data.cleanEmptyLines ||
     data.cleanEmojis ||
     data.formatEnabled ||
-    enabledReplacements.length
+    (Array.isArray(data.textReplacements) && data.textReplacements.some(rule => rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0))
   ) {
     for (const message of messages) {
       const original = msgText(message);
-      const hasCleaning = data.cleanHashtags || data.cleanLinks || data.cleanMentions || data.cleanEmptyLines || data.cleanEmojis;
-      const cleanedText = hasCleaning ? cleanText(original) : original;
-      const replacedText = enabledReplacements.length ? applyTextReplacements(cleanedText, data.textReplacements).text : cleanedText;
-      const changed = formatPostText(replacedText);
+      const changed = transformPublicationText(original);
 
       if (changed !== original) {
         try {
@@ -2353,17 +2361,19 @@ async function captureManualPublication(ctx, messages) {
   if (data.manualPublications.some(item => item.id === id) ||
       data.manualPublicationHistory.some(item => item.id === id)) return;
   const originalText = manualPublicationText(ordered);
-  const formattedText = formatPostText(originalText);
   const savedMessages = clone(ordered);
-  // Le mode manuel contourne le traitement automatique : appliquer ici le
-  // même format, et supprimer les entités dont les offsets ont changé.
-  if (formattedText !== originalText && savedMessages[0]) {
-    const first = savedMessages[0];
-    if (first.text !== undefined || (!first.caption && !first.photo && !first.video && !first.document)) first.text = formattedText;
-    else first.caption = formattedText;
-    delete first.entities;
-    delete first.caption_entities;
+  // Conserver dans la file le résultat de tous les nettoyages, remplacements
+  // et options de formatage, pas seulement le format visuel.
+  for (const message of savedMessages) {
+    const original = msgText(message);
+    const transformed = transformPublicationText(original);
+    if (transformed === original) continue;
+    if (message.text !== undefined || (!message.caption && !message.photo && !message.video && !message.document)) message.text = transformed;
+    else message.caption = transformed;
+    delete message.entities;
+    delete message.caption_entities;
   }
+  const formattedText = manualPublicationText(savedMessages);
   const item = {
     id, type: manualPublicationType(ordered),
     messages: savedMessages,
@@ -2409,14 +2419,13 @@ async function captureManualPublication(ctx, messages) {
 }
 async function interceptManualPublication(ctx, messages) {
   const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
-  // Le mode manuel applique le même anti-doublon que le mode automatique.
-  // Un doublon certain est supprimé et ne rejoint jamais la file ; un doute
-  // reste publié dans la file pour validation humaine.
-  if (data.duplicates) {
-    await processMessages(ctx, ordered);
-    if (interceptedMessagesWereRemoved(ordered, removedIds)) {
-      return { queued: false, reason: 'duplicate_or_moderation' };
-    }
+  // Le mode manuel passe par exactement les mêmes règles que le mode
+  // automatique : types autorisés, mots/domaines, modération, doublons,
+  // nettoyages, remplacements et formatage.
+  const outcome = await processMessages(ctx, ordered);
+  if (outcome === 'deferred') return { queued: false, reason: 'deferred' };
+  if (interceptedMessagesWereRemoved(ordered, removedIds)) {
+    return { queued: false, reason: 'duplicate_or_moderation' };
   }
   await captureManualPublication(ctx, ordered);
   return { queued: true };
