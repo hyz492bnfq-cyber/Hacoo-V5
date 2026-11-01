@@ -315,7 +315,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
       <label class="lb" for="manualEditorGroup">Groupe / campagne</label>
       <input id="manualEditorGroup" maxlength="80" type="text" placeholder="Ex. Sneakers octobre (facultatif)">
       <label class="lb" for="manualEditorLink">Lien produit / lien affilié</label>
-      <input id="manualEditorLink" maxlength="2000" type="url" placeholder="https://…">
+      <div class="row"><input class="grow" id="manualEditorLink" maxlength="2000" type="url" placeholder="https://…"><button class="btn sm" id="manualEditorPasteAffiliate" type="button">Lien affilié</button></div>
       <div class="small muted">Colle ici ton lien affilié complet : il remplacera le premier lien de la publication.</div>
       <label class="lb" for="manualEditorText">Texte / légende / lien affilié</label>
       <textarea id="manualEditorText" rows="9" maxlength="4000" placeholder="Texte de la publication…"></textarea>
@@ -544,7 +544,7 @@ async function api(url,options={}){
 }
 const post=(url,body={},o={})=>api(url,{method:'POST',body:JSON.stringify(body),...o});
 
-let manualItems=[],manualHistory=[],manualTrash=[],manualEditingId=null;
+let manualItems=[],manualHistory=[],manualTrash=[],manualEditingId=null,manualRestorePosition=null;
 const manualStatusLabel=s=>({pending:'En attente',saving:'Sauvegarde',publishing:'Publication en cours',published:'Publiée',failed:'Échec',delete_failed:'Suppression à vérifier',uncertain:'Envoi à vérifier'}[s]||s||'—');
 function renderManual(){
  const sw=$('#manualModeSwitch');
@@ -564,6 +564,8 @@ function renderManual(){
  </article>`).join(''):'<div class="empty">Aucune publication en attente. Active le mode manuel pour intercepter les prochaines publications.</div>';
  $('#manualTrashList').innerHTML=manualTrash.length?manualTrash.map(x=>`<article class="manual-card"><div class="row between"><b>${esc(x.group||'Publication supprimée')}</b><span class="manual-status">Corbeille</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div><div class="manual-actions"><button class="btn sm" data-manual-restore="${esc(x.id)}">Restaurer dans la file</button></div></article>`).join(''):'<div class="empty">La corbeille est vide.</div>';
  $('#manualHistoryList').innerHTML=manualHistory.length?manualHistory.map(x=>`<article class="manual-card"><div class="row between"><b>Publication envoyée</b><span class="manual-status">Publiée</span></div><div class="manual-meta"><span>${esc(fdate(x.publishedAt||x.receivedAt))}</span><span>${nf(x.messageCount)} élément(s)</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div></article>`).join(''):'<div class="empty">Aucune publication manuelle envoyée pour le moment.</div>';
+ const restore=manualRestorePosition;manualRestorePosition=null;
+ if(restore)requestAnimationFrame(()=>{const card=$(`[data-manual-id="${CSS.escape(restore.id)}"]`);if(card)window.scrollBy(0,card.getBoundingClientRect().top-restore.top);});
 }
 async function loadManual(){
  try{const r=await api('/api/manual-publications');manualItems=r.pending||[];manualHistory=r.history||[];manualTrash=r.trash||[];renderManual();}
@@ -574,6 +576,8 @@ function openManualEditor(item){
  $('#manualEditorGroup').value=item.group||'';$('#manualEditorLink').value=item.productLinks?.[0]||'';$('#manualEditorText').value=item.text||'';$('#manualEditorText').maxLength=(item.type==='text'?4000:1024);$('#manualEditorText').focus();
 }
 function closeManualEditor(){manualEditingId=null;$('#manualEditor').classList.add('hidden');$('#manualEditorGroup').value='';$('#manualEditorLink').value='';$('#manualEditorText').value='';}
+function rememberManualPosition(id){const card=$(`[data-manual-id="${CSS.escape(id)}"]`);if(card)manualRestorePosition={id,top:card.getBoundingClientRect().top};}
+function replaceFirstProductLink(text,link){const url=/https?:\/\/[^\s<>"']+/iu;return url.test(text)?text.replace(url,link):(text.trim()?`${text.trim()}\n${link}`:link);}
 $('#manualModeSwitch').addEventListener('click',async()=>{
  const on=!Boolean(S.state?.settings?.manualPublicationMode);
  if(on&&!confirm('Activer le mode manuel ? Les prochains messages entrants seront sauvegardés puis supprimés du canal.'))return;
@@ -583,10 +587,21 @@ $('#manualModeSwitch').addEventListener('click',async()=>{
 $('#refreshManual').addEventListener('click',loadManual);
 $('#manualEditorClose').addEventListener('click',closeManualEditor);
 $('#manualEditorCancel').addEventListener('click',closeManualEditor);
+$('#manualEditorPasteAffiliate').addEventListener('click',async()=>{
+ try{
+  if(!navigator.clipboard?.readText)throw new Error('Le presse-papiers n’est pas accessible dans ce navigateur.');
+  const link=(await navigator.clipboard.readText()).trim();
+  if(link.length>2000)throw new Error('Le lien copié est trop long.');
+  const parsed=new URL(link);if(!['https:','http:'].includes(parsed.protocol))throw new Error('Copie un lien http:// ou https:// valide.');
+  $('#manualEditorLink').value=link;
+  $('#manualEditorText').value=replaceFirstProductLink($('#manualEditorText').value,link);
+  toast('Lien affilié remplacé dans la publication. Enregistre pour confirmer.','ok');
+ }catch(e){toast(e.message||'Impossible de lire le presse-papiers.','bad');}
+});
 $('#manualEditorSave').addEventListener('click',async()=>{
  if(!manualEditingId)return;
  const btn=$('#manualEditorSave');btn.disabled=true;
- try{await api('/api/manual-publications/'+encodeURIComponent(manualEditingId),{method:'PUT',body:JSON.stringify({text:$('#manualEditorText').value,group:$('#manualEditorGroup').value,productLink:$('#manualEditorLink').value})});toast('Modifications enregistrées.','ok');closeManualEditor();await loadManual();}
+ try{rememberManualPosition(manualEditingId);await api('/api/manual-publications/'+encodeURIComponent(manualEditingId),{method:'PUT',body:JSON.stringify({text:$('#manualEditorText').value,group:$('#manualEditorGroup').value,productLink:$('#manualEditorLink').value})});toast('Modifications enregistrées.','ok');closeManualEditor();await loadManual();}
  catch(e){toast(e.message,'bad');}finally{btn.disabled=false;}
 });
 $('#manualPendingList').addEventListener('click',async e=>{
