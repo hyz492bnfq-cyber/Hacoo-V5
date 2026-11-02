@@ -2459,7 +2459,7 @@ async function publishManualPublication(item) {
   try {
     const sentIds = [];
     const contextMedia = manualPhotoContextMedia(messages);
-    if (supportsTelegramMediaGroup(messages) || contextMedia) {
+    if (supportsTelegramMediaGroup(messages) || (contextMedia && contextMedia.length >= 2)) {
       const albumMessages = contextMedia || messages;
       const media = albumMessages.map((m, index) => {
         const entry = m.photo ? { type: 'photo', media: m.photo.at(-1).file_id }
@@ -2481,8 +2481,9 @@ async function publishManualPublication(item) {
         }
       }
     } else {
-      for (let index = 0; index < messages.length; index++) {
-        const m = messages[index];
+      const sendMessages = contextMedia || messages;
+      for (let index = 0; index < sendMessages.length; index++) {
+        const m = sendMessages[index];
         const caption = index === 0 ? (item.text || '') : (m.caption || '');
         let sent;
         if (m.photo) sent = await bot.api.sendPhoto(CHANNEL_ID, m.photo.at(-1).file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });

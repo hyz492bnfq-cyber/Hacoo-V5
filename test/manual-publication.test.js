@@ -15,6 +15,7 @@ test('un texte suivi de photos seules devient un album manuel avec légende', ()
   const text = { message_id: 10, text: 'Produit et lien' };
   const photos = [{ message_id: 11, photo: [{}] }, { message_id: 12, photo: [{}] }];
   assert.deepEqual(manualPhotoContextMedia([text, ...photos]), photos);
+  assert.equal(manualPhotoContextMedia([text, photos[0]]).length, 1);
   assert.equal(manualPhotoContextMedia([{ message_id: 10, text: 'Texte' }, { message_id: 11, video: {} }]), null);
   assert.equal(manualPhotoContextMedia([{ message_id: 10, photo: [{}] }, { message_id: 11, photo: [{}] }]), null);
 });
