@@ -47,7 +47,7 @@ main{padding:14px 14px calc(var(--nav) + var(--safe-b) + 26px);max-width:760px;m
 .card p.small{margin-top:2px}
 
 /* Bottom nav */
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(6,1fr);background:rgba(14,20,33,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:6px 6px calc(6px + var(--safe-b))}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);background:rgba(14,20,33,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:6px 6px calc(6px + var(--safe-b))}
 .tabbar button{position:relative;border:0;background:none;color:var(--muted);display:grid;justify-items:center;gap:2px;padding:6px 2px;border-radius:14px;min-height:52px;font-size:11px;font-weight:600}
 .tabbar button .ic{font-size:21px;line-height:1.1}
 .tabbar button.active{color:var(--text);background:var(--s2)}
@@ -222,6 +222,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 .manual-meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:11px}
 .manual-status{font-size:11px;border-radius:999px;padding:4px 8px;background:var(--s3);color:var(--text)}
 .manual-status.pending{color:var(--ok)} .manual-status.failed,.manual-status.delete_failed{color:var(--danger)}
+.manual-filter{display:flex;flex-wrap:wrap;gap:8px}.manual-filter .chip{min-height:36px}.manual-fold{margin-top:22px}.manual-fold>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;cursor:pointer}.manual-fold>summary::-webkit-details-marker{display:none}.manual-fold .list{margin-top:12px}
 </style>
 </head>
 <body>
@@ -236,7 +237,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
   <div id="netNotice" class="alert bad hidden" role="alert"></div>
 
   <!-- ACCUEIL -->
-  <section class="tab active" id="tab-home" aria-label="Accueil">
+  <section class="tab" id="tab-home" aria-label="Accueil">
     <div id="hero" class="hero"><div class="skeleton" style="height:70px"></div></div>
     <div id="alerts" class="stack tight"></div>
     <div class="sec-title">Aujourd’hui en un coup d’œil</div>
@@ -298,7 +299,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 
 
   <!-- CENTRE DE PUBLICATIONS -->
-  <section class="tab" id="tab-publications" aria-label="Centre de publications">
+  <section class="tab active" id="tab-publications" aria-label="Centre de publications">
     <div class="sec-title"><span>Centre de publications</span><span class="badge" id="manualPendingCount">0</span></div>
     <div class="card stack">
       <div class="row between"><div><b>Mode publication manuelle</b><p class="small muted">Intercepte les nouveaux posts du canal, les sauvegarde puis les retire du canal.</p></div><button class="sw" id="manualModeSwitch" role="switch" aria-checked="false" type="button" aria-label="Mode publication manuelle"></button></div>
@@ -309,9 +310,14 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
     <div class="row between"><h3>Publications en attente</h3><button class="btn sm" id="refreshManual" type="button">Actualiser</button></div>
     <div class="grid kpis" style="margin-bottom:14px">
       <div class="kpi"><span>En attente</span><b id="manualKpiPending">0</b></div>
-      <div class="kpi"><span>Publiées</span><b id="manualKpiPublished">0</b></div>
+      <div class="kpi"><span>Prêtes</span><b id="manualKpiReady">0</b></div>
       <div class="kpi"><span>En échec</span><b id="manualKpiFailed">0</b></div>
     </div>
+    <input id="manualSearch" type="search" placeholder="Rechercher une publication, un lien ou un groupe…" aria-label="Rechercher dans la file de publications">
+    <div class="manual-filter" id="manualFilters">
+      <button class="chip on" data-manual-filter="all" type="button">Toutes</button><button class="chip" data-manual-filter="ready" type="button">Prêtes</button><button class="chip" data-manual-filter="link" type="button">Avec lien</button><button class="chip" data-manual-filter="no-link" type="button">Sans lien</button><button class="chip" data-manual-filter="photo" type="button">Photos</button><button class="chip" data-manual-filter="error" type="button">Erreurs</button>
+    </div>
+    <div class="small muted" id="manualFilterCount"></div>
     <div id="manualEditor" class="card stack hidden">
       <div class="row between"><h3>Modifier la publication</h3><button class="iconbtn" id="manualEditorClose" type="button" aria-label="Fermer">✕</button></div>
       <div class="small muted" id="manualEditorMeta"></div>
@@ -325,14 +331,13 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
       <div class="row between"><button class="btn" id="manualEditorCancel" type="button">Annuler</button><button class="btn primary" id="manualEditorSave" type="button">Enregistrer les modifications</button></div>
     </div>
     <div id="manualPendingList" class="list"></div>
-    <div class="sec-title" style="margin-top:24px">Corbeille</div>
-    <div id="manualTrashList" class="list"></div>
-    <div class="sec-title" style="margin-top:24px">Historique des publications manuelles</div>
-    <div id="manualHistoryList" class="list"></div>
+    <details class="manual-fold"><summary>Corbeille <span class="badge" id="manualTrashCount">0</span></summary><div id="manualTrashList" class="list"></div></details>
+    <details class="manual-fold"><summary>Historique des publications manuelles <span class="badge" id="manualHistoryCount">0</span></summary><div id="manualHistoryList" class="list"></div></details>
   </section>
 
   <!-- RÉGLAGES -->
   <section class="tab" id="tab-settings" aria-label="Réglages">
+    <div class="card stack"><div><h3>Profils de réglages</h3><p class="small muted">Applique rapidement les interrupteurs existants. Tes mots/domaines, remplacements et format personnalisé sont conservés.</p></div><div class="btnrow" id="settingsProfiles"><button class="btn" data-settings-profile="normal" type="button">Normal</button><button class="btn" data-settings-profile="strict" type="button">Strict anti-doublon</button><button class="btn" data-settings-profile="clean" type="button">Nettoyage fort</button><button class="btn" data-settings-profile="promo" type="button">Promo</button></div></div>
     <details class="group" id="g-dups"><summary><span class="gi">⧉</span><div><b>Anti-doublons</b><span class="s" id="s-dups"></span></div></summary>
       <div class="gbody">
         <div class="notice-line small muted" id="geminiStatus" style="padding:12px 0"></div>
@@ -427,7 +432,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
   </section>
 
   <!-- IA -->
-  <section class="tab" id="tab-ai" aria-label="IA autonome">
+  <section class="tab hidden" id="tab-ai" aria-label="IA autonome" aria-hidden="true">
     <div class="card stack" id="aiCard"></div>
     <div class="sec-title">Fournisseurs IA <button class="linkbtn" id="testProviders" type="button">Tout tester</button></div>
     <div id="providers" class="list"></div>
@@ -477,12 +482,11 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 </main>
 
 <nav class="tabbar" id="tabbar" aria-label="Navigation">
-  <button class="active" data-tab="home" type="button"><span class="ic">🏠</span>Accueil<span class="badge hidden" id="badgeHome"></span></button>
-  <button data-tab="orders" type="button"><span class="ic">🎯</span>Ordres<span class="badge hidden" id="badgeOrders"></span></button>
-  <button data-tab="publications" type="button"><span class="ic">📨</span>Publications</button>
+  <button data-tab="home" type="button"><span class="ic">🏠</span>Accueil<span class="badge hidden" id="badgeHome"></span></button>
+  <button class="active" data-tab="publications" type="button"><span class="ic">📨</span>Publications</button>
   <button data-tab="activity" type="button"><span class="ic">📜</span>Activité</button>
   <button data-tab="settings" type="button"><span class="ic">⚙️</span>Réglages</button>
-  <button data-tab="ai" type="button"><span class="ic">🤖</span>IA</button>
+  <button id="moreTabs" type="button"><span class="ic">☰</span>Plus<span class="badge hidden" id="badgeOrders"></span></button>
 </nav>
 
 <div class="backdrop" id="backdrop" aria-hidden="true">
@@ -547,17 +551,21 @@ async function api(url,options={}){
 }
 const post=(url,body={},o={})=>api(url,{method:'POST',body:JSON.stringify(body),...o});
 
-let manualItems=[],manualHistory=[],manualTrash=[],manualEditingId=null,manualRestorePosition=null;
+let manualItems=[],manualHistory=[],manualTrash=[],manualEditingId=null,manualRestorePosition=null,manualFilter='all';
 const manualStatusLabel=s=>({pending:'En attente',saving:'Sauvegarde',publishing:'Publication en cours',published:'Publiée',failed:'Échec',delete_failed:'Suppression à vérifier',uncertain:'Envoi à vérifier'}[s]||s||'—');
+const manualReady=x=>x.status==='pending'&&Boolean(String(x.text||'').trim())&&Boolean(x.productLinks?.length);
+function manualMatches(x){const q=($('#manualSearch')?.value||'').trim().toLowerCase(),hasLink=Boolean(x.productLinks?.length),hasPhoto=(x.media||[]).some(m=>m.type==='photo'),error=['failed','delete_failed','uncertain'].includes(x.status);if(q&&!`${x.text||''} ${x.group||''} ${(x.productLinks||[]).join(' ')}`.toLowerCase().includes(q))return false;return manualFilter==='all'||(manualFilter==='ready'&&manualReady(x))||(manualFilter==='link'&&hasLink)||(manualFilter==='no-link'&&!hasLink)||(manualFilter==='photo'&&hasPhoto)||(manualFilter==='error'&&error);}
 function renderManual(){
  const sw=$('#manualModeSwitch');
  if(sw){const on=Boolean(S.state?.settings?.manualPublicationMode);sw.classList.toggle('on',on);sw.setAttribute('aria-checked',String(on));}
  $('#manualModeHint').textContent=S.state?.settings?.manualPublicationMode?'Mode actif : les nouvelles publications entrantes sont sauvegardées avant suppression du canal.':'Mode désactivé : le bot conserve son fonctionnement automatique habituel.';
  $('#manualPendingCount').textContent=nf(manualItems.length);
  $('#manualKpiPending').textContent=nf(manualItems.filter(x=>['pending','delete_failed','saving'].includes(x.status)).length);
- $('#manualKpiPublished').textContent=nf(manualHistory.length);
+ $('#manualKpiReady').textContent=nf(manualItems.filter(manualReady).length);
  $('#manualKpiFailed').textContent=nf(manualItems.filter(x=>x.status==='failed'||x.status==='delete_failed'||x.status==='uncertain').length);
- $('#manualPendingList').innerHTML=manualItems.length?manualItems.map(x=>`<article class="manual-card" data-manual-id="${esc(x.id)}">
+ $('#manualTrashCount').textContent=nf(manualTrash.length);$('#manualHistoryCount').textContent=nf(manualHistory.length);
+ const visibleManualItems=manualItems.filter(manualMatches);$('#manualFilterCount').textContent=visibleManualItems.length===manualItems.length?`${nf(manualItems.length)} publication(s) dans la file.`:`${nf(visibleManualItems.length)} sur ${nf(manualItems.length)} publication(s) affichée(s).`;
+ $('#manualPendingList').innerHTML=visibleManualItems.length?visibleManualItems.map(x=>`<article class="manual-card" data-manual-id="${esc(x.id)}">
   <div class="row between"><b>${esc(({album:'Album',photo:'Photo',video:'Vidéo',document:'Document',text:'Texte'}[x.type]||'Publication'))}</b><span class="manual-status ${esc(x.status)}">${esc(manualStatusLabel(x.status))}</span></div>
   <div class="manual-meta"><span>Reçue ${esc(fdate(x.receivedAt))}</span>${x.group?`<span>Groupe : ${esc(x.group)}</span>`:''}<span>${nf(x.messageCount)} élément(s)</span><span>${nf((x.media||[]).filter(m=>m.fileId).length)} média(s)</span></div>
   <div class="manual-media">${(x.media||[]).map((m,i)=>m.type==='photo'?`<img loading="lazy" src="/api/manual-publications/${encodeURIComponent(x.id)}/media/${i}" alt="Photo de la publication">`:``).join('')}</div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div>
@@ -566,7 +574,7 @@ function renderManual(){
   <div class="manual-actions manual-links">${x.productLinks?.[0]?`<a class="btn manual-product" href="${esc(x.productLinks[0])}" target="_blank" rel="noopener noreferrer">Ouvrir le produit</a>`:''}<button class="btn manual-affiliate" data-manual-action="affiliate">Lien affilié</button></div>
   <button class="btn primary manual-publish" data-manual-action="publish" ${['publishing','uncertain','delete_failed'].includes(x.status)?'disabled':''}>Publier</button>
   <div class="manual-actions"><button class="btn sm" data-manual-action="edit">Modifier</button><button class="btn sm danger" data-manual-action="delete">Corbeille</button>${x.status==='delete_failed'?'<button class="btn sm" data-manual-action="retry-delete">Réessayer suppression</button>':''}${x.status==='uncertain'?'<button class="btn sm" data-manual-action="confirm-sent">Confirmé publié</button><button class="btn sm" data-manual-action="confirm-not-sent">Non publié : réactiver</button>':''}</div>
- </article>`).join(''):'<div class="empty">Aucune publication en attente. Active le mode manuel pour intercepter les prochaines publications.</div>';
+ </article>`).join(''):`<div class="empty">${manualItems.length?'Aucune publication ne correspond à ce filtre.':'Aucune publication en attente. Active le mode manuel pour intercepter les prochaines publications.'}</div>`;
  $('#manualTrashList').innerHTML=manualTrash.length?manualTrash.map(x=>`<article class="manual-card"><div class="row between"><b>${esc(x.group||'Publication supprimée')}</b><span class="manual-status">Corbeille</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div><div class="manual-actions"><button class="btn sm" data-manual-restore="${esc(x.id)}">Restaurer dans la file</button></div></article>`).join(''):'<div class="empty">La corbeille est vide.</div>';
  $('#manualHistoryList').innerHTML=manualHistory.length?manualHistory.map(x=>`<article class="manual-card"><div class="row between"><b>Publication envoyée</b><span class="manual-status">Publiée</span></div><div class="manual-meta"><span>${esc(fdate(x.publishedAt||x.receivedAt))}</span><span>${nf(x.messageCount)} élément(s)</span></div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div></article>`).join(''):'<div class="empty">Aucune publication manuelle envoyée pour le moment.</div>';
  restoreManualPosition();
@@ -597,6 +605,8 @@ $('#manualModeSwitch').addEventListener('click',async()=>{
  catch(e){toast(e.message,'bad');}
 });
 $('#refreshManual').addEventListener('click',loadManual);
+$('#manualSearch').addEventListener('input',renderManual);
+$('#manualFilters').addEventListener('click',e=>{const b=e.target.closest('[data-manual-filter]');if(!b)return;manualFilter=b.dataset.manualFilter;$$('#manualFilters .chip').forEach(x=>x.classList.toggle('on',x===b));renderManual();});
 $('#manualEditorClose').addEventListener('click',cancelManualEditor);
 $('#manualEditorCancel').addEventListener('click',cancelManualEditor);
 $('#manualEditorPasteAffiliate').addEventListener('click',async()=>{
@@ -685,7 +695,7 @@ async function busy(btn,label,fn){
 }
 
 /* ============ État ============ */
-const S={state:null,v6:null,schedules:[],control:null,eng:null,tasks:[],providers:[],journal:null,tab:'home',loadedAI:false,loadedLab:false};
+const S={state:null,v6:null,schedules:[],control:null,eng:null,tasks:[],providers:[],journal:null,tab:'publications',loadedAI:false,loadedLab:false};
 const st=()=>S.state?.settings||{};
 const botState=()=>{const s=st();return{enabled:s.enabled!==false,paused:Boolean(s.botPaused),stats:s.stats||{}};};
 const rt=()=>S.state?.runtime||{};
@@ -1145,6 +1155,18 @@ $('#saveFormat').addEventListener('click',e=>busy(e.currentTarget,'Enregistremen
  catch(err){toast(err.message,'bad');}
 }));
 async function autoSave(patch){try{await saveSettings(patch,'Enregistré ✓');}catch(err){toast('Échec : '+err.message,'bad');await loadCore();}}
+const SETTINGS_PROFILES={
+ normal:{duplicates:true,windowMinutes:15,duplicateMode:'similar',similarityThreshold:.72,duplicateImages:true,duplicateAlbums:true,detectSimilarText:true,detectModifiedImages:true,compareLinks:true,hashtags:false,dashLines:false,blockLinks:false,blockMentions:false,blockForwarded:false,cleanHashtags:false,cleanLinks:false,cleanMentions:false,cleanEmptyLines:false,cleanEmojis:false,formatEnabled:false},
+ strict:{duplicates:true,windowMinutes:60,duplicateMode:'similar',similarityThreshold:.9,duplicateImages:true,duplicateAlbums:true,detectSimilarText:true,detectModifiedImages:true,compareLinks:true,blockForwarded:true},
+ clean:{cleanHashtags:true,cleanLinks:false,cleanMentions:true,cleanEmptyLines:true,cleanEmojis:true,formatEnabled:false},
+ promo:{duplicates:true,duplicateImages:true,duplicateAlbums:true,detectSimilarText:true,compareLinks:true,cleanEmptyLines:true,cleanLinks:false,formatEnabled:true}
+};
+$('#settingsProfiles').addEventListener('click',async e=>{
+ const b=e.target.closest('[data-settings-profile]');if(!b)return;
+ const profile=b.dataset.settingsProfile,labels={normal:'Normal',strict:'Strict anti-doublon',clean:'Nettoyage fort',promo:'Promo'};
+ if(!await confirmSheet(`Appliquer le profil « ${labels[profile]} » ? Tes listes de mots/domaines, remplacements et format personnalisé ne seront pas modifiés.`,{title:'Appliquer un profil',ok:'Appliquer'}))return;
+ await busy(b,'Application…',async()=>{try{await saveSettings(SETTINGS_PROFILES[profile],`Profil « ${labels[profile]} » appliqué ✓`);}catch(err){toast(err.message,'bad');}});
+});
 document.addEventListener('click',async e=>{
  const sw=e.target.closest('.sw[data-setting]');if(!sw||sw.disabled)return;
  const key=sw.dataset.setting,cur=Boolean(st()[key]);
@@ -1319,24 +1341,24 @@ $('#v6RollbackButton').addEventListener('click',async e=>{
 
 /* ============ Navigation et démarrage ============ */
 function showTab(name){
- if(!$('#tab-'+name))return;
+ if(!['home','orders','activity','settings','publications'].includes(name)||!$('#tab-'+name))return;
  S.tab=name;
  $$('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+name));
  $$('#tabbar button').forEach(b=>{const on=b.dataset.tab===name;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
  try{history.replaceState(null,'','#'+name);}catch{}
  window.scrollTo({top:0});
- if(name==='ai'&&!S.loadedAI)loadAI();else if(name==='ai')loadAI();
  if(name==='orders'&&!S.loadedAI)loadAI();
  if(name==='publications')loadManual();
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
+$('#moreTabs').addEventListener('click',()=>openSheet('Plus',`<div class="stack"><button class="btn block" data-more-tab="orders" type="button">🎯 Ordres et actions</button></div>`,body=>body.addEventListener('click',e=>{const b=e.target.closest('[data-more-tab]');if(b){closeSheet();showTab(b.dataset.moreTab);}})));
 $('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.loadedAI)loadAI();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCore();});
 setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadCore();},30000);
 renderOrderLog();
 const first=(location.hash||'').slice(1);
-if(['home','orders','activity','settings','ai','publications'].includes(first))showTab(first);
-loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();});
+if(['home','orders','activity','settings','publications'].includes(first))showTab(first);
+loadCore().then(()=>{if(S.tab==='orders')loadAI();if(S.tab==='publications')loadManual();});
 </script>
 </body>
 </html>
