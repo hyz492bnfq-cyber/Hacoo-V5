@@ -2,21 +2,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('../lib/manual-publication');
+const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('../lib/manual-publication');
 
 test('albums Telegram : photos/vidéos ensemble et documents homogènes seulement', () => {
   assert.equal(supportsTelegramMediaGroup([{ photo: {} }, { video: {} }]), true);
   assert.equal(supportsTelegramMediaGroup([{ document: {} }, { document: {} }]), true);
   assert.equal(supportsTelegramMediaGroup([{ photo: {} }, { document: {} }]), false);
   assert.equal(supportsTelegramMediaGroup([{ photo: {} }]), false);
-});
-
-test('un texte suivi de photos seules devient un album manuel avec légende', () => {
-  const text = { message_id: 10, text: 'Produit et lien' };
-  const photos = [{ message_id: 11, photo: [{}] }, { message_id: 12, photo: [{}] }];
-  assert.deepEqual(manualPhotoContextMedia([text, ...photos]), photos);
-  assert.equal(manualPhotoContextMedia([{ message_id: 10, text: 'Texte' }, { message_id: 11, video: {} }]), null);
-  assert.equal(manualPhotoContextMedia([{ message_id: 10, photo: [{}] }, { message_id: 11, photo: [{}] }]), null);
 });
 
 test('un album attend le silence après le dernier média, même après une reprise', () => {

@@ -29,7 +29,7 @@ const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
-const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
+const { supportsTelegramMediaGroup, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 
 let sharp;
@@ -2458,10 +2458,8 @@ async function publishManualPublication(item) {
   const messages = [...(item.messages || [])].sort((a, b) => a.message_id - b.message_id);
   try {
     const sentIds = [];
-    const contextMedia = manualPhotoContextMedia(messages);
-    if (supportsTelegramMediaGroup(messages) || contextMedia) {
-      const albumMessages = contextMedia || messages;
-      const media = albumMessages.map((m, index) => {
+    if (supportsTelegramMediaGroup(messages)) {
+      const media = messages.map((m, index) => {
         const entry = m.photo ? { type: 'photo', media: m.photo.at(-1).file_id }
           : m.video ? { type: 'video', media: m.video.file_id }
           : { type: 'document', media: m.document.file_id };
