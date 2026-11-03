@@ -88,6 +88,7 @@ const DEFAULTS = {
   channelSyncConnections: [],
   channelSyncChats: [],
   channelSyncMtprotoSession: '',
+  channelSyncImports: [],
   channelSyncQueue: [],
   channelSyncHistory: [],
   channelSyncSeen: [],
@@ -221,7 +222,7 @@ function normalizeData(saved) {
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
     'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
-    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats'
+    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
@@ -2560,6 +2561,18 @@ async function activeMtprotoClient() {
   return mtprotoRuntime.client;
 }
 function saveMtprotoSession(runtime) { data.channelSyncMtprotoSession = runtime.session.save(); saveNow(); }
+async function runChannelSyncImport(job) {
+  if (!job || job.status !== 'queued') return;
+  job.status = 'running'; job.startedAt = new Date().toISOString(); saveNow();
+  try {
+    const result = await copyMtprotoRecent(await activeMtprotoClient(), job.sourceChatId, job.destinationChatId, job.count);
+    job.status = 'completed'; job.completedAt = new Date().toISOString(); job.copied = result.copied; job.publications = result.publications; job.error = null;
+  } catch (error) {
+    job.status = 'failed'; job.completedAt = new Date().toISOString(); job.error = String(error?.errorMessage || error?.message || error).slice(0, 300);
+    console.error('Import MTProto CHANNEL SYNC impossible :', job.error);
+  }
+  data.channelSyncImports = data.channelSyncImports.slice(-100); saveNow();
+}
 function rememberChannelSyncChat(chat) {
   if (!chat?.id) return;
   const item = { id: String(chat.id), name: String(chat.title || chat.username || `Chat ${chat.id}`).slice(0, 100), type: String(chat.type || 'chat') };
@@ -2653,6 +2666,7 @@ function queueChannelSyncPost(ctx, message, connection) {
   album.timer = setTimeout(() => { channelSyncAlbums.delete(key); data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== key); saveNow(); captureChannelSync(album.messages, connection).catch(noteError); }, ALBUM_QUIET_MS);
 }
 function restoreChannelSyncWork() {
+  for (const job of data.channelSyncImports || []) if (job.status === 'running') { job.status = 'failed'; job.error = 'Redémarrage pendant l’import : vérifie le canal destination avant de relancer.'; job.completedAt = new Date().toISOString(); }
   for (const item of data.channelSyncQueue || []) {
     if (item.status === 'sending') { item.status = 'uncertain'; item.lastError = 'Redémarrage pendant la copie : vérifie le canal destination avant toute nouvelle action.'; }
   }
@@ -3573,7 +3587,7 @@ app.post('/api/manual-publications/trash/:id/restore', (req, res) => {
 app.get('/api/channel-sync', (_req, res) => {
   const registry = parseChannelRegistry();
   const chats = [...new Map([...(data.channelSyncChats || []), ...(registry.channels || []).map(item => ({ id: item.id, name: item.name, type: 'channel' })), { id: CHANNEL_ID, name: 'Canal principal', type: 'channel' }].map(item => [String(item.id), item])).values()];
-  res.json({ connections: channelSyncConnections(), chats, queue: (data.channelSyncQueue || []).map(channelSyncSummary), history: (data.channelSyncHistory || []).slice(-200).reverse().map(channelSyncSummary), limitation: 'L’API Bot Telegram ne permet pas de récupérer les anciens messages d’un canal. CHANNEL SYNC copie les nouveaux posts que le bot reçoit après activation.' });
+  res.json({ connections: channelSyncConnections(), chats, queue: (data.channelSyncQueue || []).map(channelSyncSummary), imports: (data.channelSyncImports || []).slice(-10).reverse(), history: (data.channelSyncHistory || []).slice(-200).reverse().map(channelSyncSummary), limitation: 'L’API Bot Telegram ne permet pas de récupérer les anciens messages d’un canal. CHANNEL SYNC copie les nouveaux posts que le bot reçoit après activation.' });
 });
 app.put('/api/channel-sync', (req, res) => {
   const supplied = Array.isArray(req.body?.connections) ? req.body.connections : [];
@@ -3638,8 +3652,14 @@ app.post('/api/channel-sync/copy-recent', async (req, res) => {
   const count = Math.max(1, Math.min(500, Number(req.body?.count) || 0));
   const sourceChatId = String(req.body?.sourceChatId || ''); const destinationChatId = String(req.body?.destinationChatId || '');
   if (!/^-?\d+$/u.test(sourceChatId) || !/^-?\d+$/u.test(destinationChatId) || sourceChatId === destinationChatId) return res.status(400).json({ error: 'Choisis une connexion source et destination valide.' });
-  try { res.json({ ok: true, ...(await copyMtprotoRecent(await activeMtprotoClient(), sourceChatId, destinationChatId, count)) }); }
-  catch (error) { res.status(502).json({ error: `Copie MTProto impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` }); }
+  try {
+    await activeMtprotoClient();
+    if ((data.channelSyncImports || []).some(job => ['queued', 'running'].includes(job.status))) return res.status(409).json({ error: 'Un import historique est déjà en cours.' });
+    const job = { id: `mtimport-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`, sourceChatId, destinationChatId, count, status: 'queued', createdAt: new Date().toISOString() };
+    data.channelSyncImports.push(job); data.channelSyncImports = data.channelSyncImports.slice(-100); saveNow();
+    setImmediate(() => runChannelSyncImport(job));
+    res.status(202).json({ ok: true, job: { id: job.id, status: job.status } });
+  } catch (error) { res.status(502).json({ error: `Préparation MTProto impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` }); }
 });
 
 app.get('/api/state', (_req, res) => {
