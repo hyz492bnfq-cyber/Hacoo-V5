@@ -89,6 +89,7 @@ const DEFAULTS = {
   channelSyncChats: [],
   channelSyncMtprotoSession: '',
   channelSyncImports: [],
+  channelSyncImportSeen: [],
   channelSyncQueue: [],
   channelSyncHistory: [],
   channelSyncSeen: [],
@@ -222,7 +223,7 @@ function normalizeData(saved) {
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
     'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
-    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports'
+    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports', 'channelSyncImportSeen'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
@@ -2565,7 +2566,10 @@ async function runChannelSyncImport(job) {
   if (!job || job.status !== 'queued') return;
   job.status = 'running'; job.startedAt = new Date().toISOString(); saveNow();
   try {
-    const result = await copyMtprotoRecent(await activeMtprotoClient(), job.sourceChatId, job.destinationChatId, job.count);
+    const result = await copyMtprotoRecent(await activeMtprotoClient(), job.sourceChatId, job.destinationChatId, job.count, data.channelSyncImportSeen || [], async keys => {
+      data.channelSyncImportSeen = [...new Set([...(data.channelSyncImportSeen || []), ...keys])].slice(-10000); saveNow();
+    });
+    data.channelSyncImportSeen = [...new Set([...(data.channelSyncImportSeen || []), ...(result.keys || [])])].slice(-10000);
     job.status = 'completed'; job.completedAt = new Date().toISOString(); job.copied = result.copied; job.publications = result.publications; job.error = null;
   } catch (error) {
     job.status = 'failed'; job.completedAt = new Date().toISOString(); job.error = String(error?.errorMessage || error?.message || error).slice(0, 300);
