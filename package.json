@@ -17,6 +17,7 @@
   "dependencies": {
     "express": "^4.21.2",
     "grammy": "^1.35.0",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "teleproto": "^1.232.1"
   }
 }

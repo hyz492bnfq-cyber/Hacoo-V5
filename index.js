@@ -31,6 +31,7 @@ const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNext
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
+const { Api: MtprotoApi, createClient: createMtprotoClient, listChats: listMtprotoChats, copyRecent: copyMtprotoRecent } = require('./lib/channel-sync-mtproto');
 
 let sharp;
 try {
@@ -51,6 +52,8 @@ const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim
 const GEMINI_FALLBACK_MODELS = String(process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.5-flash-lite,gemini-2.5-flash-lite')
   .split(',').map(x => x.trim()).filter(Boolean);
 const GEMINI_TIMEOUT_MS = 12000;
+const TELEGRAM_API_ID = Number(process.env.TELEGRAM_API_ID || 0);
+const TELEGRAM_API_HASH = String(process.env.TELEGRAM_API_HASH || '').trim();
 
 const MAX_HISTORY = 3000;
 // Telegram livre normalement les morceaux d'un album ensemble, mais un délai
@@ -84,6 +87,7 @@ const DEFAULTS = {
   channelSync: { enabled: false, sourceChatId: '', destinationChatId: '', mode: 'automatic' },
   channelSyncConnections: [],
   channelSyncChats: [],
+  channelSyncMtprotoSession: '',
   channelSyncQueue: [],
   channelSyncHistory: [],
   channelSyncSeen: [],
@@ -2544,6 +2548,18 @@ async function publishManualPublication(item) {
 
 // ---------- CHANNEL SYNC : nouveaux posts uniquement ----------
 const channelSyncAlbums = new Map();
+let mtprotoRuntime = null;
+let mtprotoLogin = null;
+function mtprotoConfigured() { return Number.isSafeInteger(TELEGRAM_API_ID) && TELEGRAM_API_ID > 0 && /^[a-f0-9]{32}$/iu.test(TELEGRAM_API_HASH); }
+async function activeMtprotoClient() {
+  if (!mtprotoConfigured()) throw new Error('Configure TELEGRAM_API_ID et TELEGRAM_API_HASH dans les variables d’environnement.');
+  if (!data.channelSyncMtprotoSession) throw new Error('Connecte d’abord ton compte Telegram MTProto.');
+  if (!mtprotoRuntime) mtprotoRuntime = createMtprotoClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH, session: data.channelSyncMtprotoSession });
+  if (!mtprotoRuntime.client.connected) await mtprotoRuntime.client.connect();
+  if (!await mtprotoRuntime.client.checkAuthorization()) throw new Error('La session MTProto a expiré : reconnecte ton compte Telegram.');
+  return mtprotoRuntime.client;
+}
+function saveMtprotoSession(runtime) { data.channelSyncMtprotoSession = runtime.session.save(); saveNow(); }
 function rememberChannelSyncChat(chat) {
   if (!chat?.id) return;
   const item = { id: String(chat.id), name: String(chat.title || chat.username || `Chat ${chat.id}`).slice(0, 100), type: String(chat.type || 'chat') };
@@ -3577,12 +3593,54 @@ app.put('/api/channel-sync/:id', (req, res) => {
   item.text = req.body.text.replace(/\u0000/g, ''); item.updatedAt = new Date().toISOString(); saveNow();
   res.json({ ok: true, publication: channelSyncSummary(item) });
 });
+app.get('/api/channel-sync/mtproto', (_req, res) => res.json({ configured: mtprotoConfigured(), connected: Boolean(data.channelSyncMtprotoSession), loginPending: Boolean(mtprotoLogin) }));
+app.post('/api/channel-sync/mtproto/start', async (req, res) => {
+  const phone = String(req.body?.phone || '').trim();
+  if (!/^\+[1-9]\d{6,14}$/u.test(phone)) return res.status(400).json({ error: 'Utilise le numéro au format international, par exemple +336…' });
+  try {
+    if (!mtprotoConfigured()) throw new Error('Configure TELEGRAM_API_ID et TELEGRAM_API_HASH dans FadeHost avant de continuer.');
+    if (mtprotoLogin?.runtime?.client?.connected) await mtprotoLogin.runtime.client.disconnect();
+    const runtime = createMtprotoClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH });
+    await runtime.client.connect();
+    const sent = await runtime.client.sendCode({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH }, phone);
+    mtprotoLogin = { runtime, phone, phoneCodeHash: sent.phoneCodeHash };
+    res.json({ ok: true, viaApp: Boolean(sent.isCodeViaApp) });
+  } catch (error) { res.status(502).json({ error: String(error?.errorMessage || error?.message || error).slice(0, 250) }); }
+});
+app.post('/api/channel-sync/mtproto/verify', async (req, res) => {
+  const code = String(req.body?.code || '').replace(/\s/g, '');
+  if (!mtprotoLogin || !/^\d{3,10}$/u.test(code)) return res.status(400).json({ error: 'Demande un nouveau code puis saisis-le sans espace.' });
+  try {
+    await mtprotoLogin.runtime.client.invoke(new MtprotoApi.auth.SignIn({ phoneNumber: mtprotoLogin.phone, phoneCodeHash: mtprotoLogin.phoneCodeHash, phoneCode: code }));
+    saveMtprotoSession(mtprotoLogin.runtime); mtprotoRuntime = mtprotoLogin.runtime; mtprotoLogin = null;
+    res.json({ ok: true });
+  } catch (error) {
+    if (String(error?.errorMessage || error?.message || '').includes('SESSION_PASSWORD_NEEDED')) return res.status(409).json({ passwordRequired: true, error: 'Le mot de passe de vérification en deux étapes est requis.' });
+    res.status(502).json({ error: String(error?.errorMessage || error?.message || error).slice(0, 250) });
+  }
+});
+app.post('/api/channel-sync/mtproto/password', async (req, res) => {
+  const password = String(req.body?.password || '');
+  if (!mtprotoLogin || !password) return res.status(400).json({ error: 'La connexion MTProto doit être recommencée.' });
+  try { await mtprotoLogin.runtime.client.signInWithPassword({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH }, { password }); saveMtprotoSession(mtprotoLogin.runtime); mtprotoRuntime = mtprotoLogin.runtime; mtprotoLogin = null; res.json({ ok: true }); }
+  catch (error) { res.status(502).json({ error: String(error?.errorMessage || error?.message || error).slice(0, 250) }); }
+});
+app.post('/api/channel-sync/mtproto/chats', async (_req, res) => {
+  try { const chats = await listMtprotoChats(await activeMtprotoClient()); data.channelSyncChats = [...new Map([...(data.channelSyncChats || []), ...chats].map(item => [item.id, item])).values()].slice(-300); saveNow(); res.json({ chats }); }
+  catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 250) }); }
+});
 app.post('/api/channel-sync/:id/publish', async (req, res) => {
   const item = data.channelSyncQueue.find(entry => entry.id === safeManualId(req.params.id));
   if (!item) return res.status(404).json({ error: 'Publication CHANNEL SYNC introuvable.' });
   try { await publishChannelSyncItem(item); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: `Copie à vérifier : ${String(error?.description || error?.message || error).slice(0, 250)}` }); }
 });
-app.post('/api/channel-sync/copy-recent', (_req, res) => res.status(501).json({ error: 'Impossible avec l’API Bot Telegram : elle ne donne pas accès à l’historique d’un canal. Ajoute le bot au canal source, active CHANNEL SYNC, puis seuls les nouveaux posts seront copiés.' }));
+app.post('/api/channel-sync/copy-recent', async (req, res) => {
+  const count = Math.max(1, Math.min(500, Number(req.body?.count) || 0));
+  const sourceChatId = String(req.body?.sourceChatId || ''); const destinationChatId = String(req.body?.destinationChatId || '');
+  if (!/^-?\d+$/u.test(sourceChatId) || !/^-?\d+$/u.test(destinationChatId) || sourceChatId === destinationChatId) return res.status(400).json({ error: 'Choisis une connexion source et destination valide.' });
+  try { res.json({ ok: true, ...(await copyMtprotoRecent(await activeMtprotoClient(), sourceChatId, destinationChatId, count)) }); }
+  catch (error) { res.status(502).json({ error: `Copie MTProto impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` }); }
+});
 
 app.get('/api/state', (_req, res) => {
   trimHistory();
@@ -3604,7 +3662,8 @@ app.get('/api/state', (_req, res) => {
       ownMessageIds: undefined,
       manualPublications: undefined,
       manualPublicationHistory: undefined,
-      manualPublicationTrash: undefined
+      manualPublicationTrash: undefined,
+      channelSyncMtprotoSession: undefined
     },
 
     runtime: {
