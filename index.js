@@ -31,7 +31,7 @@ const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNext
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
-const { Api: MtprotoApi, createClient: createMtprotoClient, listChats: listMtprotoChats, copyRecent: copyMtprotoRecent } = require('./lib/channel-sync-mtproto');
+const { Api: ResenderApi, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
 
 let sharp;
 try {
@@ -87,7 +87,7 @@ const DEFAULTS = {
   channelSync: { enabled: false, sourceChatId: '', destinationChatId: '', mode: 'automatic' },
   channelSyncConnections: [],
   channelSyncChats: [],
-  channelSyncMtprotoSession: '',
+  channelSyncResenderSession: '',
   channelSyncImports: [],
   channelSyncImportSeen: [],
   channelSyncQueue: [],
@@ -2548,32 +2548,20 @@ async function publishManualPublication(item) {
   }
 }
 
-// ---------- CHANNEL SYNC : nouveaux posts uniquement ----------
-const channelSyncAlbums = new Map();
-let mtprotoRuntime = null;
-let mtprotoLogin = null;
-function mtprotoConfigured() { return Number.isSafeInteger(TELEGRAM_API_ID) && TELEGRAM_API_ID > 0 && /^[a-f0-9]{32}$/iu.test(TELEGRAM_API_HASH); }
-async function activeMtprotoClient() {
-  if (!mtprotoConfigured()) throw new Error('Configure TELEGRAM_API_ID et TELEGRAM_API_HASH dans les variables d’environnement.');
-  if (!data.channelSyncMtprotoSession) throw new Error('Connecte d’abord ton compte Telegram MTProto.');
-  if (!mtprotoRuntime) mtprotoRuntime = createMtprotoClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH, session: data.channelSyncMtprotoSession });
-  if (!mtprotoRuntime.client.connected) await mtprotoRuntime.client.connect();
-  if (!await mtprotoRuntime.client.checkAuthorization()) throw new Error('La session MTProto a expiré : reconnecte ton compte Telegram.');
-  return mtprotoRuntime.client;
-}
-function saveMtprotoSession(runtime) { data.channelSyncMtprotoSession = runtime.session.save(); saveNow(); }
+// ---------- CHANNEL SYNC : Resender / compte personnel ----------
+let resenderRuntime = null; let resenderLogin = null; let resenderWatching = false;
+function resenderConfigured() { return Number.isSafeInteger(TELEGRAM_API_ID) && TELEGRAM_API_ID > 0 && /^[a-f0-9]{32}$/iu.test(TELEGRAM_API_HASH); }
+async function activeResenderClient() { if (!resenderConfigured() || !data.channelSyncResenderSession) throw new Error('Configure TELEGRAM_API_ID, TELEGRAM_API_HASH puis connecte ton compte personnel.'); if (!resenderRuntime) resenderRuntime = createResenderClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH, session: data.channelSyncResenderSession }); if (!resenderRuntime.client.connected) await resenderRuntime.client.connect(); if (!await resenderRuntime.client.checkAuthorization()) throw new Error('Session personnelle expirée : reconnecte-toi.'); if (!resenderWatching) { watchResenderConnections(resenderRuntime.client, channelSyncConnections, async (connection, messages) => { await republishResender(resenderRuntime.client, connection.destinationChatId, messages); }, error => console.error('Resender:', String(error?.message || error))); resenderWatching = true; } return resenderRuntime.client; }
+function saveResenderSession(runtime) { data.channelSyncResenderSession = runtime.session.save(); saveNow(); }
 async function runChannelSyncImport(job) {
   if (!job || job.status !== 'queued') return;
   job.status = 'running'; job.startedAt = new Date().toISOString(); saveNow();
   try {
-    const result = await copyMtprotoRecent(await activeMtprotoClient(), job.sourceChatId, job.destinationChatId, job.count, data.channelSyncImportSeen || [], async keys => {
-      data.channelSyncImportSeen = [...new Set([...(data.channelSyncImportSeen || []), ...keys])].slice(-10000); saveNow();
-    });
-    data.channelSyncImportSeen = [...new Set([...(data.channelSyncImportSeen || []), ...(result.keys || [])])].slice(-10000);
-    job.status = 'completed'; job.completedAt = new Date().toISOString(); job.copied = result.copied; job.publications = result.publications; job.error = null;
+    const result = await copyResenderRecent(await activeResenderClient(), job.sourceChatId, job.destinationChatId, job.count, data.channelSyncImportSeen || []);
+    data.channelSyncImportSeen = [...new Set([...(data.channelSyncImportSeen || []), ...(result.keys || [])])].slice(-10000); job.status = 'completed'; job.completedAt = new Date().toISOString(); job.copied = result.copied; job.publications = result.publications; job.error = null;
   } catch (error) {
     job.status = 'failed'; job.completedAt = new Date().toISOString(); job.error = String(error?.errorMessage || error?.message || error).slice(0, 300);
-    console.error('Import MTProto CHANNEL SYNC impossible :', job.error);
+    console.error('Import Resender CHANNEL SYNC impossible :', job.error);
   }
   data.channelSyncImports = data.channelSyncImports.slice(-100); saveNow();
 }
@@ -2584,108 +2572,11 @@ function rememberChannelSyncChat(chat) {
   saveNow();
 }
 function channelSyncConnections() { return data.channelSyncConnections || []; }
-function saveChannelSyncAlbums() {
-  data.channelSyncPendingAlbums = [...channelSyncAlbums.entries()].map(([groupId, album]) => ({ groupId, connectionId: album.connection?.id, messages: album.messages, updatedAt: album.updatedAt }));
-  saveNow();
-}
-function channelSyncId(messages, connection) {
-  const first = messages[0];
-  return `sync:${connection.id}:${first.chat.id}:${messages.map(message => message.message_id).sort((a, b) => a - b).join('-')}`;
-}
-function channelSyncButtons(markup) {
-  const rows = markup?.inline_keyboard;
-  if (!Array.isArray(rows)) return undefined;
-  const inline_keyboard = rows.map(row => Array.isArray(row) ? row
-    .filter(button => typeof button?.text === 'string' && typeof button?.url === 'string' && /^https?:\/\//iu.test(button.url))
-    .map(button => ({ text: button.text.slice(0, 64), url: button.url.slice(0, 2000) })) : []).filter(row => row.length);
-  return inline_keyboard.length ? { inline_keyboard } : undefined;
-}
-function channelSyncText(messages) {
-  return messages.map(message => msgText(message)).filter(Boolean).join('\n');
-}
-function channelSyncSignature(messages) {
-  return messages.map(message => [msgText(message).replace(/\s+/gu, ' ').trim(), ...(message.photo || []).slice(-1).map(photo => photo.file_unique_id), message.video?.file_unique_id, message.document?.file_unique_id].filter(Boolean).join(':')).join('|');
-}
 function channelSyncSummary(item) {
   return { id: item.id, status: item.status, text: item.text || '', receivedAt: item.receivedAt, sourceChatId: item.sourceChatId, sourceMessageIds: item.sourceMessageIds || [], messageCount: item.messages?.length || 0, lastError: item.lastError || null };
 }
-function rememberChannelSync(item) {
-  data.channelSyncSeen = [...new Set([...(data.channelSyncSeen || []), item.id])].slice(-10000);
-}
-async function publishChannelSyncItem(item) {
-  if (!item || item.status === 'sending' || item.status === 'sent' || item.status === 'uncertain') return;
-  const destination = String(item.destinationChatId || '').trim();
-  if (!destination) throw new Error('Canal destination CHANNEL SYNC manquant.');
-  item.status = 'sending'; item.startedAt = new Date().toISOString(); saveNow();
-  try {
-    const sentMessageIds = [];
-    const messages = item.messages || [];
-    if (messages.length > 1 && typeof bot.api.copyMessages === 'function') {
-      // copyMessages conserve le groupe média Telegram ; les boutons d'un album ne sont pas supportés par cette API.
-      const copied = await bot.api.copyMessages(destination, item.sourceChatId, messages.map(message => message.message_id));
-      sentMessageIds.push(...(copied || []).map(message => message.message_id).filter(Boolean));
-    } else {
-      for (const message of messages) {
-        const copied = await bot.api.copyMessage(destination, item.sourceChatId, message.message_id, { reply_markup: channelSyncButtons(message.reply_markup) });
-        if (copied?.message_id) sentMessageIds.push(copied.message_id);
-      }
-    }
-    // Une modification manuelle ne touche que le premier texte/légende : les médias restent des copies Telegram.
-    if (item.originalText !== undefined && item.text !== item.originalText && sentMessageIds[0]) {
-      const first = item.messages?.[0] || {};
-      if (first.text !== undefined) await bot.api.editMessageText(destination, sentMessageIds[0], item.text, { reply_markup: channelSyncButtons(first.reply_markup) });
-      else if (first.caption !== undefined || first.photo || first.video || first.document) await bot.api.editMessageCaption(destination, sentMessageIds[0], { caption: item.text, reply_markup: channelSyncButtons(first.reply_markup) });
-    }
-    item.status = 'sent'; item.sentAt = new Date().toISOString(); item.sentMessageIds = sentMessageIds; item.lastError = null;
-    data.channelSyncQueue = data.channelSyncQueue.filter(entry => entry.id !== item.id);
-    data.channelSyncHistory.push(item); data.channelSyncHistory = data.channelSyncHistory.slice(-MAX_HISTORY);
-    rememberChannelSync(item); saveNow();
-  } catch (error) {
-    // Une erreur Telegram/réseau peut arriver après une copie acceptée : pas de relance automatique.
-    item.status = 'uncertain'; item.lastError = String(error?.description || error?.message || error).slice(0, 350); item.uncertainAt = new Date().toISOString(); saveNow();
-    notifyAdmin(`CHANNEL SYNC : résultat incertain pour ${item.id}. Vérifie le canal destination avant toute nouvelle action.`).catch(() => {});
-    throw error;
-  }
-}
-async function captureChannelSync(messages, connection) {
-  const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
-  if (!ordered.length || !connection) return;
-  const id = channelSyncId(ordered, connection);
-  const signature = channelSyncSignature(ordered);
-  if ((data.channelSyncSeen || []).includes(id) || data.channelSyncQueue.some(item => item.id === id || (signature && item.signature === signature)) || data.channelSyncHistory.some(item => item.id === id || (signature && item.signature === signature))) return;
-  const text = channelSyncText(ordered);
-  const item = { id, signature, connectionId: connection.id, destinationChatId: connection.destinationChatId, mode: connection.mode, sourceChatId: String(ordered[0].chat.id), sourceMessageIds: ordered.map(message => message.message_id), messages: clone(ordered), text, originalText: text, receivedAt: new Date().toISOString(), status: 'queued' };
-  data.channelSyncQueue.push(item); data.channelSyncQueue = data.channelSyncQueue.slice(-MAX_HISTORY); saveNow();
-  if (item.mode === 'automatic') await publishChannelSyncItem(item);
-}
-function queueChannelSyncPost(ctx, message, connection) {
-  const groupId = message.media_group_id;
-  if (!groupId) return captureChannelSync([message], connection).catch(noteError);
-  const key = `${connection.id}:${groupId}`;
-  let album = channelSyncAlbums.get(key);
-  if (!album) { album = { messages: [], timer: null, updatedAt: new Date().toISOString(), connection }; channelSyncAlbums.set(key, album); }
-  if (!album.messages.some(item => item.message_id === message.message_id)) album.messages.push(message);
-  album.updatedAt = new Date().toISOString(); saveChannelSyncAlbums();
-  clearTimeout(album.timer);
-  album.timer = setTimeout(() => { channelSyncAlbums.delete(key); data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== key); saveNow(); captureChannelSync(album.messages, connection).catch(noteError); }, ALBUM_QUIET_MS);
-}
 function restoreChannelSyncWork() {
   for (const job of data.channelSyncImports || []) if (job.status === 'running') { job.status = 'failed'; job.error = 'Redémarrage pendant l’import : vérifie le canal destination avant de relancer.'; job.completedAt = new Date().toISOString(); }
-  for (const item of data.channelSyncQueue || []) {
-    if (item.status === 'sending') { item.status = 'uncertain'; item.lastError = 'Redémarrage pendant la copie : vérifie le canal destination avant toute nouvelle action.'; }
-  }
-  for (const record of data.channelSyncPendingAlbums || []) {
-    if (!record?.groupId || !Array.isArray(record.messages) || !record.messages.length) continue;
-    const connection = channelSyncConnections().find(item => item.id === record.connectionId);
-    if (!connection) continue;
-    const album = { messages: record.messages, timer: null, updatedAt: record.updatedAt || new Date().toISOString(), connection };
-    channelSyncAlbums.set(record.groupId, album);
-    album.timer = setTimeout(() => {
-      channelSyncAlbums.delete(record.groupId);
-      data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== record.groupId);
-      saveNow(); captureChannelSync(album.messages, connection).catch(noteError);
-    }, ALBUM_QUIET_MS);
-  }
   saveNow();
 }
 
@@ -2693,7 +2584,6 @@ function queueChannelPost(ctx) {
   const message = ctx.channelPost;
   if (!message) return;
   rememberChannelSyncChat(message.chat);
-  for (const connection of channelSyncConnections()) if (connection.enabled && String(message.chat.id) === connection.sourceChatId) queueChannelSyncPost(ctx, message, connection);
   if (String(message.chat.id) !== CHANNEL_ID) return;
   if (ownMessageIds.has(message.message_id) || (data.ownMessageIds || []).includes(message.message_id)) return;
   if ((data.processedMessageIds || []).includes(message.message_id)) return;
@@ -2849,7 +2739,6 @@ bot.on('message', ctx => {
   const message = ctx.message;
   if (!message) return;
   rememberChannelSyncChat(message.chat);
-  for (const connection of channelSyncConnections()) if (connection.enabled && String(message.chat.id) === connection.sourceChatId) queueChannelSyncPost(ctx, message, connection);
 });
 bot.on('my_chat_member', ctx => rememberChannelSyncChat(ctx.myChatMember?.chat));
 bot.on('edited_channel_post', observeEditedChannelPost);
@@ -3591,7 +3480,7 @@ app.post('/api/manual-publications/trash/:id/restore', (req, res) => {
 app.get('/api/channel-sync', (_req, res) => {
   const registry = parseChannelRegistry();
   const chats = [...new Map([...(data.channelSyncChats || []), ...(registry.channels || []).map(item => ({ id: item.id, name: item.name, type: 'channel' })), { id: CHANNEL_ID, name: 'Canal principal', type: 'channel' }].map(item => [String(item.id), item])).values()];
-  res.json({ connections: channelSyncConnections(), chats, queue: (data.channelSyncQueue || []).map(channelSyncSummary), imports: (data.channelSyncImports || []).slice(-10).reverse(), history: (data.channelSyncHistory || []).slice(-200).reverse().map(channelSyncSummary), limitation: 'L’API Bot Telegram ne permet pas de récupérer les anciens messages d’un canal. CHANNEL SYNC copie les nouveaux posts que le bot reçoit après activation.' });
+  res.json({ connections: channelSyncConnections(), chats, queue: (data.channelSyncQueue || []).map(channelSyncSummary), imports: (data.channelSyncImports || []).slice(-10).reverse(), history: (data.channelSyncHistory || []).slice(-200).reverse().map(channelSyncSummary), limitation: 'Resender utilise ton compte personnel connecté : choisis source et destination dans le dashboard.' });
 });
 app.put('/api/channel-sync', (req, res) => {
   const supplied = Array.isArray(req.body?.connections) ? req.body.connections : [];
@@ -3611,59 +3500,22 @@ app.put('/api/channel-sync/:id', (req, res) => {
   item.text = req.body.text.replace(/\u0000/g, ''); item.updatedAt = new Date().toISOString(); saveNow();
   res.json({ ok: true, publication: channelSyncSummary(item) });
 });
-app.get('/api/channel-sync/mtproto', (_req, res) => res.json({ configured: mtprotoConfigured(), connected: Boolean(data.channelSyncMtprotoSession), loginPending: Boolean(mtprotoLogin) }));
-app.post('/api/channel-sync/mtproto/start', async (req, res) => {
-  const phone = String(req.body?.phone || '').trim();
-  if (!/^\+[1-9]\d{6,14}$/u.test(phone)) return res.status(400).json({ error: 'Utilise le numéro au format international, par exemple +336…' });
-  try {
-    if (!mtprotoConfigured()) throw new Error('Configure TELEGRAM_API_ID et TELEGRAM_API_HASH dans FadeHost avant de continuer.');
-    if (mtprotoLogin?.runtime?.client?.connected) await mtprotoLogin.runtime.client.disconnect();
-    const runtime = createMtprotoClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH });
-    await runtime.client.connect();
-    const sent = await runtime.client.sendCode({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH }, phone);
-    mtprotoLogin = { runtime, phone, phoneCodeHash: sent.phoneCodeHash };
-    res.json({ ok: true, viaApp: Boolean(sent.isCodeViaApp) });
-  } catch (error) { res.status(502).json({ error: String(error?.errorMessage || error?.message || error).slice(0, 250) }); }
-});
-app.post('/api/channel-sync/mtproto/verify', async (req, res) => {
-  const code = String(req.body?.code || '').replace(/\s/g, '');
-  if (!mtprotoLogin || !/^\d{3,10}$/u.test(code)) return res.status(400).json({ error: 'Demande un nouveau code puis saisis-le sans espace.' });
-  try {
-    await mtprotoLogin.runtime.client.invoke(new MtprotoApi.auth.SignIn({ phoneNumber: mtprotoLogin.phone, phoneCodeHash: mtprotoLogin.phoneCodeHash, phoneCode: code }));
-    saveMtprotoSession(mtprotoLogin.runtime); mtprotoRuntime = mtprotoLogin.runtime; mtprotoLogin = null;
-    res.json({ ok: true });
-  } catch (error) {
-    if (String(error?.errorMessage || error?.message || '').includes('SESSION_PASSWORD_NEEDED')) return res.status(409).json({ passwordRequired: true, error: 'Le mot de passe de vérification en deux étapes est requis.' });
-    res.status(502).json({ error: String(error?.errorMessage || error?.message || error).slice(0, 250) });
-  }
-});
-app.post('/api/channel-sync/mtproto/password', async (req, res) => {
-  const password = String(req.body?.password || '');
-  if (!mtprotoLogin || !password) return res.status(400).json({ error: 'La connexion MTProto doit être recommencée.' });
-  try { await mtprotoLogin.runtime.client.signInWithPassword({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH }, { password }); saveMtprotoSession(mtprotoLogin.runtime); mtprotoRuntime = mtprotoLogin.runtime; mtprotoLogin = null; res.json({ ok: true }); }
-  catch (error) { res.status(502).json({ error: String(error?.errorMessage || error?.message || error).slice(0, 250) }); }
-});
-app.post('/api/channel-sync/mtproto/chats', async (_req, res) => {
-  try { const chats = await listMtprotoChats(await activeMtprotoClient()); data.channelSyncChats = [...new Map([...(data.channelSyncChats || []), ...chats].map(item => [item.id, item])).values()].slice(-300); saveNow(); res.json({ chats }); }
-  catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 250) }); }
-});
-app.post('/api/channel-sync/:id/publish', async (req, res) => {
-  const item = data.channelSyncQueue.find(entry => entry.id === safeManualId(req.params.id));
-  if (!item) return res.status(404).json({ error: 'Publication CHANNEL SYNC introuvable.' });
-  try { await publishChannelSyncItem(item); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: `Copie à vérifier : ${String(error?.description || error?.message || error).slice(0, 250)}` }); }
-});
+app.get('/api/channel-sync/resender', (_req, res) => res.json({ configured: resenderConfigured(), connected: Boolean(data.channelSyncResenderSession), loginPending: Boolean(resenderLogin) }));
+app.post('/api/channel-sync/resender/start', async (req, res) => { try { const runtime = createResenderClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH }); await runtime.client.connect(); const sent = await runtime.client.sendCode({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH }, String(req.body?.phone || '').trim()); resenderLogin = { runtime, phone: String(req.body?.phone || '').trim(), phoneCodeHash: sent.phoneCodeHash }; res.json({ ok: true }); } catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 250) }); } });
+app.post('/api/channel-sync/resender/verify', async (req, res) => { if (!resenderLogin) return res.status(400).json({ error: 'La connexion doit être recommencée.' }); try { await resenderLogin.runtime.client.invoke(new ResenderApi.auth.SignIn({ phoneNumber: resenderLogin.phone, phoneCodeHash: resenderLogin.phoneCodeHash, phoneCode: String(req.body?.code || '').replace(/\s/g, '') })); saveResenderSession(resenderLogin.runtime); resenderRuntime = resenderLogin.runtime; resenderLogin = null; res.json({ ok: true }); } catch (error) { if (String(error?.message || error).includes('SESSION_PASSWORD_NEEDED')) return res.status(409).json({ passwordRequired: true, error: 'Le mot de passe de vérification en deux étapes est requis.' }); res.status(502).json({ error: String(error?.message || error).slice(0, 250) }); } });
+app.post('/api/channel-sync/resender/password', async (req, res) => { if (!resenderLogin || !String(req.body?.password || '')) return res.status(400).json({ error: 'La connexion doit être recommencée.' }); try { await resenderLogin.runtime.client.signInWithPassword({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH }, { password: String(req.body.password) }); saveResenderSession(resenderLogin.runtime); resenderRuntime = resenderLogin.runtime; resenderLogin = null; res.json({ ok: true }); } catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 250) }); } });
+app.post('/api/channel-sync/resender/chats', async (_req, res) => { try { const chats = await listResenderChats(await activeResenderClient()); data.channelSyncChats = chats; saveNow(); res.json({ chats }); } catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 250) }); } });
 app.post('/api/channel-sync/copy-recent', async (req, res) => {
-  const count = Math.max(1, Math.min(500, Number(req.body?.count) || 0));
-  const sourceChatId = String(req.body?.sourceChatId || ''); const destinationChatId = String(req.body?.destinationChatId || '');
-  if (!/^-?\d+$/u.test(sourceChatId) || !/^-?\d+$/u.test(destinationChatId) || sourceChatId === destinationChatId) return res.status(400).json({ error: 'Choisis une connexion source et destination valide.' });
   try {
-    await activeMtprotoClient();
+    await activeResenderClient();
     if ((data.channelSyncImports || []).some(job => ['queued', 'running'].includes(job.status))) return res.status(409).json({ error: 'Un import historique est déjà en cours.' });
-    const job = { id: `mtimport-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`, sourceChatId, destinationChatId, count, status: 'queued', createdAt: new Date().toISOString() };
+    const count = Math.max(1, Math.min(500, Number(req.body?.count) || 10)); const sourceChatId = String(req.body?.sourceChatId || ''); const destinationChatId = String(req.body?.destinationChatId || '');
+    if (!/^-?\d+$/u.test(sourceChatId) || !/^-?\d+$/u.test(destinationChatId) || sourceChatId === destinationChatId) throw new Error('Choisis une source et une destination valides.');
+    const job = { id: `resender-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`, sourceChatId, destinationChatId, count, status: 'queued', createdAt: new Date().toISOString() };
     data.channelSyncImports.push(job); data.channelSyncImports = data.channelSyncImports.slice(-100); saveNow();
     setImmediate(() => runChannelSyncImport(job));
     res.status(202).json({ ok: true, job: { id: job.id, status: job.status } });
-  } catch (error) { res.status(502).json({ error: `Préparation MTProto impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` }); }
+  } catch (error) { res.status(502).json({ error: `Import Resender impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` }); }
 });
 
 app.get('/api/state', (_req, res) => {
@@ -3687,7 +3539,7 @@ app.get('/api/state', (_req, res) => {
       manualPublications: undefined,
       manualPublicationHistory: undefined,
       manualPublicationTrash: undefined,
-      channelSyncMtprotoSession: undefined
+      channelSyncResenderSession: undefined,
     },
 
     runtime: {
@@ -4166,6 +4018,7 @@ const httpServer = app.listen(PORT, () => {
         console.log('M2 HACOO BOT connecté à Telegram.');
         restorePersistentWork();
         restoreChannelSyncWork();
+        if (data.channelSyncResenderSession) activeResenderClient().catch(error => console.error('Resender non démarré :', String(error?.message || error)));
       }
     });
   } catch (error) {

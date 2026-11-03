@@ -31,6 +31,10 @@ Version 6.4.0 construite sur le code V5 fourni et durcie après audit du process
 
 Obligatoires : `BOT_TOKEN`, `ADMIN_ID`, `CHANNEL_ID`, `DASHBOARD_PASSWORD`.
 
+### Transferts Resender (compte personnel)
+
+Le système de transfert est intégré au bot Node et repose sur Resender/GramJS, connecté à ton compte Telegram personnel. Configure `TELEGRAM_API_ID` et `TELEGRAM_API_HASH`, puis connecte-toi depuis **CHANNEL SYNC** du dashboard. Tu peux sélectionner les canaux source et destination, activer une liaison automatique, ou recopier les derniers posts. Les textes, photos, vidéos, documents, légendes et albums sont récupérés puis republiés sans entête de transfert.
+
 IA optionnelles : `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`. Modèles configurables : `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GROQ_MODEL`, `OPENROUTER_MODEL`. Les noms et les modèles peuvent changer côté fournisseur; le test API ne garantit ni quotas ni disponibilité future.
 
 V6 : `V6_AUTONOMY_ENABLED`, `V6_AUTONOMY_INTERVAL_MINUTES`, `V6_AUTONOMY_MAX_RUNS_PER_DAY`, `V6_AUTONOMY_GENERATE_CANDIDATES`, `V6_SELF_DEVELOPMENT_ENABLED`, `V6_DAILY_REPORT_ENABLED`, `V6_DAILY_REPORT_HOUR`, `V6_MULTICHANNEL_ENABLED`, `V6_CHANNELS_JSON`, `V6_AUTO_DEPLOY_ENABLED`, `V6_DEPLOY_ADAPTER`, `V6_GITHUB_TOKEN`, `V6_GITHUB_OWNER`, `V6_GITHUB_REPO`, `V6_GITHUB_BRANCH`.
