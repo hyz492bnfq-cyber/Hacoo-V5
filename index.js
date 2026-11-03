@@ -82,6 +82,8 @@ const DEFAULTS = {
   manualPublicationHistory: [],
   manualPublicationTrash: [],
   channelSync: { enabled: false, sourceChatId: '', destinationChatId: '', mode: 'automatic' },
+  channelSyncConnections: [],
+  channelSyncChats: [],
   channelSyncQueue: [],
   channelSyncHistory: [],
   channelSyncSeen: [],
@@ -215,7 +217,7 @@ function normalizeData(saved) {
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
     'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
-    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums'
+    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
@@ -237,6 +239,12 @@ function normalizeData(saved) {
   out.channelSync.sourceChatId = String(out.channelSync.sourceChatId || '').trim().slice(0, 80);
   out.channelSync.destinationChatId = String(out.channelSync.destinationChatId || '').trim().slice(0, 80);
   if (!['automatic', 'manual'].includes(out.channelSync.mode)) out.channelSync.mode = 'automatic';
+  out.channelSyncConnections = out.channelSyncConnections.filter(item => item && typeof item === 'object').map((item, index) => ({
+    id: String(item.id || `sync-${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 50) || `sync-${index + 1}`,
+    enabled: Boolean(item.enabled), sourceChatId: String(item.sourceChatId || '').trim().slice(0, 80), destinationChatId: String(item.destinationChatId || '').trim().slice(0, 80),
+    mode: ['automatic', 'manual'].includes(item.mode) ? item.mode : 'automatic'
+  })).filter(item => /^-?\d+$/u.test(item.sourceChatId) && /^-?\d+$/u.test(item.destinationChatId) && item.sourceChatId !== item.destinationChatId).slice(-50);
+  if (!out.channelSyncConnections.length && out.channelSync.sourceChatId && out.channelSync.destinationChatId && out.channelSync.sourceChatId !== out.channelSync.destinationChatId) out.channelSyncConnections.push({ id: 'sync-1', ...out.channelSync });
   out.stats = {
     ...clone(DEFAULTS.stats),
     ...(saved.stats && typeof saved.stats === 'object' ? saved.stats : {})
@@ -2536,13 +2544,20 @@ async function publishManualPublication(item) {
 
 // ---------- CHANNEL SYNC : nouveaux posts uniquement ----------
 const channelSyncAlbums = new Map();
-function saveChannelSyncAlbums() {
-  data.channelSyncPendingAlbums = [...channelSyncAlbums.entries()].map(([groupId, album]) => ({ groupId, messages: album.messages, updatedAt: album.updatedAt }));
+function rememberChannelSyncChat(chat) {
+  if (!chat?.id) return;
+  const item = { id: String(chat.id), name: String(chat.title || chat.username || `Chat ${chat.id}`).slice(0, 100), type: String(chat.type || 'chat') };
+  data.channelSyncChats = [...(data.channelSyncChats || []).filter(entry => String(entry.id) !== item.id), item].slice(-100);
   saveNow();
 }
-function channelSyncId(messages) {
+function channelSyncConnections() { return data.channelSyncConnections || []; }
+function saveChannelSyncAlbums() {
+  data.channelSyncPendingAlbums = [...channelSyncAlbums.entries()].map(([groupId, album]) => ({ groupId, connectionId: album.connection?.id, messages: album.messages, updatedAt: album.updatedAt }));
+  saveNow();
+}
+function channelSyncId(messages, connection) {
   const first = messages[0];
-  return `sync:${first.chat.id}:${messages.map(message => message.message_id).sort((a, b) => a - b).join('-')}`;
+  return `sync:${connection.id}:${first.chat.id}:${messages.map(message => message.message_id).sort((a, b) => a - b).join('-')}`;
 }
 function channelSyncButtons(markup) {
   const rows = markup?.inline_keyboard;
@@ -2566,7 +2581,7 @@ function rememberChannelSync(item) {
 }
 async function publishChannelSyncItem(item) {
   if (!item || item.status === 'sending' || item.status === 'sent' || item.status === 'uncertain') return;
-  const destination = String(data.channelSync.destinationChatId || '').trim();
+  const destination = String(item.destinationChatId || '').trim();
   if (!destination) throw new Error('Canal destination CHANNEL SYNC manquant.');
   item.status = 'sending'; item.startedAt = new Date().toISOString(); saveNow();
   try {
@@ -2599,26 +2614,27 @@ async function publishChannelSyncItem(item) {
     throw error;
   }
 }
-async function captureChannelSync(messages) {
+async function captureChannelSync(messages, connection) {
   const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
-  if (!ordered.length) return;
-  const id = channelSyncId(ordered);
+  if (!ordered.length || !connection) return;
+  const id = channelSyncId(ordered, connection);
   const signature = channelSyncSignature(ordered);
   if ((data.channelSyncSeen || []).includes(id) || data.channelSyncQueue.some(item => item.id === id || (signature && item.signature === signature)) || data.channelSyncHistory.some(item => item.id === id || (signature && item.signature === signature))) return;
   const text = channelSyncText(ordered);
-  const item = { id, signature, sourceChatId: String(ordered[0].chat.id), sourceMessageIds: ordered.map(message => message.message_id), messages: clone(ordered), text, originalText: text, receivedAt: new Date().toISOString(), status: 'queued' };
+  const item = { id, signature, connectionId: connection.id, destinationChatId: connection.destinationChatId, mode: connection.mode, sourceChatId: String(ordered[0].chat.id), sourceMessageIds: ordered.map(message => message.message_id), messages: clone(ordered), text, originalText: text, receivedAt: new Date().toISOString(), status: 'queued' };
   data.channelSyncQueue.push(item); data.channelSyncQueue = data.channelSyncQueue.slice(-MAX_HISTORY); saveNow();
-  if (data.channelSync.mode === 'automatic') await publishChannelSyncItem(item);
+  if (item.mode === 'automatic') await publishChannelSyncItem(item);
 }
-function queueChannelSyncPost(ctx, message) {
+function queueChannelSyncPost(ctx, message, connection) {
   const groupId = message.media_group_id;
-  if (!groupId) return captureChannelSync([message]).catch(noteError);
-  let album = channelSyncAlbums.get(groupId);
-  if (!album) { album = { messages: [], timer: null, updatedAt: new Date().toISOString() }; channelSyncAlbums.set(groupId, album); }
+  if (!groupId) return captureChannelSync([message], connection).catch(noteError);
+  const key = `${connection.id}:${groupId}`;
+  let album = channelSyncAlbums.get(key);
+  if (!album) { album = { messages: [], timer: null, updatedAt: new Date().toISOString(), connection }; channelSyncAlbums.set(key, album); }
   if (!album.messages.some(item => item.message_id === message.message_id)) album.messages.push(message);
   album.updatedAt = new Date().toISOString(); saveChannelSyncAlbums();
   clearTimeout(album.timer);
-  album.timer = setTimeout(() => { channelSyncAlbums.delete(groupId); data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== groupId); saveNow(); captureChannelSync(album.messages).catch(noteError); }, ALBUM_QUIET_MS);
+  album.timer = setTimeout(() => { channelSyncAlbums.delete(key); data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== key); saveNow(); captureChannelSync(album.messages, connection).catch(noteError); }, ALBUM_QUIET_MS);
 }
 function restoreChannelSyncWork() {
   for (const item of data.channelSyncQueue || []) {
@@ -2626,12 +2642,14 @@ function restoreChannelSyncWork() {
   }
   for (const record of data.channelSyncPendingAlbums || []) {
     if (!record?.groupId || !Array.isArray(record.messages) || !record.messages.length) continue;
-    const album = { messages: record.messages, timer: null, updatedAt: record.updatedAt || new Date().toISOString() };
+    const connection = channelSyncConnections().find(item => item.id === record.connectionId);
+    if (!connection) continue;
+    const album = { messages: record.messages, timer: null, updatedAt: record.updatedAt || new Date().toISOString(), connection };
     channelSyncAlbums.set(record.groupId, album);
     album.timer = setTimeout(() => {
       channelSyncAlbums.delete(record.groupId);
       data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== record.groupId);
-      saveNow(); captureChannelSync(album.messages).catch(noteError);
+      saveNow(); captureChannelSync(album.messages, connection).catch(noteError);
     }, ALBUM_QUIET_MS);
   }
   saveNow();
@@ -2640,8 +2658,8 @@ function restoreChannelSyncWork() {
 function queueChannelPost(ctx) {
   const message = ctx.channelPost;
   if (!message) return;
-  const sync = data.channelSync || {};
-  if (sync.enabled && sync.sourceChatId && sync.destinationChatId && String(message.chat.id) === String(sync.sourceChatId)) queueChannelSyncPost(ctx, message);
+  rememberChannelSyncChat(message.chat);
+  for (const connection of channelSyncConnections()) if (connection.enabled && String(message.chat.id) === connection.sourceChatId) queueChannelSyncPost(ctx, message, connection);
   if (String(message.chat.id) !== CHANNEL_ID) return;
   if (ownMessageIds.has(message.message_id) || (data.ownMessageIds || []).includes(message.message_id)) return;
   if ((data.processedMessageIds || []).includes(message.message_id)) return;
@@ -2793,6 +2811,13 @@ bot.command('history', async ctx => {
 });
 
 bot.on('channel_post', queueChannelPost);
+bot.on('message', ctx => {
+  const message = ctx.message;
+  if (!message) return;
+  rememberChannelSyncChat(message.chat);
+  for (const connection of channelSyncConnections()) if (connection.enabled && String(message.chat.id) === connection.sourceChatId) queueChannelSyncPost(ctx, message, connection);
+});
+bot.on('my_chat_member', ctx => rememberChannelSyncChat(ctx.myChatMember?.chat));
 bot.on('edited_channel_post', observeEditedChannelPost);
 
 bot.catch(error => {
@@ -3530,19 +3555,19 @@ app.post('/api/manual-publications/trash/:id/restore', (req, res) => {
 });
 
 app.get('/api/channel-sync', (_req, res) => {
-  res.json({ config: data.channelSync, queue: (data.channelSyncQueue || []).map(channelSyncSummary), history: (data.channelSyncHistory || []).slice(-200).reverse().map(channelSyncSummary), limitation: 'L’API Bot Telegram ne permet pas de récupérer les anciens messages d’un canal. CHANNEL SYNC copie les nouveaux posts que le bot reçoit après activation.' });
+  const registry = parseChannelRegistry();
+  const chats = [...new Map([...(data.channelSyncChats || []), ...(registry.channels || []).map(item => ({ id: item.id, name: item.name, type: 'channel' })), { id: CHANNEL_ID, name: 'Canal principal', type: 'channel' }].map(item => [String(item.id), item])).values()];
+  res.json({ connections: channelSyncConnections(), chats, queue: (data.channelSyncQueue || []).map(channelSyncSummary), history: (data.channelSyncHistory || []).slice(-200).reverse().map(channelSyncSummary), limitation: 'L’API Bot Telegram ne permet pas de récupérer les anciens messages d’un canal. CHANNEL SYNC copie les nouveaux posts que le bot reçoit après activation.' });
 });
 app.put('/api/channel-sync', (req, res) => {
-  const sourceChatId = String(req.body?.sourceChatId || '').trim();
-  const destinationChatId = String(req.body?.destinationChatId || '').trim();
-  const mode = String(req.body?.mode || 'automatic');
-  const enabled = Boolean(req.body?.enabled);
-  if ((sourceChatId && !/^-?\d+$/u.test(sourceChatId)) || (destinationChatId && !/^-?\d+$/u.test(destinationChatId))) return res.status(400).json({ error: 'Utilise les identifiants numériques Telegram des canaux (ex. -100...).' });
-  if (enabled && (!sourceChatId || !destinationChatId || sourceChatId === destinationChatId)) return res.status(400).json({ error: 'Indique deux canaux numériques différents avant d’activer CHANNEL SYNC.' });
-  if (!['automatic', 'manual'].includes(mode)) return res.status(400).json({ error: 'Mode CHANNEL SYNC invalide.' });
-  data.channelSync = { enabled, sourceChatId, destinationChatId, mode };
+  const supplied = Array.isArray(req.body?.connections) ? req.body.connections : [];
+  if (supplied.length > 50) return res.status(400).json({ error: 'Maximum 50 connexions CHANNEL SYNC.' });
+  const connections = supplied.map((item, index) => ({ id: String(item?.id || `sync-${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 50) || `sync-${index + 1}`, enabled: Boolean(item?.enabled), sourceChatId: String(item?.sourceChatId || '').trim(), destinationChatId: String(item?.destinationChatId || '').trim(), mode: String(item?.mode || 'automatic') }));
+  if (connections.some(item => !/^-?\d+$/u.test(item.sourceChatId) || !/^-?\d+$/u.test(item.destinationChatId) || item.sourceChatId === item.destinationChatId || !['automatic', 'manual'].includes(item.mode))) return res.status(400).json({ error: 'Chaque connexion doit avoir deux canaux/groupes différents et un mode valide.' });
+  if (new Set(connections.map(item => `${item.sourceChatId}:${item.destinationChatId}`)).size !== connections.length) return res.status(400).json({ error: 'Cette connexion existe déjà.' });
+  data.channelSyncConnections = connections;
   saveNow();
-  res.json({ ok: true, config: data.channelSync });
+  res.json({ ok: true, connections });
 });
 app.put('/api/channel-sync/:id', (req, res) => {
   const item = data.channelSyncQueue.find(entry => entry.id === safeManualId(req.params.id));
