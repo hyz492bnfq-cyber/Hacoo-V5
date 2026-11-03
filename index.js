@@ -81,6 +81,11 @@ const DEFAULTS = {
   manualPublications: [],
   manualPublicationHistory: [],
   manualPublicationTrash: [],
+  channelSync: { enabled: false, sourceChatId: '', destinationChatId: '', mode: 'automatic' },
+  channelSyncQueue: [],
+  channelSyncHistory: [],
+  channelSyncSeen: [],
+  channelSyncPendingAlbums: [],
 
   hashtags: false,
   dashLines: false,
@@ -209,7 +214,8 @@ function normalizeData(saved) {
     'bannedWords', 'blockedPhrases', 'blockedDomains', 'allowedDomains', 'textReplacements',
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
-    'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash'
+    'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
+    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
@@ -226,6 +232,11 @@ function normalizeData(saved) {
   }
 
   if (!out.geminiModelState || typeof out.geminiModelState !== 'object' || Array.isArray(out.geminiModelState)) out.geminiModelState = {};
+  if (!out.channelSync || typeof out.channelSync !== 'object' || Array.isArray(out.channelSync)) out.channelSync = clone(DEFAULTS.channelSync);
+  out.channelSync.enabled = Boolean(out.channelSync.enabled);
+  out.channelSync.sourceChatId = String(out.channelSync.sourceChatId || '').trim().slice(0, 80);
+  out.channelSync.destinationChatId = String(out.channelSync.destinationChatId || '').trim().slice(0, 80);
+  if (!['automatic', 'manual'].includes(out.channelSync.mode)) out.channelSync.mode = 'automatic';
   out.stats = {
     ...clone(DEFAULTS.stats),
     ...(saved.stats && typeof saved.stats === 'object' ? saved.stats : {})
@@ -2523,9 +2534,115 @@ async function publishManualPublication(item) {
   }
 }
 
+// ---------- CHANNEL SYNC : nouveaux posts uniquement ----------
+const channelSyncAlbums = new Map();
+function saveChannelSyncAlbums() {
+  data.channelSyncPendingAlbums = [...channelSyncAlbums.entries()].map(([groupId, album]) => ({ groupId, messages: album.messages, updatedAt: album.updatedAt }));
+  saveNow();
+}
+function channelSyncId(messages) {
+  const first = messages[0];
+  return `sync:${first.chat.id}:${messages.map(message => message.message_id).sort((a, b) => a - b).join('-')}`;
+}
+function channelSyncButtons(markup) {
+  const rows = markup?.inline_keyboard;
+  if (!Array.isArray(rows)) return undefined;
+  const inline_keyboard = rows.map(row => Array.isArray(row) ? row
+    .filter(button => typeof button?.text === 'string' && typeof button?.url === 'string' && /^https?:\/\//iu.test(button.url))
+    .map(button => ({ text: button.text.slice(0, 64), url: button.url.slice(0, 2000) })) : []).filter(row => row.length);
+  return inline_keyboard.length ? { inline_keyboard } : undefined;
+}
+function channelSyncText(messages) {
+  return messages.map(message => msgText(message)).filter(Boolean).join('\n');
+}
+function channelSyncSignature(messages) {
+  return messages.map(message => [msgText(message).replace(/\s+/gu, ' ').trim(), ...(message.photo || []).slice(-1).map(photo => photo.file_unique_id), message.video?.file_unique_id, message.document?.file_unique_id].filter(Boolean).join(':')).join('|');
+}
+function channelSyncSummary(item) {
+  return { id: item.id, status: item.status, text: item.text || '', receivedAt: item.receivedAt, sourceChatId: item.sourceChatId, sourceMessageIds: item.sourceMessageIds || [], messageCount: item.messages?.length || 0, lastError: item.lastError || null };
+}
+function rememberChannelSync(item) {
+  data.channelSyncSeen = [...new Set([...(data.channelSyncSeen || []), item.id])].slice(-10000);
+}
+async function publishChannelSyncItem(item) {
+  if (!item || item.status === 'sending' || item.status === 'sent' || item.status === 'uncertain') return;
+  const destination = String(data.channelSync.destinationChatId || '').trim();
+  if (!destination) throw new Error('Canal destination CHANNEL SYNC manquant.');
+  item.status = 'sending'; item.startedAt = new Date().toISOString(); saveNow();
+  try {
+    const sentMessageIds = [];
+    const messages = item.messages || [];
+    if (messages.length > 1 && typeof bot.api.copyMessages === 'function') {
+      // copyMessages conserve le groupe média Telegram ; les boutons d'un album ne sont pas supportés par cette API.
+      const copied = await bot.api.copyMessages(destination, item.sourceChatId, messages.map(message => message.message_id));
+      sentMessageIds.push(...(copied || []).map(message => message.message_id).filter(Boolean));
+    } else {
+      for (const message of messages) {
+        const copied = await bot.api.copyMessage(destination, item.sourceChatId, message.message_id, { reply_markup: channelSyncButtons(message.reply_markup) });
+        if (copied?.message_id) sentMessageIds.push(copied.message_id);
+      }
+    }
+    // Une modification manuelle ne touche que le premier texte/légende : les médias restent des copies Telegram.
+    if (item.originalText !== undefined && item.text !== item.originalText && sentMessageIds[0]) {
+      const first = item.messages?.[0] || {};
+      if (first.text !== undefined) await bot.api.editMessageText(destination, sentMessageIds[0], item.text, { reply_markup: channelSyncButtons(first.reply_markup) });
+      else if (first.caption !== undefined || first.photo || first.video || first.document) await bot.api.editMessageCaption(destination, sentMessageIds[0], { caption: item.text, reply_markup: channelSyncButtons(first.reply_markup) });
+    }
+    item.status = 'sent'; item.sentAt = new Date().toISOString(); item.sentMessageIds = sentMessageIds; item.lastError = null;
+    data.channelSyncQueue = data.channelSyncQueue.filter(entry => entry.id !== item.id);
+    data.channelSyncHistory.push(item); data.channelSyncHistory = data.channelSyncHistory.slice(-MAX_HISTORY);
+    rememberChannelSync(item); saveNow();
+  } catch (error) {
+    // Une erreur Telegram/réseau peut arriver après une copie acceptée : pas de relance automatique.
+    item.status = 'uncertain'; item.lastError = String(error?.description || error?.message || error).slice(0, 350); item.uncertainAt = new Date().toISOString(); saveNow();
+    notifyAdmin(`CHANNEL SYNC : résultat incertain pour ${item.id}. Vérifie le canal destination avant toute nouvelle action.`).catch(() => {});
+    throw error;
+  }
+}
+async function captureChannelSync(messages) {
+  const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
+  if (!ordered.length) return;
+  const id = channelSyncId(ordered);
+  const signature = channelSyncSignature(ordered);
+  if ((data.channelSyncSeen || []).includes(id) || data.channelSyncQueue.some(item => item.id === id || (signature && item.signature === signature)) || data.channelSyncHistory.some(item => item.id === id || (signature && item.signature === signature))) return;
+  const text = channelSyncText(ordered);
+  const item = { id, signature, sourceChatId: String(ordered[0].chat.id), sourceMessageIds: ordered.map(message => message.message_id), messages: clone(ordered), text, originalText: text, receivedAt: new Date().toISOString(), status: 'queued' };
+  data.channelSyncQueue.push(item); data.channelSyncQueue = data.channelSyncQueue.slice(-MAX_HISTORY); saveNow();
+  if (data.channelSync.mode === 'automatic') await publishChannelSyncItem(item);
+}
+function queueChannelSyncPost(ctx, message) {
+  const groupId = message.media_group_id;
+  if (!groupId) return captureChannelSync([message]).catch(noteError);
+  let album = channelSyncAlbums.get(groupId);
+  if (!album) { album = { messages: [], timer: null, updatedAt: new Date().toISOString() }; channelSyncAlbums.set(groupId, album); }
+  if (!album.messages.some(item => item.message_id === message.message_id)) album.messages.push(message);
+  album.updatedAt = new Date().toISOString(); saveChannelSyncAlbums();
+  clearTimeout(album.timer);
+  album.timer = setTimeout(() => { channelSyncAlbums.delete(groupId); data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== groupId); saveNow(); captureChannelSync(album.messages).catch(noteError); }, ALBUM_QUIET_MS);
+}
+function restoreChannelSyncWork() {
+  for (const item of data.channelSyncQueue || []) {
+    if (item.status === 'sending') { item.status = 'uncertain'; item.lastError = 'Redémarrage pendant la copie : vérifie le canal destination avant toute nouvelle action.'; }
+  }
+  for (const record of data.channelSyncPendingAlbums || []) {
+    if (!record?.groupId || !Array.isArray(record.messages) || !record.messages.length) continue;
+    const album = { messages: record.messages, timer: null, updatedAt: record.updatedAt || new Date().toISOString() };
+    channelSyncAlbums.set(record.groupId, album);
+    album.timer = setTimeout(() => {
+      channelSyncAlbums.delete(record.groupId);
+      data.channelSyncPendingAlbums = data.channelSyncPendingAlbums.filter(item => item.groupId !== record.groupId);
+      saveNow(); captureChannelSync(album.messages).catch(noteError);
+    }, ALBUM_QUIET_MS);
+  }
+  saveNow();
+}
+
 function queueChannelPost(ctx) {
   const message = ctx.channelPost;
-  if (!message || String(message.chat.id) !== CHANNEL_ID) return;
+  if (!message) return;
+  const sync = data.channelSync || {};
+  if (sync.enabled && sync.sourceChatId && sync.destinationChatId && String(message.chat.id) === String(sync.sourceChatId)) queueChannelSyncPost(ctx, message);
+  if (String(message.chat.id) !== CHANNEL_ID) return;
   if (ownMessageIds.has(message.message_id) || (data.ownMessageIds || []).includes(message.message_id)) return;
   if ((data.processedMessageIds || []).includes(message.message_id)) return;
 
@@ -3412,6 +3529,36 @@ app.post('/api/manual-publications/trash/:id/restore', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/channel-sync', (_req, res) => {
+  res.json({ config: data.channelSync, queue: (data.channelSyncQueue || []).map(channelSyncSummary), history: (data.channelSyncHistory || []).slice(-200).reverse().map(channelSyncSummary), limitation: 'L’API Bot Telegram ne permet pas de récupérer les anciens messages d’un canal. CHANNEL SYNC copie les nouveaux posts que le bot reçoit après activation.' });
+});
+app.put('/api/channel-sync', (req, res) => {
+  const sourceChatId = String(req.body?.sourceChatId || '').trim();
+  const destinationChatId = String(req.body?.destinationChatId || '').trim();
+  const mode = String(req.body?.mode || 'automatic');
+  const enabled = Boolean(req.body?.enabled);
+  if ((sourceChatId && !/^-?\d+$/u.test(sourceChatId)) || (destinationChatId && !/^-?\d+$/u.test(destinationChatId))) return res.status(400).json({ error: 'Utilise les identifiants numériques Telegram des canaux (ex. -100...).' });
+  if (enabled && (!sourceChatId || !destinationChatId || sourceChatId === destinationChatId)) return res.status(400).json({ error: 'Indique deux canaux numériques différents avant d’activer CHANNEL SYNC.' });
+  if (!['automatic', 'manual'].includes(mode)) return res.status(400).json({ error: 'Mode CHANNEL SYNC invalide.' });
+  data.channelSync = { enabled, sourceChatId, destinationChatId, mode };
+  saveNow();
+  res.json({ ok: true, config: data.channelSync });
+});
+app.put('/api/channel-sync/:id', (req, res) => {
+  const item = data.channelSyncQueue.find(entry => entry.id === safeManualId(req.params.id));
+  if (!item || item.status === 'sending') return res.status(404).json({ error: 'Publication CHANNEL SYNC introuvable ou en cours.' });
+  const limit = item.messages?.[0]?.text !== undefined ? 4000 : 1024;
+  if (typeof req.body?.text !== 'string' || req.body.text.length > limit) return res.status(400).json({ error: `Texte invalide (maximum ${limit} caractères pour cette publication).` });
+  item.text = req.body.text.replace(/\u0000/g, ''); item.updatedAt = new Date().toISOString(); saveNow();
+  res.json({ ok: true, publication: channelSyncSummary(item) });
+});
+app.post('/api/channel-sync/:id/publish', async (req, res) => {
+  const item = data.channelSyncQueue.find(entry => entry.id === safeManualId(req.params.id));
+  if (!item) return res.status(404).json({ error: 'Publication CHANNEL SYNC introuvable.' });
+  try { await publishChannelSyncItem(item); res.json({ ok: true }); } catch (error) { res.status(502).json({ error: `Copie à vérifier : ${String(error?.description || error?.message || error).slice(0, 250)}` }); }
+});
+app.post('/api/channel-sync/copy-recent', (_req, res) => res.status(501).json({ error: 'Impossible avec l’API Bot Telegram : elle ne donne pas accès à l’historique d’un canal. Ajoute le bot au canal source, active CHANNEL SYNC, puis seuls les nouveaux posts seront copiés.' }));
+
 app.get('/api/state', (_req, res) => {
   trimHistory();
 
@@ -3910,6 +4057,7 @@ const httpServer = app.listen(PORT, () => {
         errorBurst = 0;
         console.log('M2 HACOO BOT connecté à Telegram.');
         restorePersistentWork();
+        restoreChannelSyncWork();
       }
     });
   } catch (error) {

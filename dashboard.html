@@ -333,6 +333,16 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 
   <!-- RÉGLAGES -->
   <section class="tab" id="tab-settings" aria-label="Réglages">
+    <details class="group" id="g-channel-sync"><summary><span class="gi">⇄</span><div><b>CHANNEL SYNC</b><span class="s" id="s-channel-sync">Chargement…</span></div></summary>
+      <div class="gbody"><div class="subsec">
+        <p class="small muted">Le bot doit être administrateur des deux canaux. Seuls les nouveaux posts reçus après activation peuvent être copiés.</p>
+        <div><label class="lb" for="syncSource">ID canal source</label><input id="syncSource" maxlength="80" placeholder="-100…"></div>
+        <div><label class="lb" for="syncDestination">ID canal destination</label><input id="syncDestination" maxlength="80" placeholder="-100…"></div>
+        <div><label class="lb" for="syncMode">Mode de publication</label><select id="syncMode"><option value="automatic">Automatique — publier immédiatement</option><option value="manual">Manuel — ajouter à la file CHANNEL SYNC</option></select></div>
+        <div class="set"><div class="tx"><b>Activer CHANNEL SYNC</b><span>Copie les nouveaux posts source sans mention d’origine.</span></div><button class="sw" id="syncEnabled" role="switch" aria-checked="false" type="button"></button></div>
+        <div class="btnrow"><button class="btn primary" id="saveSync" type="button">Enregistrer CHANNEL SYNC</button><button class="btn" id="copyRecentSync" type="button">Copier les derniers posts</button></div>
+        <div class="small muted" id="syncNote"></div><div id="syncQueue" class="list"></div>
+      </div></div></details>
     <details class="group" id="g-dups"><summary><span class="gi">⧉</span><div><b>Anti-doublons</b><span class="s" id="s-dups"></span></div></summary>
       <div class="gbody">
         <div class="notice-line small muted" id="geminiStatus" style="padding:12px 0"></div>
@@ -650,6 +660,23 @@ $('#manualTrashList').addEventListener('click',async e=>{
  const btn=e.target.closest('[data-manual-restore]');if(!btn)return;
  btn.disabled=true;try{await post('/api/manual-publications/trash/'+encodeURIComponent(btn.dataset.manualRestore)+'/restore');toast('Publication restaurée dans la file.','ok');await loadManual();}
  catch(err){toast(err.message,'bad');}
+});
+
+/* ============ CHANNEL SYNC ============ */
+let syncState={config:{enabled:false,sourceChatId:'',destinationChatId:'',mode:'automatic'},queue:[],limitation:''};
+function renderChannelSync(){
+ const c=syncState.config||{};
+ $('#syncSource').value=c.sourceChatId||'';$('#syncDestination').value=c.destinationChatId||'';$('#syncMode').value=c.mode||'automatic';
+ const sw=$('#syncEnabled');sw.classList.toggle('on',Boolean(c.enabled));sw.setAttribute('aria-checked',String(Boolean(c.enabled)));
+ $('#s-channel-sync').textContent=c.enabled?`Actif · ${c.mode==='manual'?'manuel':'automatique'}`:'Désactivé';
+ $('#syncNote').textContent=syncState.limitation||'';
+ $('#syncQueue').innerHTML=(syncState.queue||[]).length?syncState.queue.map(item=>`<article class="manual-card" data-sync-id="${esc(item.id)}"><div class="row between"><b>Publication source</b><span class="manual-status ${esc(item.status)}">${esc(item.status==='uncertain'?'À vérifier':'En attente')}</span></div><div class="manual-meta"><span>${esc(fdate(item.receivedAt))}</span><span>${nf(item.messageCount)} élément(s)</span></div><div class="manual-text">${esc(item.text||'Média sans texte')}</div>${item.lastError?`<div class="small" style="color:var(--danger)">${esc(item.lastError)}</div>`:''}<div class="manual-actions"><button class="btn sm" data-sync-action="edit">Modifier</button><button class="btn primary" data-sync-action="publish" ${item.status==='uncertain'?'disabled':''}>Publier</button></div></article>`).join(''):'<div class="empty">Aucune publication CHANNEL SYNC en attente.</div>';
+}
+async function loadChannelSync(){try{syncState=await api('/api/channel-sync');renderChannelSync();}catch(e){$('#syncNote').textContent=e.message;}}
+$('#syncEnabled').addEventListener('click',()=>{const b=$('#syncEnabled'),on=b.getAttribute('aria-checked')!=='true';b.classList.toggle('on',on);b.setAttribute('aria-checked',String(on));});
+$('#saveSync').addEventListener('click',async e=>busy(e.currentTarget,'Enregistrement…',async()=>{try{await api('/api/channel-sync',{method:'PUT',body:JSON.stringify({sourceChatId:$('#syncSource').value,destinationChatId:$('#syncDestination').value,mode:$('#syncMode').value,enabled:$('#syncEnabled').getAttribute('aria-checked')==='true'})});toast('CHANNEL SYNC enregistré.','ok');await loadChannelSync();}catch(err){toast(err.message,'bad');}}));
+$('#copyRecentSync').addEventListener('click',()=>openSheet('Copier les derniers posts',`<div class="fgrid"><p class="small muted">Choisis une quantité. Telegram Bot API ne permet toutefois pas au bot de lire l’historique d’un canal.</p><div class="btnrow">${[5,10,20,50].map(n=>`<button class="btn" data-sync-recent="${n}" type="button">${n}</button>`).join('')}</div><input id="syncRecentCustom" type="number" min="1" max="1000" placeholder="Nombre personnalisé"><button class="btn primary" id="syncRecentCustomGo" type="button">Continuer</button></div>`,body=>{const go=async n=>{try{await post('/api/channel-sync/copy-recent',{count:n});}catch(err){toast(err.message,'bad');}closeSheet();};body.addEventListener('click',e=>{const b=e.target.closest('[data-sync-recent]');if(b)go(Number(b.dataset.syncRecent));});$('#syncRecentCustomGo',body).addEventListener('click',()=>go(Number($('#syncRecentCustom',body).value)||0));}));
+$('#syncQueue').addEventListener('click',async e=>{const b=e.target.closest('[data-sync-action]');if(!b)return;const card=b.closest('[data-sync-id]'),id=card?.dataset.syncId,item=(syncState.queue||[]).find(x=>x.id===id);if(!item)return;if(b.dataset.syncAction==='publish'){if(!confirm('Copier cette publication vers le canal destination ?'))return;await busy(b,'Copie…',async()=>{try{await post('/api/channel-sync/'+encodeURIComponent(id)+'/publish');toast('Publication copiée.','ok');await loadChannelSync();}catch(err){toast(err.message,'bad');await loadChannelSync();}});return;}openSheet('Modifier la publication CHANNEL SYNC',`<div class="fgrid"><p class="small muted">Le premier texte ou la première légende sera modifié après copie. Les médias restent identiques.</p><textarea id="syncEditText" rows="9" maxlength="4000">${esc(item.text||'')}</textarea><button class="btn primary" id="syncEditSave" type="button">Enregistrer</button></div>`,body=>{$('#syncEditSave',body).addEventListener('click',async()=>{try{await api('/api/channel-sync/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({text:$('#syncEditText',body).value})});closeSheet();toast('Modification enregistrée.','ok');await loadChannelSync();}catch(err){toast(err.message,'bad');}});});
 });
 
 
@@ -1328,6 +1355,7 @@ function showTab(name){
  if(name==='ai'&&!S.loadedAI)loadAI();else if(name==='ai')loadAI();
  if(name==='orders'&&!S.loadedAI)loadAI();
  if(name==='publications')loadManual();
+ if(name==='settings')loadChannelSync();
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
 $('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.loadedAI)loadAI();});
@@ -1336,7 +1364,7 @@ setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open')
 renderOrderLog();
 const first=(location.hash||'').slice(1);
 if(['home','orders','activity','settings','ai','publications'].includes(first))showTab(first);
-loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();});
+loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();if(S.tab==='settings')loadChannelSync();});
 </script>
 </body>
 </html>
