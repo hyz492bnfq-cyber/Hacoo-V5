@@ -270,6 +270,29 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
     <div id="ordersActive" class="list"></div>
   </section>
 
+  <!-- COMMANDES HACOO AFFILIATE -->
+  <section class="tab" id="tab-affiliate" aria-label="Commandes Hacoo Affiliate">
+    <div class="row between" style="gap:10px;flex-wrap:wrap">
+      <div><h2>Commandes Hacoo</h2><p class="tiny muted">Données de ton compte Hacoo Affiliate, séparées des ordres du bot.</p></div>
+      <button class="btn primary" id="affiliateSync" type="button">↻ Synchroniser</button>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0">
+      <div class="card"><div class="tiny muted">Commandes récupérées</div><div class="big" id="affTotal">—</div></div>
+      <div class="card"><div class="tiny muted">Nouvelles commandes</div><div class="big" id="affNew">—</div></div>
+      <div class="card"><div class="tiny muted">Commissions estimées</div><div class="big" id="affEstimated">—</div></div>
+      <div class="card"><div class="tiny muted">Montants signés API</div><div class="big" id="affSigned">—</div></div>
+    </div>
+    <div class="card stack">
+      <div class="row between"><b>Historique des commandes</b><span class="tiny muted" id="affSyncStatus">Non synchronisé</span></div>
+      <input id="affSearch" type="search" placeholder="Rechercher un numéro de commande…" autocomplete="off">
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <select id="affStatus"><option value="">Tous les statuts</option><option>Pending</option><option>Delivered</option><option>Canceled</option></select>
+        <span class="tiny muted" id="affCount"></span>
+      </div>
+      <div id="affOrders" class="list"><div class="empty">Chargement…</div></div>
+    </div>
+  </section>
+
   <!-- ACTIVITÉ -->
   <section class="tab" id="tab-activity" aria-label="Activité">
     <div class="seg" id="actSeg" role="tablist">
@@ -487,6 +510,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 <nav class="tabbar" id="tabbar" aria-label="Navigation">
   <button class="active" data-tab="home" type="button"><span class="ic">🏠</span>Accueil<span class="badge hidden" id="badgeHome"></span></button>
   <button data-tab="orders" type="button"><span class="ic">🎯</span>Ordres<span class="badge hidden" id="badgeOrders"></span></button>
+  <button data-tab="affiliate" type="button"><span class="ic">🛍️</span>Commandes Hacoo</button>
   <button data-tab="publications" type="button"><span class="ic">📨</span>Publications</button>
   <button data-tab="activity" type="button"><span class="ic">📜</span>Activité</button>
   <button data-tab="settings" type="button"><span class="ic">⚙️</span>Réglages</button>
@@ -1350,6 +1374,52 @@ $('#v6RollbackButton').addEventListener('click',async e=>{
 });
 
 /* ============ Navigation et démarrage ============ */
+/* Hacoo Affiliate dashboard */
+let affiliateRows=[];
+function affiliateMoney(v){return 'USD '+(Number(v||0)/100).toFixed(2);}
+function renderAffiliate(){
+ const query=String(document.querySelector('#affSearch')?.value||'').trim().toLowerCase();
+ const status=String(document.querySelector('#affStatus')?.value||'').toLowerCase();
+ const rows=affiliateRows.filter(o=>(!query||String(o.orderNo||'').toLowerCase().includes(query))&&(!status||String(o.orderStatus||'').toLowerCase()===status));
+ const list=document.querySelector('#affOrders');if(!list)return;
+ list.textContent='';document.querySelector('#affCount').textContent=rows.length+' commande(s)';
+ if(!rows.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Aucune commande pour ces filtres.';list.append(empty);return;}
+ for(const order of rows){
+  const item=document.createElement('div');item.className='item';
+  const heading=document.createElement('div');heading.className='row between';
+  const number=document.createElement('b');number.textContent=order.orderNo||'—';
+  const state=document.createElement('span');state.className='tag';state.textContent=order.orderStatus||'Inconnu';
+  heading.append(number,state);item.append(heading);
+  const date=document.createElement('div');date.className='small muted';
+  date.textContent=(order.region||'')+' · '+(order.createTime?new Date(order.createTime).toLocaleString():'Date inconnue');item.append(date);
+  const amounts=document.createElement('div');amounts.className='row between small';
+  const amount=document.createElement('span');amount.textContent='Commande : '+affiliateMoney(order.orderAmount);
+  const commission=document.createElement('b');commission.textContent='Commission : '+affiliateMoney(order.totalCommissionAmount);
+  amounts.append(amount,commission);item.append(amounts);
+  if(String(order.orderStatus).toLowerCase()==='canceled'){const note=document.createElement('div');note.className='tiny muted';note.textContent='Commande annulée — exclue des gains.';item.append(note);}
+  list.append(item);
+ }
+}
+async function loadAffiliate(){
+ try{
+  const [response,status]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status')]);
+  affiliateRows=response.orders||[];
+  const valid=affiliateRows.filter(o=>String(o.orderStatus).toLowerCase()!=='canceled');
+  document.querySelector('#affTotal').textContent=status.count??affiliateRows.length;
+  document.querySelector('#affNew').textContent=affiliateRows.filter(o=>Date.now()-Date.parse(o.firstSeenAt||0)<86400000).length;
+  document.querySelector('#affEstimated').textContent=affiliateMoney(valid.reduce((sum,o)=>sum+Number(o.totalCommissionAmount||0),0));
+  document.querySelector('#affSigned').textContent=affiliateMoney(valid.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0));
+  document.querySelector('#affSyncStatus').textContent=status.sync?.lastError?'Erreur : '+status.sync.lastError:status.sync?.lastSyncAt?'Dernière synchro : '+new Date(status.sync.lastSyncAt).toLocaleString():status.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
+  renderAffiliate();
+ }catch(error){document.querySelector('#affOrders').textContent=error.message;}
+}
+document.querySelector('#affSearch')?.addEventListener('input',renderAffiliate);
+document.querySelector('#affStatus')?.addEventListener('change',renderAffiliate);
+document.querySelector('#affiliateSync')?.addEventListener('click',async event=>{
+ try{await busy(event.currentTarget,'Synchronisation…',async()=>{await post('/api/affiliate/sync',{});toast('Commandes Hacoo synchronisées','ok');await loadAffiliate();});}
+ catch(error){toast(error.message,'bad');await loadAffiliate();}
+});
+
 function showTab(name){
  if(!$('#tab-'+name))return;
  S.tab=name;
@@ -1360,6 +1430,7 @@ function showTab(name){
  if(name==='ai'&&!S.loadedAI)loadAI();else if(name==='ai')loadAI();
  if(name==='orders'&&!S.loadedAI)loadAI();
  if(name==='publications')loadManual();
+ if(name==='affiliate')loadAffiliate();
  if(name==='settings')loadChannelSync();
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
@@ -1369,7 +1440,7 @@ setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open')
 renderOrderLog();
 const first=(location.hash||'').slice(1);
 if(['home','orders','activity','settings','ai','publications'].includes(first))showTab(first);
-loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();if(S.tab==='settings')loadChannelSync();});
+loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();if(S.tab==='affiliate')loadAffiliate();if(S.tab==='settings')loadChannelSync();});
 </script>
 </body>
 </html>

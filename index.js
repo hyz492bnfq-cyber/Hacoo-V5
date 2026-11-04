@@ -1,6 +1,7 @@
 'use strict';
 
 const { Bot, InlineKeyboard } = require('grammy');
+const hacooAffiliate = require('./lib/hacoo-affiliate');
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -84,6 +85,8 @@ const DEFAULTS = {
   manualPublications: [],
   manualPublicationHistory: [],
   manualPublicationTrash: [],
+  affiliateOrders: [],
+  affiliateSync: { lastSyncAt: null, lastError: null, total: 0 },
   channelSync: { enabled: false, sourceChatId: '', destinationChatId: '', mode: 'automatic' },
   channelSyncConnections: [],
   channelSyncChats: [],
@@ -223,7 +226,7 @@ function normalizeData(saved) {
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
     'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
-    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports', 'channelSyncImportSeen'
+    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports', 'channelSyncImportSeen', 'affiliateOrders'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
@@ -251,6 +254,7 @@ function normalizeData(saved) {
     mode: ['automatic', 'manual'].includes(item.mode) ? item.mode : 'automatic'
   })).filter(item => /^-?\d+$/u.test(item.sourceChatId) && /^-?\d+$/u.test(item.destinationChatId) && item.sourceChatId !== item.destinationChatId).slice(-50);
   if (!out.channelSyncConnections.length && out.channelSync.sourceChatId && out.channelSync.destinationChatId && out.channelSync.sourceChatId !== out.channelSync.destinationChatId) out.channelSyncConnections.push({ id: 'sync-1', ...out.channelSync });
+  if (!out.affiliateSync || typeof out.affiliateSync !== 'object' || Array.isArray(out.affiliateSync)) out.affiliateSync = { lastSyncAt: null, lastError: null, total: 0 };
   out.stats = {
     ...clone(DEFAULTS.stats),
     ...(saved.stats && typeof saved.stats === 'object' ? saved.stats : {})
@@ -2846,6 +2850,85 @@ app.get('/health', (_req, res) => {
 });
 
 app.use(auth);
+app.use(auth);
+
+// Commandes Hacoo Affiliate : stockage indépendant de la file Telegram.
+function affiliatePublicOrder(order) {
+  return {
+    orderNo: String(order.orderNo || order.code || order.trackingCode || ''),
+    code: String(order.code || ''),
+    createTime: Number(order.createTime || 0),
+    orderStatus: String(order.orderStatus || 'Unknown'),
+    region: String(order.region || ''),
+    currency: String(order.currency || 'USD'),
+    orderAmount: Number(order.orderAmount || 0),
+    commissionAmount: Number(order.commissionAmount || 0),
+    subsidyAmount: Number(order.subsidyAmount || 0),
+    totalCommissionAmount: Number(order.totalCommissionAmount || (Number(order.commissionAmount || 0) + Number(order.subsidyAmount || 0))),
+    signCommissionAmount: Number(order.signCommissionAmount || 0),
+    signSubsidyAmount: Number(order.signSubsidyAmount || 0),
+    signTotalCommissionAmount: Number(order.signTotalCommissionAmount || 0),
+    commissionRate: Number(order.commissionRate || 0),
+    appName: String(order.appName || ''),
+    feedId: String(order.feedId || ''),
+    firstSeenAt: order.firstSeenAt || new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+    isNew: Boolean(order.isNew)
+  };
+}
+
+let affiliateSyncRunning = false;
+async function syncHacooAffiliate() {
+  if (affiliateSyncRunning) return { skipped: true, reason: 'sync_in_progress' };
+  if (!hacooAffiliate.isConfigured()) return { skipped: true, reason: 'not_configured' };
+  affiliateSyncRunning = true;
+  try {
+    const result = await hacooAffiliate.fetchAllOrders();
+    const existing = new Map((data.affiliateOrders || []).map((o, i) => [String(o.orderNo || o.code || ''), i]));
+    const now = new Date().toISOString();
+    for (const raw of result.records) {
+      const normalized = affiliatePublicOrder(raw);
+      const key = normalized.orderNo || normalized.code;
+      if (!key) continue;
+      if (existing.has(key)) {
+        const i = existing.get(key);
+        data.affiliateOrders[i] = { ...data.affiliateOrders[i], ...normalized, firstSeenAt: data.affiliateOrders[i].firstSeenAt || now, isNew: false };
+      } else {
+        normalized.firstSeenAt = now;
+        normalized.isNew = true;
+        data.affiliateOrders.push(normalized);
+        existing.set(key, data.affiliateOrders.length - 1);
+      }
+    }
+    data.affiliateOrders = data.affiliateOrders.slice(-10000);
+    data.affiliateSync = { lastSyncAt: now, lastError: null, total: result.total, pages: result.pages };
+    saveNow();
+    return { ok: true, fetched: result.records.length, stored: data.affiliateOrders.length, total: result.total, pages: result.pages, lastSyncAt: now };
+  } catch (error) {
+    data.affiliateSync = { ...(data.affiliateSync || {}), lastError: String(error?.message || error).slice(0, 300) };
+    saveData();
+    throw error;
+  } finally {
+    affiliateSyncRunning = false;
+  }
+}
+
+app.get('/api/affiliate/status', (_req, res) => {
+  res.json({ configured: hacooAffiliate.isConfigured(), sync: data.affiliateSync || {}, count: (data.affiliateOrders || []).length });
+});
+app.get('/api/affiliate/orders', (req, res) => {
+  const query = String(req.query.q || '').trim().toLowerCase();
+  const statuses = String(req.query.status || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+  let orders = [...(data.affiliateOrders || [])];
+  if (query) orders = orders.filter(o => String(o.orderNo || '').toLowerCase().includes(query));
+  if (statuses.length) orders = orders.filter(o => statuses.includes(String(o.orderStatus || '').toLowerCase()));
+  orders.sort((a, b) => Number(b.createTime || 0) - Number(a.createTime || 0));
+  res.json({ orders, total: orders.length, sync: data.affiliateSync || {}, configured: hacooAffiliate.isConfigured() });
+});
+app.post('/api/affiliate/sync', async (_req, res) => {
+  try { res.json(await syncHacooAffiliate()); }
+  catch (error) { res.status(502).json({ error: String(error?.message || error).slice(0, 300) }); }
+});
 // Les pages interrogent plusieurs endpoints en parallèle. 35 requêtes / 5 min
 // bloquait le dashboard autonome à lui seul (3 endpoints toutes les 30 s).
 // Garder une limite anti-abus raisonnable après authentification, sans bloquer l'usage normal.
@@ -4027,6 +4110,16 @@ const httpServer = app.listen(PORT, () => {
 })();
 
 // V6 : cycle autonome périodique. Le moteur applique lui-même l’intervalle et le plafond journalier.
+// Automatic Hacoo Affiliate synchronization (10-minute interval, only when credentials exist).
+setTimeout(() => {
+  if (hacooAffiliate.isConfigured()) syncHacooAffiliate().catch(error => console.error('Hacoo Affiliate sync initiale échouée :', String(error?.message || error)));
+}, 30000);
+setInterval(() => {
+  if (!shuttingDown && hacooAffiliate.isConfigured()) {
+    syncHacooAffiliate().catch(error => console.error('Hacoo Affiliate sync échouée :', String(error?.message || error)));
+  }
+}, 10 * 60 * 1000);
+
 let autonomyLoopRunning = false;
 setInterval(async () => {
   if (autonomyLoopRunning || shuttingDown) return;
