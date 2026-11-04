@@ -270,6 +270,29 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
     <div id="ordersActive" class="list"></div>
   </section>
 
+  <!-- COMMANDES HACOO AFFILIATE -->
+  <section class="tab" id="tab-affiliate" aria-label="Commandes Hacoo Affiliate">
+    <div class="row between" style="gap:10px;flex-wrap:wrap">
+      <div><h2>Commandes Hacoo</h2><p class="tiny muted">Données de ton compte Hacoo Affiliate, séparées des ordres du bot.</p></div>
+      <button class="btn primary" id="affiliateSync" type="button">↻ Synchroniser</button>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0">
+      <div class="card"><div class="tiny muted">Commandes récupérées</div><div class="big" id="affTotal">—</div></div>
+      <div class="card"><div class="tiny muted">Nouvelles commandes</div><div class="big" id="affNew">—</div></div>
+      <div class="card"><div class="tiny muted">Commissions estimées</div><div class="big" id="affEstimated">—</div></div>
+      <div class="card"><div class="tiny muted">Commissions signées</div><div class="big" id="affSigned">—</div></div>
+    </div>
+    <div class="card stack">
+      <div class="row between"><b>Historique des commandes</b><span class="tiny muted" id="affSyncStatus">Non synchronisé</span></div>
+      <input id="affSearch" type="search" placeholder="Rechercher un numéro de commande…" autocomplete="off">
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <select id="affStatus"><option value="">Tous les statuts</option><option>Pending</option><option>Delivered</option><option>Canceled</option></select>
+        <span class="tiny muted" id="affCount"></span>
+      </div>
+      <div id="affOrders" class="list"><div class="empty">Chargement…</div></div>
+    </div>
+  </section>
+
   <!-- ACTIVITÉ -->
   <section class="tab" id="tab-activity" aria-label="Activité">
     <div class="seg" id="actSeg" role="tablist">
@@ -487,6 +510,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
 <nav class="tabbar" id="tabbar" aria-label="Navigation">
   <button class="active" data-tab="home" type="button"><span class="ic">🏠</span>Accueil<span class="badge hidden" id="badgeHome"></span></button>
   <button data-tab="orders" type="button"><span class="ic">🎯</span>Ordres<span class="badge hidden" id="badgeOrders"></span></button>
+  <button data-tab="affiliate" type="button"><span class="ic">🛍️</span>Commandes Hacoo</button>
   <button data-tab="publications" type="button"><span class="ic">📨</span>Publications</button>
   <button data-tab="activity" type="button"><span class="ic">📜</span>Activité</button>
   <button data-tab="settings" type="button"><span class="ic">⚙️</span>Réglages</button>
@@ -1348,6 +1372,58 @@ $('#v6RollbackButton').addEventListener('click',async e=>{
  if(!await confirmSheet('Pousser la restauration du fichier précédent vers GitHub ?',{title:'Rollback',ok:'Pousser',danger:true}))return;
  await busy(e.currentTarget,'…',async()=>{try{const r=await post('/api/v6/deploy/rollback',{releaseId:id},{timeout:120000});dres(`Rollback poussé : ${r.releaseId} · ${r.target} · branche ${r.branch}. ${r.note||''}`);toast('Rollback poussé : vérifie FadeHost.','ok');}catch(err){dres('Rollback refusé : '+err.message);toast(err.message,'bad');}});
 });
+
+/* ============ Hacoo Affiliate ============ */
+let affiliateRows=[];
+const moneyAffiliate=n=>'
+function showTab(name){
+ if(!$('#tab-'+name))return;
+ S.tab=name;
+ $$('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+name));
+ $$('#tabbar button').forEach(b=>{const on=b.dataset.tab===name;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+ try{history.replaceState(null,'','#'+name);}catch{}
+ window.scrollTo({top:0});
+ if(name==='ai'&&!S.loadedAI)loadAI();else if(name==='ai')loadAI();
+ if(name==='orders'&&!S.loadedAI)loadAI();
+ if(name==='publications')loadManual();
+ if(name==='affiliate')loadAffiliate();
+ if(name==='settings')loadChannelSync();
+}
+$('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
+$('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.loadedAI)loadAI();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCore();});
+setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadCore();},30000);
+renderOrderLog();
+const first=(location.hash||'').slice(1);
+if(['home','orders','activity','settings','ai','publications'].includes(first))showTab(first);
+loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();if(S.tab==='affiliate')loadAffiliate();if(S.tab==='settings')loadChannelSync();});
+</script>
+</body>
+</html>
++(Number(n||0)/100).toFixed(2);
+function renderAffiliate(){
+ const q=($('#affSearch')?.value||'').trim().toLowerCase(),status=($('#affStatus')?.value||'').toLowerCase();
+ const rows=affiliateRows.filter(o=>(!q||String(o.orderNo||'').toLowerCase().includes(q))&&(!status||String(o.orderStatus||'').toLowerCase()===status));
+ const el=$('#affOrders');if(!el)return;
+ $('#affCount').textContent=rows.length+' commande(s)';
+ el.innerHTML=rows.length?rows.map(o=>{const canceled=String(o.orderStatus).toLowerCase()==='canceled';return '<div class="item"><div class="row between"><b>'+esc(o.orderNo||'—')+'</b><span class="tag '+(canceled?'bad':String(o.orderStatus).toLowerCase()==='delivered'?'ok':'warn')+'">'+esc(o.orderStatus||'Inconnu')+'</span></div><div class="small muted">'+esc(o.region||'')+' · '+(o.createTime?new Date(o.createTime).toLocaleString():'Date inconnue')+'</div><div class="row between small"><span>Commande : '+moneyAffiliate(o.orderAmount)+'</span><b>Commission : '+moneyAffiliate(o.totalCommissionAmount)+'</b></div>'+(canceled?'<div class="tiny muted">Commande annulée — exclue des gains.</div>':'')+'</div>';}).join(''):'<div class="empty">Aucune commande pour ces filtres.</div>';
+}
+async function loadAffiliate(){
+ try{
+  const [r,st]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status')]);
+  affiliateRows=r.orders||[];
+  const active=affiliateRows.filter(o=>String(o.orderStatus).toLowerCase()!=='canceled');
+  $('#affTotal').textContent=st.count??affiliateRows.length;
+  $('#affNew').textContent=affiliateRows.filter(o=>o.isNew).length;
+  $('#affEstimated').textContent=moneyAffiliate(active.reduce((n,o)=>n+Number(o.totalCommissionAmount||0),0));
+  $('#affSigned').textContent=moneyAffiliate(active.reduce((n,o)=>n+Number(o.signTotalCommissionAmount||0),0));
+  $('#affSyncStatus').textContent=st.sync?.lastError?'Erreur : '+st.sync.lastError:st.sync?.lastSyncAt?'Dernière synchro : '+new Date(st.sync.lastSyncAt).toLocaleString():st.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
+  renderAffiliate();
+ }catch(e){$('#affOrders').innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+$('#affSearch')?.addEventListener('input',renderAffiliate);
+$('#affStatus')?.addEventListener('change',renderAffiliate);
+$('#affiliateSync')?.addEventListener('click',async e=>{await busy(e.currentTarget,'Synchronisation…',async()=>{try{await post('/api/affiliate/sync',{});toast('Commandes Hacoo synchronisées','ok');await loadAffiliate();}catch(err){toast(err.message,'bad');await loadAffiliate();}});});
 
 /* ============ Navigation et démarrage ============ */
 function showTab(name){
