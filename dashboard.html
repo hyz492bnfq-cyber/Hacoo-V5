@@ -104,6 +104,18 @@ main{padding:14px 14px calc(var(--nav) + var(--safe-b) + 26px);max-width:760px;m
 .cols i{display:block;width:44%;max-width:16px;min-height:3px;background:var(--accent);border-radius:5px 5px 0 0}.cols i.b2{background:var(--accent2)}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 
+.aff-chart{display:grid;grid-template-columns:repeat(14,minmax(34px,1fr));gap:7px;align-items:end;min-height:150px;padding:12px 0 4px;overflow-x:auto}
+.aff-col{display:grid;grid-template-rows:112px auto;gap:7px;min-width:0;text-align:center}
+.aff-bars{height:112px;display:flex;align-items:flex-end;justify-content:center;gap:3px;border-bottom:1px solid var(--line)}
+.aff-bars i{display:block;flex:1;max-width:18px;min-height:2px;border-radius:5px 5px 0 0;background:var(--accent)}
+.aff-bars i.alt{background:var(--accent2)}
+.aff-label{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aff-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.aff-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+.aff-legend i.sales{background:var(--accent)}.aff-legend i.orders{background:var(--accent2)}
+.aff-choice{display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--line);background:var(--s2);border-radius:10px;font-size:12px}
+.aff-choice input{accent-color:var(--accent);width:16px;height:16px}
+@media(max-width:420px){.aff-chart{gap:4px}.aff-col{grid-template-rows:100px auto}.aff-bars{height:100px}.aff-label{font-size:9px}}
 /* Lists */
 .list{display:grid;gap:8px}
 .item{display:grid;gap:6px;padding:12px 13px;border-radius:14px;background:var(--s2);border:1px solid var(--line);min-width:0}
@@ -281,6 +293,28 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
       <div class="card"><div class="tiny muted">Nouvelles commandes</div><div class="big" id="affNew">—</div></div>
       <div class="card"><div class="tiny muted">Commissions estimées</div><div class="big" id="affEstimated">—</div></div>
       <div class="card"><div class="tiny muted">Montants signés API</div><div class="big" id="affSigned">—</div></div>
+    </div>
+    <div class="sec-title">Statistiques Hacoo</div>
+    <div class="card stack">
+      <div class="row between"><div><h3>Évolution des commissions</h3><p class="tiny muted">Commissions estimées, hors commandes annulées</p></div><div class="seg" style="max-width:190px"><button type="button" class="on" data-aff-period="day">Jour</button><button type="button" data-aff-period="month">Mois</button></div></div>
+      <div id="affCommissionChart" class="aff-chart" aria-label="Évolution des commissions"></div>
+      <div class="tiny muted" id="affCommissionNote"></div>
+    </div>
+    <div class="card stack">
+      <div><h3>Commandes par statut</h3><p class="tiny muted">Sélectionne un ou deux statuts à comparer.</p></div>
+      <div class="row wrap" id="affStatusChoices">
+        <label class="aff-choice"><input type="checkbox" value="Pending" checked> Pending</label>
+        <label class="aff-choice"><input type="checkbox" value="Delivered" checked> Delivered</label>
+        <label class="aff-choice"><input type="checkbox" value="Canceled"> Canceled</label>
+      </div>
+      <div id="affStatusChart" class="aff-chart"></div>
+      <div class="tiny muted" id="affStatusNote"></div>
+    </div>
+    <div class="card stack">
+      <div><h3>Ventes et commandes</h3><p class="tiny muted">Montant des ventes et volume de commandes dans le temps</p></div>
+      <div class="aff-legend"><span><i class="sales"></i>Ventes (USD)</span><span><i class="orders"></i>Commandes</span></div>
+      <div id="affSalesChart" class="aff-chart"></div>
+      <div class="tiny muted" id="affSalesNote"></div>
     </div>
     <div class="card stack">
       <div class="row between"><b>Historique des commandes</b><span class="tiny muted" id="affSyncStatus">Non synchronisé</span></div>
@@ -1400,7 +1434,34 @@ function renderAffiliate(){
   list.append(item);
  }
 }
-async function loadAffiliate(){
+async let affiliatePeriod='day';
+const affiliateStatuses=new Set(['Pending','Delivered']);
+function affiliateDate(o){const n=Number(o.createTime||o.orderTime||o.timestamp||0);const d=n>0?new Date(n<1e12?n*1000:n):new Date(o.firstSeenAt||0);return Number.isNaN(d.getTime())?null:d;}
+function affiliateBuckets(rows,period){
+ const now=new Date(),out=[];
+ if(period==='day'){for(let i=13;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);out.push({key:d.toISOString().slice(0,10),label:d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}),commission:0,sales:0,orders:0});}}
+ else {for(let i=11;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);out.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleDateString('fr-FR',{month:'short'}),commission:0,sales:0,orders:0});}}
+ const map=new Map(out.map(x=>[x.key,x]));
+ rows.forEach(o=>{if(String(o.orderStatus||'').toLowerCase()==='canceled')return;const d=affiliateDate(o);if(!d)return;const key=period==='day'?d.toISOString().slice(0,10):d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');const b=map.get(key);if(!b)return;b.commission+=Number(o.totalCommissionAmount||0);b.sales+=Number(o.orderAmount||0);b.orders++;});
+ return out;
+}
+function renderAffiliateCharts(){
+ const buckets=affiliateBuckets(affiliateRows,affiliatePeriod);
+ document.querySelectorAll('[data-aff-period]').forEach(b=>b.classList.toggle('on',b.dataset.affPeriod===affiliatePeriod));
+ const draw=(id,keys,noteId,format)=>{const el=document.getElementById(id);if(!el)return;el.style.gridTemplateColumns='repeat('+buckets.length+',minmax(34px,1fr))';const max=Math.max(1,...buckets.flatMap(b=>keys.map(k=>b[k])));el.innerHTML=buckets.map(b=>'<div class="aff-col"><div class="aff-bars">'+keys.map((k,i)=>'<i class="'+(i?'alt':'')+'" style="height:'+Math.max(b[k]>0?3:0,b[k]/max*100)+'%" title="'+format(b[k])+'"></i>').join('')+'</div><span class="aff-label" title="'+b.label+'">'+b.label+'</span></div>').join('');document.getElementById(noteId).textContent=buckets.some(b=>keys.some(k=>b[k]>0))?'Période affichée : '+(affiliatePeriod==='day'?'14 derniers jours':'12 derniers mois')+'.':'Aucune donnée sur cette période.';};
+ draw('affCommissionChart',['commission'],'affCommissionNote',v=>affiliateMoney(v));
+ const chosen=[...affiliateStatuses];
+ const statusCounts={Pending:0,Delivered:0,Canceled:0};
+ affiliateRows.forEach(o=>{const k=String(o.orderStatus||'');if(k in statusCounts)statusCounts[k]++;});
+ const statusEl=document.getElementById('affStatusChart');
+ if(statusEl){const max=Math.max(1,...chosen.map(k=>statusCounts[k]));statusEl.style.gridTemplateColumns='repeat('+Math.max(1,chosen.length)+',minmax(0,1fr))';statusEl.innerHTML=chosen.length?chosen.map(k=>'<div class="aff-col"><div class="aff-bars"><i style="height:'+Math.max(statusCounts[k]?3:0,statusCounts[k]/max*100)+'%" title="'+statusCounts[k]+' commandes"></i></div><span class="aff-label">'+k+' · '+statusCounts[k]+'</span></div>').join(''):'<div class="empty">Sélectionne au moins un statut.</div>';}
+ document.getElementById('affStatusNote').textContent='Sélection : '+(chosen.join(' + ')||'aucun statut')+'.';
+ draw('affSalesChart',['sales','orders'],'affSalesNote',v=>String(v));
+ document.getElementById('affSalesNote').textContent='Ventes en USD (barres bleues) et nombre de commandes (barres violettes), échelles normalisées pour faciliter la comparaison.';
+}
+document.querySelectorAll('[data-aff-period]').forEach(b=>b.addEventListener('click',()=>{affiliatePeriod=b.dataset.affPeriod;renderAffiliateCharts();}));
+document.querySelectorAll('#affStatusChoices input').forEach(input=>input.addEventListener('change',()=>{const checked=[...document.querySelectorAll('#affStatusChoices input:checked')];if(checked.length>2){input.checked=false;toast('Tu peux comparer deux statuts maximum.','bad');return;}affiliateStatuses.clear();checked.forEach(x=>affiliateStatuses.add(x.value));renderAffiliateCharts();}));
+function loadAffiliate(){
  try{
   const [response,status]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status')]);
   affiliateRows=response.orders||[];
@@ -1411,6 +1472,7 @@ async function loadAffiliate(){
   document.querySelector('#affSigned').textContent=affiliateMoney(valid.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0));
   document.querySelector('#affSyncStatus').textContent=status.sync?.lastError?'Erreur : '+status.sync.lastError:status.sync?.lastSyncAt?'Dernière synchro : '+new Date(status.sync.lastSyncAt).toLocaleString():status.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
   renderAffiliate();
+  renderAffiliateCharts();
  }catch(error){document.querySelector('#affOrders').textContent=error.message;}
 }
 document.querySelector('#affSearch')?.addEventListener('input',renderAffiliate);
