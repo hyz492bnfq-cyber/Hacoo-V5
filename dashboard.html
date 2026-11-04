@@ -1434,7 +1434,7 @@ function renderAffiliate(){
   list.append(item);
  }
 }
-async let affiliatePeriod='day';
+let affiliatePeriod='day';
 const affiliateStatuses=new Set(['Pending','Delivered']);
 function affiliateDate(o){const n=Number(o.createTime||o.orderTime||o.timestamp||0);const d=n>0?new Date(n<1e12?n*1000:n):new Date(o.firstSeenAt||0);return Number.isNaN(d.getTime())?null:d;}
 function affiliateBuckets(rows,period){
@@ -1461,7 +1461,7 @@ function renderAffiliateCharts(){
 }
 document.querySelectorAll('[data-aff-period]').forEach(b=>b.addEventListener('click',()=>{affiliatePeriod=b.dataset.affPeriod;renderAffiliateCharts();}));
 document.querySelectorAll('#affStatusChoices input').forEach(input=>input.addEventListener('change',()=>{const checked=[...document.querySelectorAll('#affStatusChoices input:checked')];if(checked.length>2){input.checked=false;toast('Tu peux comparer deux statuts maximum.','bad');return;}affiliateStatuses.clear();checked.forEach(x=>affiliateStatuses.add(x.value));renderAffiliateCharts();}));
-function loadAffiliate(){
+async function loadAffiliate(){
  try{
   const [response,status]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status')]);
   affiliateRows=response.orders||[];
