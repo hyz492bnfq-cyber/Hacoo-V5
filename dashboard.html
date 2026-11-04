@@ -280,7 +280,7 @@ pre.preview{margin:0;white-space:pre-wrap;font:inherit;background:#0d1320;border
       <div class="card"><div class="tiny muted">Commandes récupérées</div><div class="big" id="affTotal">—</div></div>
       <div class="card"><div class="tiny muted">Nouvelles commandes</div><div class="big" id="affNew">—</div></div>
       <div class="card"><div class="tiny muted">Commissions estimées</div><div class="big" id="affEstimated">—</div></div>
-      <div class="card"><div class="tiny muted">Commissions signées</div><div class="big" id="affSigned">—</div></div>
+      <div class="card"><div class="tiny muted">Montants signés API</div><div class="big" id="affSigned">—</div></div>
     </div>
     <div class="card stack">
       <div class="row between"><b>Historique des commandes</b><span class="tiny muted" id="affSyncStatus">Non synchronisé</span></div>
@@ -1414,7 +1414,7 @@ async function loadAffiliate(){
   affiliateRows=r.orders||[];
   const active=affiliateRows.filter(o=>String(o.orderStatus).toLowerCase()!=='canceled');
   $('#affTotal').textContent=st.count??affiliateRows.length;
-  $('#affNew').textContent=affiliateRows.filter(o=>o.isNew).length;
+  $('#affNew').textContent=affiliateRows.filter(o=>Date.now()-Date.parse(o.firstSeenAt||0)<86400000).length;
   $('#affEstimated').textContent=moneyAffiliate(active.reduce((n,o)=>n+Number(o.totalCommissionAmount||0),0));
   $('#affSigned').textContent=moneyAffiliate(active.reduce((n,o)=>n+Number(o.signTotalCommissionAmount||0),0));
   $('#affSyncStatus').textContent=st.sync?.lastError?'Erreur : '+st.sync.lastError:st.sync?.lastSyncAt?'Dernière synchro : '+new Date(st.sync.lastSyncAt).toLocaleString():st.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
