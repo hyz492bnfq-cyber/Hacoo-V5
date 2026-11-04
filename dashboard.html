@@ -1373,9 +1373,53 @@ $('#v6RollbackButton').addEventListener('click',async e=>{
  await busy(e.currentTarget,'…',async()=>{try{const r=await post('/api/v6/deploy/rollback',{releaseId:id},{timeout:120000});dres(`Rollback poussé : ${r.releaseId} · ${r.target} · branche ${r.branch}. ${r.note||''}`);toast('Rollback poussé : vérifie FadeHost.','ok');}catch(err){dres('Rollback refusé : '+err.message);toast(err.message,'bad');}});
 });
 
-/* ============ Hacoo Affiliate ============ */
+/* ============ Navigation et démarrage ============ */
+/* Hacoo Affiliate dashboard */
 let affiliateRows=[];
-const moneyAffiliate=n=>'
+function affiliateMoney(v){return 'USD '+(Number(v||0)/100).toFixed(2);}
+function renderAffiliate(){
+ const query=String(document.querySelector('#affSearch')?.value||'').trim().toLowerCase();
+ const status=String(document.querySelector('#affStatus')?.value||'').toLowerCase();
+ const rows=affiliateRows.filter(o=>(!query||String(o.orderNo||'').toLowerCase().includes(query))&&(!status||String(o.orderStatus||'').toLowerCase()===status));
+ const list=document.querySelector('#affOrders');if(!list)return;
+ list.textContent='';document.querySelector('#affCount').textContent=rows.length+' commande(s)';
+ if(!rows.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Aucune commande pour ces filtres.';list.append(empty);return;}
+ for(const order of rows){
+  const item=document.createElement('div');item.className='item';
+  const heading=document.createElement('div');heading.className='row between';
+  const number=document.createElement('b');number.textContent=order.orderNo||'—';
+  const state=document.createElement('span');state.className='tag';state.textContent=order.orderStatus||'Inconnu';
+  heading.append(number,state);item.append(heading);
+  const date=document.createElement('div');date.className='small muted';
+  date.textContent=(order.region||'')+' · '+(order.createTime?new Date(order.createTime).toLocaleString():'Date inconnue');item.append(date);
+  const amounts=document.createElement('div');amounts.className='row between small';
+  const amount=document.createElement('span');amount.textContent='Commande : '+affiliateMoney(order.orderAmount);
+  const commission=document.createElement('b');commission.textContent='Commission : '+affiliateMoney(order.totalCommissionAmount);
+  amounts.append(amount,commission);item.append(amounts);
+  if(String(order.orderStatus).toLowerCase()==='canceled'){const note=document.createElement('div');note.className='tiny muted';note.textContent='Commande annulée — exclue des gains.';item.append(note);}
+  list.append(item);
+ }
+}
+async function loadAffiliate(){
+ try{
+  const [response,status]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status')]);
+  affiliateRows=response.orders||[];
+  const valid=affiliateRows.filter(o=>String(o.orderStatus).toLowerCase()!=='canceled');
+  document.querySelector('#affTotal').textContent=status.count??affiliateRows.length;
+  document.querySelector('#affNew').textContent=affiliateRows.filter(o=>Date.now()-Date.parse(o.firstSeenAt||0)<86400000).length;
+  document.querySelector('#affEstimated').textContent=affiliateMoney(valid.reduce((sum,o)=>sum+Number(o.totalCommissionAmount||0),0));
+  document.querySelector('#affSigned').textContent=affiliateMoney(valid.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0));
+  document.querySelector('#affSyncStatus').textContent=status.sync?.lastError?'Erreur : '+status.sync.lastError:status.sync?.lastSyncAt?'Dernière synchro : '+new Date(status.sync.lastSyncAt).toLocaleString():status.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
+  renderAffiliate();
+ }catch(error){document.querySelector('#affOrders').textContent=error.message;}
+}
+document.querySelector('#affSearch')?.addEventListener('input',renderAffiliate);
+document.querySelector('#affStatus')?.addEventListener('change',renderAffiliate);
+document.querySelector('#affiliateSync')?.addEventListener('click',async event=>{
+ try{await busy(event.currentTarget,'Synchronisation…',async()=>{await post('/api/affiliate/sync',{});toast('Commandes Hacoo synchronisées','ok');await loadAffiliate();});}
+ catch(error){toast(error.message,'bad');await loadAffiliate();}
+});
+
 function showTab(name){
  if(!$('#tab-'+name))return;
  S.tab=name;
@@ -1397,55 +1441,6 @@ renderOrderLog();
 const first=(location.hash||'').slice(1);
 if(['home','orders','activity','settings','ai','publications'].includes(first))showTab(first);
 loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();if(S.tab==='affiliate')loadAffiliate();if(S.tab==='settings')loadChannelSync();});
-</script>
-</body>
-</html>
-+(Number(n||0)/100).toFixed(2);
-function renderAffiliate(){
- const q=($('#affSearch')?.value||'').trim().toLowerCase(),status=($('#affStatus')?.value||'').toLowerCase();
- const rows=affiliateRows.filter(o=>(!q||String(o.orderNo||'').toLowerCase().includes(q))&&(!status||String(o.orderStatus||'').toLowerCase()===status));
- const el=$('#affOrders');if(!el)return;
- $('#affCount').textContent=rows.length+' commande(s)';
- el.innerHTML=rows.length?rows.map(o=>{const canceled=String(o.orderStatus).toLowerCase()==='canceled';return '<div class="item"><div class="row between"><b>'+esc(o.orderNo||'—')+'</b><span class="tag '+(canceled?'bad':String(o.orderStatus).toLowerCase()==='delivered'?'ok':'warn')+'">'+esc(o.orderStatus||'Inconnu')+'</span></div><div class="small muted">'+esc(o.region||'')+' · '+(o.createTime?new Date(o.createTime).toLocaleString():'Date inconnue')+'</div><div class="row between small"><span>Commande : '+moneyAffiliate(o.orderAmount)+'</span><b>Commission : '+moneyAffiliate(o.totalCommissionAmount)+'</b></div>'+(canceled?'<div class="tiny muted">Commande annulée — exclue des gains.</div>':'')+'</div>';}).join(''):'<div class="empty">Aucune commande pour ces filtres.</div>';
-}
-async function loadAffiliate(){
- try{
-  const [r,st]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status')]);
-  affiliateRows=r.orders||[];
-  const active=affiliateRows.filter(o=>String(o.orderStatus).toLowerCase()!=='canceled');
-  $('#affTotal').textContent=st.count??affiliateRows.length;
-  $('#affNew').textContent=affiliateRows.filter(o=>Date.now()-Date.parse(o.firstSeenAt||0)<86400000).length;
-  $('#affEstimated').textContent=moneyAffiliate(active.reduce((n,o)=>n+Number(o.totalCommissionAmount||0),0));
-  $('#affSigned').textContent=moneyAffiliate(active.reduce((n,o)=>n+Number(o.signTotalCommissionAmount||0),0));
-  $('#affSyncStatus').textContent=st.sync?.lastError?'Erreur : '+st.sync.lastError:st.sync?.lastSyncAt?'Dernière synchro : '+new Date(st.sync.lastSyncAt).toLocaleString():st.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
-  renderAffiliate();
- }catch(e){$('#affOrders').innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
-}
-$('#affSearch')?.addEventListener('input',renderAffiliate);
-$('#affStatus')?.addEventListener('change',renderAffiliate);
-$('#affiliateSync')?.addEventListener('click',async e=>{await busy(e.currentTarget,'Synchronisation…',async()=>{try{await post('/api/affiliate/sync',{});toast('Commandes Hacoo synchronisées','ok');await loadAffiliate();}catch(err){toast(err.message,'bad');await loadAffiliate();}});});
-
-/* ============ Navigation et démarrage ============ */
-function showTab(name){
- if(!$('#tab-'+name))return;
- S.tab=name;
- $$('.tab').forEach(t=>t.classList.toggle('active',t.id==='tab-'+name));
- $$('#tabbar button').forEach(b=>{const on=b.dataset.tab===name;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
- try{history.replaceState(null,'','#'+name);}catch{}
- window.scrollTo({top:0});
- if(name==='ai'&&!S.loadedAI)loadAI();else if(name==='ai')loadAI();
- if(name==='orders'&&!S.loadedAI)loadAI();
- if(name==='publications')loadManual();
- if(name==='settings')loadChannelSync();
-}
-$('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
-$('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.loadedAI)loadAI();});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCore();});
-setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadCore();},30000);
-renderOrderLog();
-const first=(location.hash||'').slice(1);
-if(['home','orders','activity','settings','ai','publications'].includes(first))showTab(first);
-loadCore().then(()=>{if(S.tab==='orders'||S.tab==='ai')loadAI();if(S.tab==='publications')loadManual();if(S.tab==='settings')loadChannelSync();});
 </script>
 </body>
 </html>
