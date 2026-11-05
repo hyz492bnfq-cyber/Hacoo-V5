@@ -2913,6 +2913,32 @@ async function syncHacooAffiliate() {
   }
 }
 
+// Taux USD/EUR récupéré côté serveur : évite les blocages CORS du navigateur.
+let affiliateEurRateCache = null;
+app.get('/api/affiliate/exchange-rate', async (_req, res) => {
+  const now = Date.now();
+  if (affiliateEurRateCache && now - affiliateEurRateCache.fetchedAt < 6 * 60 * 60 * 1000) {
+    return res.json({ rate: affiliateEurRateCache.rate, date: affiliateEurRateCache.date, source: 'Frankfurter', cached: true });
+  }
+  try {
+    const response = await fetch('https://api.frankfurter.app/latest?from=USD&to=EUR', {
+      headers: { Accept: 'application/json', 'User-Agent': 'M2-Hacoo-Dashboard/1.0' },
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!response.ok) throw new Error('Service de taux indisponible (HTTP ' + response.status + ')');
+    const payload = await response.json();
+    const rate = Number(payload?.rates?.EUR);
+    if (!(rate > 0 && rate < 2)) throw new Error('Taux USD/EUR invalide');
+    affiliateEurRateCache = { rate, date: String(payload.date || new Date().toISOString().slice(0, 10)), fetchedAt: now };
+    return res.json({ rate, date: affiliateEurRateCache.date, source: 'Frankfurter', cached: false });
+  } catch (error) {
+    if (affiliateEurRateCache) {
+      return res.json({ rate: affiliateEurRateCache.rate, date: affiliateEurRateCache.date, source: 'Frankfurter', cached: true, warning: 'Taux actualisé indisponible, dernier taux conservé.' });
+    }
+    return res.status(503).json({ error: 'Impossible de récupérer le taux USD → EUR : ' + String(error?.message || error).slice(0, 180) });
+  }
+});
+
 app.get('/api/affiliate/status', (_req, res) => {
   res.json({ configured: hacooAffiliate.isConfigured(), sync: data.affiliateSync || {}, count: (data.affiliateOrders || []).length });
 });
