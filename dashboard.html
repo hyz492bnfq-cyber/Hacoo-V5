@@ -1739,14 +1739,14 @@ async function loadAffiliate(){
   try{await loadEurRate();}catch(rateError){console.warn('Conversion EUR temporairement indisponible :',rateError);}
   affiliateRows=response.orders||[];affiliateLoaded=true;affiliateError='';
   const valid=affiliateRows.filter(o=>!isCanceled(o));
-  setNum($('#affTotal'),status.count??affiliateRows.length);
+  setNum($('#affTotal'),affiliateRows.filter(o=>normalizedStatus(o)==='Pending').length);
   const todayParis=new Date().toLocaleDateString('sv-SE',{timeZone:PARIS});
   setNum($('#affNew'),affiliateRows.filter(o=>{const ms=affiliateDate(o);return ms!=null&&new Date(ms).toLocaleDateString('sv-SE',{timeZone:PARIS})===todayParis;}).length);
   setNum($('#affEstimated'),valid.reduce((sum,o)=>sum+Number(o.totalCommissionAmount||0),0),affiliateMoney);
   const signed=valid.filter(o=>String(o.orderStatus||'').trim().toLowerCase()==='signed');
   setNum($('#affSigned'),signed.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0),affiliateMoney);
   const cnt=k=>affiliateRows.filter(o=>normalizedStatus(o)===k).length;
-  $('#affTotalSub').textContent=`${nf(cnt('Delivered'))} livrées · ${nf(cnt('Pending'))} en attente · ${nf(cnt('Canceled'))} annulées`;
+  $('#affTotalSub').textContent=`${nf(status.count??affiliateRows.length)} au total · dont ${nf(cnt('Canceled'))} annulées`;
   $('#affEstimatedSub').textContent=`${nf(valid.length)} commande(s) hors annulées`;
   const sy=status.sync||{};
   $('#affSyncStatus').textContent=sy.lastError?'Erreur : '+sy.lastError:sy.lastSyncAt?'Dernière synchro : '+new Date(sy.lastSyncAt).toLocaleString('fr-FR',{timeZone:PARIS,day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):status.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
