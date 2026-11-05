@@ -129,6 +129,7 @@ const DEFAULTS = {
   groupPhotos: true,
   groupPhotosContextVersion: 2,
 
+  hacooLinkReplacementEnabled: true,
   formatEnabled: false,
   formatTitlePrefix: '🛍️ ',
   formatTitleSuffix: ' 🤩‼️',
@@ -1828,33 +1829,34 @@ async function processMessages(ctx, messages) {
     }
   }
 
-  // Convertit les liens de boutique Hacoo en liens affiliés avant la publication.
-  // Les liens d'autres domaines et les liens courts déjà affiliés restent inchangés.
-  const promoLinkCache = new Map();
-  const promoLinkErrors = [];
-  for (const message of messages) {
-    const original = msgText(message);
-    if (!original) continue;
-    const result = await hacooPromoLinks.replaceHacooLinks(original, { cache: promoLinkCache });
-    promoLinkErrors.push(...result.errors);
-    if (!result.changed) continue;
-    try {
-      if (message.text !== undefined) {
-        await ctx.api.editMessageText(message.chat.id, message.message_id, result.text);
-        message.text = result.text;
-      } else if (message.caption !== undefined) {
-        await ctx.api.editMessageCaption(message.chat.id, message.message_id, { caption: result.text });
-        message.caption = result.text;
+  // Convertit les liens Hacoo uniquement si l'option est activée dans le tableau de bord.
+  if (data.hacooLinkReplacementEnabled) {
+    const promoLinkCache = new Map();
+    const promoLinkErrors = [];
+    for (const message of messages) {
+      const original = msgText(message);
+      if (!original) continue;
+      const result = await hacooPromoLinks.replaceHacooLinks(original, { cache: promoLinkCache });
+      promoLinkErrors.push(...result.errors);
+      if (!result.changed) continue;
+      try {
+        if (message.text !== undefined) {
+          await ctx.api.editMessageText(message.chat.id, message.message_id, result.text);
+          message.text = result.text;
+        } else if (message.caption !== undefined) {
+          await ctx.api.editMessageCaption(message.chat.id, message.message_id, { caption: result.text });
+          message.caption = result.text;
+        }
+        delete message.entities;
+        delete message.caption_entities;
+      } catch (error) {
+        promoLinkErrors.push({ url: 'édition Telegram', message: String(error?.description || error?.message || error).slice(0, 180) });
       }
-      delete message.entities;
-      delete message.caption_entities;
-    } catch (error) {
-      promoLinkErrors.push({ url: 'édition Telegram', message: String(error?.description || error?.message || error).slice(0, 180) });
     }
-  }
-  if (promoLinkErrors.length) {
-    const details = [...new Set(promoLinkErrors.map(item => item.message))].slice(0, 3).join(' ; ');
-    notifyAdmin(`Conversion de lien Hacoo incomplète pour le message ${first.message_id}. Les URL non converties ont été conservées. ${details}`).catch(() => {});
+    if (promoLinkErrors.length) {
+      const details = [...new Set(promoLinkErrors.map(item => item.message))].slice(0, 3).join(' ; ');
+      notifyAdmin(`Conversion de lien Hacoo incomplète pour le message ${first.message_id}. Les URL non converties ont été conservées. ${details}`).catch(() => {});
+    }
   }
 
   let cleaned = false;
@@ -3792,6 +3794,7 @@ app.post('/api/settings', (req, res) => {
   const allowedBooleans = [
     'enabled',
     'manualPublicationMode',
+    'hacooLinkReplacementEnabled',
     'hashtags',
     'dashLines',
     'blockLinks',
