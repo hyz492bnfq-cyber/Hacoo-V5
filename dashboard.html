@@ -1545,7 +1545,9 @@ const affiliateStatuses=new Set(['Pending','Delivered']);
 let affSortKey='date',affShown=25;
 
 function affiliateDate(o){const n=Number(o.createTime||o.orderTime||o.timestamp||0);if(!(n>0))return null;const ms=n<1e12?n*1000:n;return Number.isFinite(ms)?ms:null;}
-const isCanceled=o=>String(o.orderStatus||'').toLowerCase()==='canceled';
+const affiliateStatus=o=>String(o?.orderStatus??o?.status??'').trim().toLowerCase().replace(/[\s_-]+/g,'');
+const isCanceled=o=>{const s=affiliateStatus(o);return s.includes('cancel')||s.includes('annul');};
+const normalizedStatus=o=>{const s=affiliateStatus(o);if(s.includes('cancel')||s.includes('annul'))return 'Canceled';if(s==='delivered')return 'Delivered';if(s==='pending')return 'Pending';return String(o?.orderStatus||o?.status||'Unknown');};
 function hourlyReliable(rows){
  const tods=new Set();let dated=0;
  for(const o of rows){const ms=affiliateDate(o);if(ms==null)continue;dated++;tods.add(ms%86400000);}
@@ -1598,7 +1600,7 @@ function aggregate(rows,buckets,gran){
  for(const o of rows){
   const ms=affiliateDate(o);if(ms==null){undated++;continue;}
   const a=map.get(keyFor(gran,ms));if(!a)continue;
-  const s=String(o.orderStatus||'');if(s in a.st)a.st[s]++;
+  const s=normalizedStatus(o);if(s in a.st)a.st[s]++;
   if(isCanceled(o))continue;
   a.commission+=Number(o.totalCommissionAmount||0);a.sales+=Number(o.orderAmount||0);a.orders++;
  }
@@ -1727,7 +1729,7 @@ async function loadAffiliate(){
   setNum($('#affEstimated'),valid.reduce((sum,o)=>sum+Number(o.totalCommissionAmount||0),0),affiliateMoney);
   const signed=valid.filter(o=>String(o.orderStatus||'').trim().toLowerCase()==='signed');
   setNum($('#affSigned'),signed.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0),affiliateMoney);
-  const cnt=k=>affiliateRows.filter(o=>String(o.orderStatus)===k).length;
+  const cnt=k=>affiliateRows.filter(o=>normalizedStatus(o)===k).length;
   $('#affTotalSub').textContent=`${nf(cnt('Delivered'))} livrées · ${nf(cnt('Pending'))} en attente · ${nf(cnt('Canceled'))} annulées`;
   $('#affEstimatedSub').textContent=`${nf(valid.length)} commande(s) hors annulées`;
   const sy=status.sync||{};
@@ -1745,8 +1747,8 @@ function renderWallet(){
  if(affiliateError||!affiliateLoaded){ids.forEach(i=>{const e=$('#'+i);if(e){delete e.dataset.v;e.textContent='—';}});['wlTn','wl7n','wl30n'].forEach(i=>$('#'+i).textContent='');['wlTd','wl7d','wl30d'].forEach(i=>$('#'+i).innerHTML='');$('#wlSpark').innerHTML='';return;}
  const ok=affiliateRows.filter(o=>!isCanceled(o)),comm=o=>Number(o.totalCommissionAmount||0),sum=a=>a.reduce((s,o)=>s+comm(o),0);
  setNum($('#wlTotal'),sum(ok),affiliateMoney);
- setNum($('#wlDelivered'),sum(ok.filter(o=>String(o.orderStatus)==='Delivered')),affiliateMoney);
- setNum($('#wlPending'),sum(ok.filter(o=>String(o.orderStatus)==='Pending')),affiliateMoney);
+ setNum($('#wlDelivered'),sum(ok.filter(o=>normalizedStatus(o)==='Delivered')),affiliateMoney);
+ setNum($('#wlPending'),sum(ok.filter(o=>normalizedStatus(o)==='Pending')),affiliateMoney);
  const dayKey=ms=>new Date(ms).toLocaleDateString('sv-SE',{timeZone:PARIS}),t=dayKey(Date.now()).split('-').map(Number),keys=[];
  for(let i=0;i<60;i++)keys.push(new Date(Date.UTC(t[0],t[1]-1,t[2]-i)).toISOString().slice(0,10));
  const byDay={};
