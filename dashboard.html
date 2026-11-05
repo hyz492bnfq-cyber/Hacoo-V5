@@ -1731,7 +1731,7 @@ async function loadAffiliate(){
   const sy=status.sync||{};
   $('#affSyncStatus').textContent=sy.lastError?'Erreur : '+sy.lastError:sy.lastSyncAt?'Dernière synchro : '+new Date(sy.lastSyncAt).toLocaleString('fr-FR',{timeZone:PARIS,day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):status.configured?'Prêt à synchroniser':'Connexion à configurer dans FadeHost';
   const undated=affiliateRows.filter(o=>affiliateDate(o)==null).length;
-  $('#affHistoryNote').textContent=(undated?`${nf(undated)} commande(s) sans date exploitable : exclue(s) des graphiques. `:'Données de ton compte Hacoo Affiliate, séparées des publications du bot. ')+(usdToEur!=null?`Montants convertis en euros depuis USD au taux ${usdToEur.toFixed(4)} (Frankfurter, ${eurRateDate}).`:'Taux USD → EUR indisponible : les commandes et quantités restent affichées, mais les montants seront rétablis dès que le taux sera récupéré.');
+  $('#affHistoryNote').textContent=(undated?`${nf(undated)} commande(s) sans date exploitable : exclue(s) des graphiques. `:'Données de ton compte Hacoo Affiliate, séparées des publications du bot. ')+(usdToEur!=null?`Montants convertis en euros depuis USD au taux ${usdToEur.toFixed(4)} (${store('m2.usdEurRate')?.source||'taux de référence'}, ${eurRateDate}).`:'Taux USD → EUR indisponible : les commandes et quantités restent affichées, mais les montants seront rétablis dès que le taux sera récupéré.');
  }catch(error){affiliateError=error.message;affiliateLoaded=true;$('#affOrders').innerHTML=`<div class="empty">${ic('alert')}${esc(error.message)}</div>`;}
  renderAffiliate();renderAffiliateCharts();renderHomeCommission();renderWallet();
 }
