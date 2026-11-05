@@ -1703,9 +1703,11 @@ async function loadAffiliate(){
   affiliateRows=response.orders||[];affiliateLoaded=true;affiliateError='';
   const valid=affiliateRows.filter(o=>!isCanceled(o));
   setNum($('#affTotal'),status.count??affiliateRows.length);
-  setNum($('#affNew'),affiliateRows.filter(o=>Date.now()-Date.parse(o.firstSeenAt||0)<86400000).length);
+  const todayParis=new Date().toLocaleDateString('sv-SE',{timeZone:PARIS});
+  setNum($('#affNew'),affiliateRows.filter(o=>{const ms=affiliateDate(o);return ms!=null&&new Date(ms).toLocaleDateString('sv-SE',{timeZone:PARIS})===todayParis;}).length);
   setNum($('#affEstimated'),valid.reduce((sum,o)=>sum+Number(o.totalCommissionAmount||0),0),affiliateMoney);
-  setNum($('#affSigned'),valid.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0),affiliateMoney);
+  const signed=valid.filter(o=>String(o.orderStatus||'').trim().toLowerCase()==='signed');
+  setNum($('#affSigned'),signed.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0),affiliateMoney);
   const cnt=k=>affiliateRows.filter(o=>String(o.orderStatus)===k).length;
   $('#affTotalSub').textContent=`${nf(cnt('Delivered'))} livrées · ${nf(cnt('Pending'))} en attente · ${nf(cnt('Canceled'))} annulées`;
   $('#affEstimatedSub').textContent=`${nf(valid.length)} commande(s) hors annulées`;
