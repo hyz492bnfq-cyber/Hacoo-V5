@@ -2913,30 +2913,80 @@ async function syncHacooAffiliate() {
   }
 }
 
-// Taux USD/EUR récupéré côté serveur : évite les blocages CORS du navigateur.
+// Taux USD/EUR multi-sources côté serveur, avec cache et dernier taux valide.
 let affiliateEurRateCache = null;
+
+async function fetchAffiliateEurRate(url, parser, source) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json, text/csv, */*', 'User-Agent': 'M2-Hacoo-Dashboard/1.0' },
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error(source + ' HTTP ' + response.status);
+  const body = await response.text();
+  const parsed = parser(body);
+  const rate = Number(parsed?.rate);
+  if (!(rate > 0 && rate < 2)) throw new Error(source + ' : taux USD/EUR invalide');
+  return { rate, date: String(parsed.date || new Date().toISOString().slice(0, 10)), source };
+}
+
 app.get('/api/affiliate/exchange-rate', async (_req, res) => {
   const now = Date.now();
   if (affiliateEurRateCache && now - affiliateEurRateCache.fetchedAt < 6 * 60 * 60 * 1000) {
-    return res.json({ rate: affiliateEurRateCache.rate, date: affiliateEurRateCache.date, source: 'Frankfurter', cached: true });
+    return res.json({ ...affiliateEurRateCache, fetchedAt: undefined, cached: true });
   }
-  try {
-    const response = await fetch('https://api.frankfurter.app/latest?from=USD&to=EUR', {
-      headers: { Accept: 'application/json', 'User-Agent': 'M2-Hacoo-Dashboard/1.0' },
-      signal: AbortSignal.timeout(12000)
-    });
-    if (!response.ok) throw new Error('Service de taux indisponible (HTTP ' + response.status + ')');
-    const payload = await response.json();
-    const rate = Number(payload?.rates?.EUR);
-    if (!(rate > 0 && rate < 2)) throw new Error('Taux USD/EUR invalide');
-    affiliateEurRateCache = { rate, date: String(payload.date || new Date().toISOString().slice(0, 10)), fetchedAt: now };
-    return res.json({ rate, date: affiliateEurRateCache.date, source: 'Frankfurter', cached: false });
-  } catch (error) {
-    if (affiliateEurRateCache) {
-      return res.json({ rate: affiliateEurRateCache.rate, date: affiliateEurRateCache.date, source: 'Frankfurter', cached: true, warning: 'Taux actualisé indisponible, dernier taux conservé.' });
+
+  const providers = [
+    {
+      source: 'Frankfurter v2',
+      url: 'https://api.frankfurter.dev/v2/rate/usd/eur',
+      parse: body => { const x = JSON.parse(body); return { rate: x.rate, date: x.date }; }
+    },
+    {
+      source: 'Frankfurter v1',
+      url: 'https://api.frankfurter.app/latest?from=USD&to=EUR',
+      parse: body => { const x = JSON.parse(body); return { rate: x?.rates?.EUR, date: x.date }; }
+    },
+    {
+      source: 'Banque centrale européenne',
+      url: 'https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=csvdata',
+      parse: body => {
+        const rows = body.trim().split(/\r?\n/);
+        if (rows.length < 2) throw new Error('Réponse CSV BCE vide');
+        const headers = rows[0].split(',');
+        const values = rows[rows.length - 1].split(',');
+        const dateIndex = headers.indexOf('TIME_PERIOD');
+        const valueIndex = headers.indexOf('OBS_VALUE');
+        const usdPerEur = Number(values[valueIndex]);
+        if (!(usdPerEur > 0)) throw new Error('Valeur BCE invalide');
+        return { rate: 1 / usdPerEur, date: values[dateIndex] };
+      }
     }
-    return res.status(503).json({ error: 'Impossible de récupérer le taux USD → EUR : ' + String(error?.message || error).slice(0, 180) });
+  ];
+
+  const errors = [];
+  for (const provider of providers) {
+    try {
+      const result = await fetchAffiliateEurRate(provider.url, provider.parse, provider.source);
+      affiliateEurRateCache = { ...result, fetchedAt: Date.now() };
+      return res.json({ ...result, cached: false });
+    } catch (error) {
+      errors.push(String(error?.message || error).slice(0, 140));
+    }
   }
+
+  if (affiliateEurRateCache) {
+    return res.json({
+      rate: affiliateEurRateCache.rate,
+      date: affiliateEurRateCache.date,
+      source: affiliateEurRateCache.source,
+      cached: true,
+      warning: 'Sources indisponibles : dernier taux valide conservé.'
+    });
+  }
+  return res.status(503).json({
+    error: 'Aucune source de taux USD → EUR ne répond.',
+    details: errors
+  });
 });
 
 app.get('/api/affiliate/status', (_req, res) => {
