@@ -734,10 +734,18 @@ function cleanText(text) {
   }
 
   if (data.cleanLinks) {
-    output = output.replace(
-      /(?:https?:\/\/|www\.)\S+/giu,
-      ''
-    );
+    output = output.replace(/(?:https?:\/\/|www\.)\S+/giu, url => {
+      try {
+        const parsed = new URL(url.startsWith('www.') ? 'https://' + url : url);
+        const host = parsed.hostname.toLowerCase();
+        const keep = host === 'hacoo.pl' || host.endsWith('.hacoo.pl') ||
+          host === 'hacoo.app' || host.endsWith('.hacoo.app') ||
+          host === 'onlyaff.app' || host.endsWith('.onlyaff.app');
+        return keep ? url : '';
+      } catch {
+        return '';
+      }
+    });
   }
 
   if (data.cleanMentions) {
