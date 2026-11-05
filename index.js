@@ -19,6 +19,7 @@ const { normalizeReplacements, applyTextReplacements } = require('./lib/text-rep
 const { cleanPresentationLine } = require('./lib/presentation-cleaner');
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { productLinks, replaceProductLink } = require('./lib/manual-link');
+const hacooPromoLinks = require('./lib/hacoo-promo-link');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
 const { remember: rememberMemory, list: listMemory } = require('./lib/semantic-memory');
 const { inspectCandidate, stageCandidate } = require('./lib/deployment-manager');
@@ -1817,6 +1818,35 @@ async function processMessages(ctx, messages) {
     } else if (result.reason && result.confidence > 0) {
       console.log('Gemini : aucun doublon assez certain :', result.reason);
     }
+  }
+
+  // Convertit les liens de boutique Hacoo en liens affiliés avant la publication.
+  // Les liens d'autres domaines et les liens courts déjà affiliés restent inchangés.
+  const promoLinkCache = new Map();
+  const promoLinkErrors = [];
+  for (const message of messages) {
+    const original = msgText(message);
+    if (!original) continue;
+    const result = await hacooPromoLinks.replaceHacooLinks(original, { cache: promoLinkCache });
+    promoLinkErrors.push(...result.errors);
+    if (!result.changed) continue;
+    try {
+      if (message.text !== undefined) {
+        await ctx.api.editMessageText(message.chat.id, message.message_id, result.text);
+        message.text = result.text;
+      } else if (message.caption !== undefined) {
+        await ctx.api.editMessageCaption(message.chat.id, message.message_id, { caption: result.text });
+        message.caption = result.text;
+      }
+      delete message.entities;
+      delete message.caption_entities;
+    } catch (error) {
+      promoLinkErrors.push({ url: 'édition Telegram', message: String(error?.description || error?.message || error).slice(0, 180) });
+    }
+  }
+  if (promoLinkErrors.length) {
+    const details = [...new Set(promoLinkErrors.map(item => item.message))].slice(0, 3).join(' ; ');
+    notifyAdmin(`Conversion de lien Hacoo incomplète pour le message ${first.message_id}. Les URL non converties ont été conservées. ${details}`).catch(() => {});
   }
 
   let cleaned = false;
