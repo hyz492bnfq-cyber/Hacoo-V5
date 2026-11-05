@@ -1680,8 +1680,8 @@ function renderAffiliateCharts(){
  if(hourBad)drawChart(vEl,{empty:limitHour(),series:[],legendEl:$('#affSalesLegend')},false);
  else if(!orders.some(v=>v>0))drawChart(vEl,{empty:limitNoData(emptyMsg),series:[],legendEl:$('#affSalesLegend')},false);
  else drawChart(vEl,{labels,titles,aria:'Ventes et commandes',yFmt:moneyAxis,y2Int:true,legendEl:$('#affSalesLegend'),
-  series:[{id:'s',name:'Ventes (€)',color:'#7aa2ff',type:'bar',axis:'y',values:sales,fmt:affiliateMoney},
-          {id:'o',name:'Commandes',color:'#a78bfa',type:'line',axis:'y2',values:orders,fmt:nf}]},true);
+  series:[{id:'s',name:'Ventes (€)',color:'#f97316',type:'line',axis:'y',values:sales,fmt:affiliateMoney},
+          {id:'o',name:'Commandes',color:'#16a34a',type:'line',axis:'y2',values:orders,fmt:nf}]},true);
  $('#affSalesNote').textContent=hourBad?'Limite : les données Hacoo ne fournissent pas l’heure de commande.':'Ventes en euros (axe gauche) et nombre de commandes (axe droit) : deux axes distincts pour ne pas mélanger montants et volumes. '+note();
 }
 
