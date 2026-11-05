@@ -1525,14 +1525,14 @@ async function loadEurRate(){
  const cached=store('m2.usdEurRate');
  if(cached&&Number(cached.rate)>0){usdToEur=Number(cached.rate);eurRateDate=cached.date||'taux enregistré';}
  try{
-  const response=await fetch('https://api.frankfurter.app/latest?from=USD&to=EUR',{cache:'no-store'});
-  if(!response.ok)throw new Error('Taux de change indisponible');
-  const data=await response.json(),rate=Number(data?.rates?.EUR);
-  if(!(rate>0&&rate<2))throw new Error('Taux de change invalide');
+  // Appel au serveur FadeHost : pas de dépendance au CORS du navigateur.
+  const data=await api('/api/affiliate/exchange-rate',{timeout:20000});
+  const rate=Number(data?.rate);
+  if(!(rate>0&&rate<2))throw new Error('Taux USD/EUR invalide');
   usdToEur=rate;eurRateDate=data.date||new Date().toISOString().slice(0,10);
   store('m2.usdEurRate',{rate:usdToEur,date:eurRateDate,savedAt:Date.now()});
  }catch(error){
-  // Le taux de change ne doit jamais empêcher le chargement des commandes Hacoo.
+  // Les montants restent disponibles avec le dernier taux local connu.
   if(usdToEur==null)console.warn('Taux USD → EUR indisponible :',error);
  }
 }
