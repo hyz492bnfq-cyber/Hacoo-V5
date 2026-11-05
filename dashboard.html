@@ -655,6 +655,8 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
    <section class="tab" id="tab-settings" aria-label="Paramètres">
 <div class="set-title">Publication et mise en forme</div>
 <div class="set-cols">
+<details class="group" id="g-hacoo-links"><summary><span class="gi"><svg class="ic"><use href="#i-swap"/></svg></span><div><b>Remplacement des liens affiliés</b><span class="s" id="s-hacoo-links"></span></div></summary>
+      <div class="gbody"><div class="set"><div class="tx"><b>Convertir les liens Hacoo automatiquement</b><span>Remplace les liens produits Hacoo et les liens courts c.onlyaff.app par des liens générés avec ton compte affilié, avant la publication. Fonctionne avec le traitement automatique et le mode publication manuelle.</span></div><button class="sw" data-setting="hacooLinkReplacementEnabled" role="switch" aria-label="Remplacement des liens affiliés Hacoo" type="button"></button></div></div></details>
 <details class="group" id="g-format"><summary><span class="gi"><svg class="ic"><use href="#i-text"/></svg></span><div><b>Mise en forme des posts</b><span class="s" id="s-format"></span></div></summary>
       <div class="gbody">
         <div class="set"><div class="tx"><b>Mise en forme automatique</b><span>Nettoie les anciennes décorations avant d’appliquer le format. Les liens et le code promo déjà présent sont conservés, sans ajout de second coupon.</span></div><button class="sw" data-setting="formatEnabled" role="switch" aria-label="Mise en forme" type="button"></button></div>
@@ -1241,6 +1243,7 @@ function renderSettings(){
  $('#s-mod').textContent=`${on(['hashtags','dashLines','blockLinks','blockMentions','blockForwarded'])} règle(s) active(s)`;
  $('#s-clean').textContent=`${on(['cleanHashtags','cleanLinks','cleanMentions','cleanEmojis','cleanEmptyLines'])} option(s) active(s)`;
  $('#s-content').textContent=[['allowText','Texte'],['allowPhotos','Photos'],['allowVideos','Vidéos'],['allowDocuments','Docs']].filter(x=>s[x[0]]).map(x=>x[1]).join(', ')||'Rien d’autorisé';
+ $('#s-hacoo-links').textContent=s.hacooLinkReplacementEnabled?'Activé':'Désactivé';
  $('#s-format').textContent=s.formatEnabled?'Activée':'Désactivée';
  const rl=S.state.rules||{};$('#s-rules').textContent=`${['bannedWords','blockedPhrases','blockedDomains','allowedDomains'].reduce((n,k)=>n+(rl[k]||[]).length,0)} entrée(s)`;
  const reps=rl.textReplacements||[];$('#s-replacements').textContent=reps.length?`${reps.filter(r=>r.enabled!==false).length} activé(s) sur ${reps.length}`:'Désactivé';
