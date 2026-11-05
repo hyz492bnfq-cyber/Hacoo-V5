@@ -1530,7 +1530,7 @@ async function loadEurRate(){
   const rate=Number(data?.rate);
   if(!(rate>0&&rate<2))throw new Error('Taux USD/EUR invalide');
   usdToEur=rate;eurRateDate=data.date||new Date().toISOString().slice(0,10);
-  store('m2.usdEurRate',{rate:usdToEur,date:eurRateDate,savedAt:Date.now()});
+  store('m2.usdEurRate',{rate:usdToEur,date:eurRateDate,source:data.source||'taux de référence',savedAt:Date.now()});
  }catch(error){
   // Les montants restent disponibles avec le dernier taux local connu.
   if(usdToEur==null)console.warn('Taux USD → EUR indisponible :',error);
