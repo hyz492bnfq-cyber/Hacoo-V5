@@ -1548,17 +1548,32 @@ function affiliateDate(o){const n=Number(o.createTime||o.orderTime||o.timestamp|
 const affiliateStatus=o=>String(o?.orderStatus??o?.status??'').trim().toLowerCase().replace(/[\s_-]+/g,'');
 const isCanceled=o=>{const s=affiliateStatus(o);return s.includes('cancel')||s.includes('annul');};
 const normalizedStatus=o=>{const s=affiliateStatus(o);if(s.includes('cancel')||s.includes('annul'))return 'Canceled';if(s==='delivered')return 'Delivered';if(s==='pending')return 'Pending';return String(o?.orderStatus||o?.status||'Unknown');};
-function hourlyReliable(rows){
- const tods=new Set();let dated=0;
- for(const o of rows){const ms=affiliateDate(o);if(ms==null)continue;dated++;tods.add(ms%86400000);}
- return !(dated>=3&&tods.size===1);
+function hourlyReliable(rows,dateKey){
+ const hours=new Set();let dated=0;
+ for(const o of rows){const ms=affiliateDate(o);if(ms==null)continue;
+  const p=parisOf(ms);if(keyDay(p.y,p.m,p.d)!==dateKey)continue;
+  dated++;hours.add(p.h);
+ }
+ // Certaines réponses Hacoo peuvent ne fournir qu'une heure identique pour toute la journée.
+ return !(dated>=3&&hours.size===1);
 }
 /* ---- Périodes : on ne construit que des compartiments réels (Europe/Paris) ---- */
+function parisHourMs(y,m,d,h){
+ const target=Date.UTC(y,m-1,d,h);let ms=target;
+ for(let i=0;i<4;i++){const p=parisOf(ms),shown=Date.UTC(p.y,p.m-1,p.d,p.h);ms+=target-shown;}
+ return ms;
+}
 function genBuckets(gran,n,shift,ref){
  const out=[];
  if(gran==='hour'){
-  for(let i=n-1;i>=0;i--){const ms=ref.hourMs-(i+shift)*3600000,p=parisOf(ms);
-   out.push({key:keyHour(ms),label:p2(p.h)+' h',title:new Date(ms).toLocaleString('fr-FR',{timeZone:PARIS,weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})});}
+  if(ref.fixedDayHours){
+   const day=new Date(Date.UTC(ref.y,ref.m-1,ref.d-shift)),y=day.getUTCFullYear(),m=day.getUTCMonth()+1,d=day.getUTCDate(),dateKey=keyDay(y,m,d);
+   for(let h=0;h<24;h++){const hh=p2(h),ms=parisHourMs(y,m,d,h);
+    out.push({key:dateKey+'T'+hh,label:hh+' h',title:dayText(y,m,d,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+' · '+hh+' h'});}
+  }else{
+   for(let i=n-1;i>=0;i--){const ms=ref.hourMs-(i+shift)*3600000,p=parisOf(ms);
+    out.push({key:keyHour(ms),label:p2(p.h)+' h',title:new Date(ms).toLocaleString('fr-FR',{timeZone:PARIS,weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})});}
+  }
  }else if(gran==='day'){
   for(let i=n-1;i>=0;i--){const t=new Date(Date.UTC(ref.y,ref.m-1,ref.d-(i+shift))),y=t.getUTCFullYear(),m=t.getUTCMonth()+1,d=t.getUTCDate();
    out.push({key:keyDay(y,m,d),label:p2(d)+'/'+p2(m),title:dayText(y,m,d,{weekday:'long',day:'numeric',month:'long',year:'numeric'})});}
@@ -1583,7 +1598,8 @@ function periodPlan(period,rows){
   if(ok.test(f||'')&&ok.test(to||'')&&f<=to){
    const [fy,fm,fd]=f.split('-').map(Number),[ty,tm,td]=to.split('-').map(Number);
    const days=Math.round((Date.UTC(ty,tm-1,td)-Date.UTC(fy,fm-1,fd))/86400000)+1;
-   if(days<=92){gran='day';n=days;r={y:ty,m:tm,d:td};}else{gran='month';n=Math.min(120,(ty*12+tm)-(fy*12+fm)+1);r={y:ty,m:tm,d:td};}
+   if(days===1){gran='hour';n=24;r={y:ty,m:tm,d:td,fixedDayHours:true};prev=false;}
+   else if(days<=92){gran='day';n=days;r={y:ty,m:tm,d:td};}else{gran='month';n=Math.min(120,(ty*12+tm)-(fy*12+fm)+1);r={y:ty,m:tm,d:td};}
    label=`du ${dayText(fy,fm,fd,{day:'numeric',month:'short',year:'numeric'})} au ${dayText(ty,tm,td,{day:'numeric',month:'short',year:'numeric'})}`;
   }else return plan30(rows);
  }
@@ -1612,7 +1628,7 @@ function deltaHtml(cur,prev){
  if(!(prev>0))return cur>0?'<span class="delta">pas de donnée avant</span>':'';
  return deltaChip(cur,prev);
 }
-function limitHour(){return{title:'Détail heure par heure indisponible',msg:'Les commandes Hacoo synchronisées ne contiennent pas d’heure exploitable (toutes partagent la même heure). Choisis 7 j ou plus.',icon:'clock'};}
+function limitHour(){return{title:'Heures Hacoo non disponibles',msg:'Hacoo semble renvoyer la même heure pour toutes les commandes de cette journée. Le graphique ne peut pas répartir les commandes sans inventer leurs heures.',icon:'clock'};}
 function limitNoData(msg){return{title:'Aucune donnée sur cette période',msg:msg||'Synchronise tes commandes ou choisis une autre période.',icon:'chart'};}
 
 function renderAffiliateCharts(){
@@ -1621,7 +1637,7 @@ function renderAffiliateCharts(){
  $('#affRange').classList.toggle('hidden',affPeriod!=='custom');
  const plan=periodPlan(affPeriod,rows);
  $$('[data-aff-period]').forEach(b=>b.classList.toggle('on',b.dataset.affPeriod===affPeriod));
- const hourBad=plan.gran==='hour'&&!hourlyReliable(rows);
+ const hourBad=plan.gran==='hour'&&!hourlyReliable(rows,plan.cur[0]?.key.slice(0,10));
  const cur=aggregate(rows,plan.cur,plan.gran),prv=plan.prev?aggregate(rows,plan.prev,plan.gran):null;
  const labels=plan.cur.map(b=>b.label),titles=plan.cur.map(b=>b.title),prevTitles=plan.prev?plan.prev.map(b=>b.title):null;
  const col=k=>cur.series.map(x=>x[k]),pcol=k=>prv?prv.series.map(x=>x[k]):null;
