@@ -75,10 +75,15 @@ test('refuse une redirection d’un lien court vers un domaine externe', async (
 test('remplace aussi les liens affiliés reçus avec un nouveau lien généré pour le compte connecté', async () => {
   const config = { cookie: 'sid=test', appname: 'saramart', platform: 'pc' };
   let generated = 0;
-  const resolveFetchImpl = async (url, init) => ({
-    status: 302, ok: false,
-    headers: { get: () => 'https://www.hacoo.pl/en-FR/detail/40886057' }
-  });
+  let resolveCalls = 0;
+  const resolveFetchImpl = async (url, init) => {
+    resolveCalls++;
+    if (resolveCalls === 1) return {
+      status: 302, ok: false,
+      headers: { get: () => 'https://www.hacoo.pl/en-FR/detail/40886057' }
+    };
+    return { status: 200, ok: true, headers: { get: () => null } };
+  };
   const fetchImpl = async (_url, init) => {
     generated++;
     const data = JSON.parse(new URLSearchParams(init.body).get('data'));
