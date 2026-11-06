@@ -60,3 +60,11 @@ test('Resender ne publie jamais un album incomplet si le téléchargement d’un
   );
   assert.equal(sendCalls, 0);
 });
+
+
+test('Resender signale les IDs envoyés afin de garder actifs les contrôles anti-doublons', async () => {
+  const reported = [];
+  const client = { async getEntity(id) { return { id }; }, async sendMessage(destination, value) { return { id: 99, message: value.message }; } };
+  await republish(client, '-1002', [{ id: 1, message: 'hello', media: null }], text => text, result => reported.push(result));
+  assert.deepEqual(reported, [{ id: 99, message: 'hello' }]);
+});
