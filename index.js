@@ -1694,6 +1694,26 @@ async function processMessages(ctx, messages, options = {}) {
       return;
     }
   }
+  if (data.duplicates && options.skipDuplicateCheck) {
+    // Ignorer la comparaison pour l'auteur manuel, mais mémoriser sa publication
+    // afin que les futurs transferts Channel Sync puissent la détecter.
+    const text = msgText(first);
+    const currentPhotoFileId = messages.find(message => message.photo?.length)?.photo.at(-1)?.file_id || null;
+    if (text.trim()) findTextDuplicate(text, groupId, first.message_id, currentPhotoFileId);
+    if (data.duplicateImages) {
+      for (const message of messages) if (message.photo?.length) await findImageDuplicate(ctx, message);
+    }
+    if (groupId && data.duplicateAlbums) {
+      const signatures = messages.map(message => message.photo?.at(-1)?.file_unique_id || message.video?.file_unique_id || '').filter(Boolean).sort();
+      if (signatures.length) {
+        const cutoff = Date.now() - Number(data.windowMinutes) * 60000;
+        data.albumSeen = data.albumSeen.filter(item => item.time >= cutoff);
+        data.albumSeen.push({ signature: signatures.join(':'), time: Date.now(), text: text.slice(0, 1200), messageId: first.message_id, groupId });
+        data.albumSeen = data.albumSeen.slice(-MAX_HISTORY);
+      }
+    }
+  }
+
   if (data.duplicates && !options.skipDuplicateCheck) {
     const text = msgText(first);
     const currentPhotoFileId = messages
@@ -1723,7 +1743,7 @@ async function processMessages(ctx, messages, options = {}) {
         const signature = signatures.join(':');
         const cutoff = Date.now() - Number(data.windowMinutes) * 60000;
         data.albumSeen = data.albumSeen.filter(item => item.time >= cutoff);
-        const exactAlbumMatch = data.albumSeen.find(item => item.signature === signature);
+        const exactAlbumMatch = data.albumSeen.find(item => item.signature === signature && item.messageId !== first.message_id);
         if (exactAlbumMatch) {
           const status = await deleteMessageGroup(ctx, messages, 'Doublon exact : album et fichiers identiques');
           addDuplicate({
