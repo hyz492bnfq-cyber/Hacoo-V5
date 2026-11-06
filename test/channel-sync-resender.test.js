@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { copyRecent, messageId } = require('../lib/channel-sync-resender');
+const { copyRecent, republish, messageId } = require('../lib/channel-sync-resender');
 
 test('Resender récupère les dernières publications et traite un album comme une publication', async () => {
   const sent = [];
@@ -19,5 +19,44 @@ test('Resender récupère les dernières publications et traite un album comme u
   assert.equal(result.copied, 3);
   assert.deepEqual(result.keys, ['-1001:4-5', '-1001:6']);
   assert.equal(messageId({ id: 6 }), 6);
-  assert.deepEqual(sent, [[{ id: '-1002' }, 'album', true], [{ id: '-1002' }, 'texte', false]]);
+  assert.deepEqual(sent, [[{ id: '-1002' }, ['album', ''], true], [{ id: '-1002' }, 'texte', false]]);
+});
+
+test('Resender transforme chaque légende sans perdre les médias de l’album', async () => {
+  const sent = [];
+  const client = {
+    async getEntity(id) { return { id }; },
+    async downloadMedia(message) { return Buffer.from(String(message.id)); },
+    async sendFile(destination, value) { sent.push({ destination, ...value }); }
+  };
+  await republish(client, '-1002', [
+    { id: 12, groupedId: 4n, message: 'titre produit', photo: true },
+    { id: 13, groupedId: 4n, message: '👉🏼 https://exemple.test', photo: true },
+    { id: 14, groupedId: 4n, message: '', photo: true }
+  ], text => text ? `M2REPS: ${text}` : text);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].file.length, 3);
+  assert.deepEqual(sent[0].caption, [
+    'M2REPS: titre produit',
+    'M2REPS: 👉🏼 https://exemple.test',
+    ''
+  ]);
+  assert.deepEqual(sent[0].file.map(file => file.name), ['photo.jpg', 'photo.jpg', 'photo.jpg']);
+});
+
+test('Resender ne publie jamais un album incomplet si le téléchargement d’un média échoue', async () => {
+  let sendCalls = 0;
+  const client = {
+    async getEntity(id) { return { id }; },
+    async downloadMedia(message) { return message.id === 22 ? Buffer.alloc(0) : Buffer.from('ok'); },
+    async sendFile() { sendCalls++; }
+  };
+  await assert.rejects(
+    republish(client, '-1002', [
+      { id: 21, groupedId: 5n, message: '', photo: true },
+      { id: 22, groupedId: 5n, message: '', photo: true }
+    ]),
+    /Téléchargement Resender impossible/
+  );
+  assert.equal(sendCalls, 0);
 });
