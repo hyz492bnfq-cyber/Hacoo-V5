@@ -46,6 +46,23 @@ test('préserve les cas sans identifiant valide ou structure inconnue', () => {
   assert.equal(selectFirstPublicationProduct({}).status, 'unrecognized');
 });
 
+test('ne saute pas une entrée initiale ambiguë pour choisir une carte ultérieure', () => {
+  const result = selectFirstPublicationProduct({ productCardDetail: [
+    { layout: 'unknown-card-schema', payload: { product: 'possible-first-product' } },
+    { moduleType: 'item_detail_card', moduleData: { item_id: 40665765 } }
+  ] });
+  assert.deepEqual(result, { status: 'unrecognized', productUrl: null });
+});
+
+test('peut ignorer un module explicitement non produit avant la première carte produit', () => {
+  const result = selectFirstPublicationProduct({ productCardDetail: [
+    { moduleType: 'banner_module', moduleData: { title: 'Promotion' } },
+    { moduleType: 'item_detail_card', moduleData: { item_id: 40860854 } }
+  ] });
+  assert.equal(result.status, 'product');
+  assert.equal(result.itemId, '40860854');
+});
+
 test('lit le véritable format getFeedDetail : enveloppe code 1001 et cartes indexées par shortlink', () => {
   const result = selectFirstPublicationProduct({
     code: 1001,
