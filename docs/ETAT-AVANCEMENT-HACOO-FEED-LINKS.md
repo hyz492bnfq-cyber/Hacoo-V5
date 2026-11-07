@@ -1,6 +1,6 @@
 # État d’avancement — conversion des liens de publications Hacoo
 
-Dernière mise à jour : 7 novembre 2026 (inspection complémentaire des requêtes réseau)
+Dernière mise à jour : 8 novembre 2026 (recherche du signataire iOS et correction du parseur premier produit)
 
 ## Objectif
 
@@ -161,3 +161,48 @@ Aucun appel `promoLink` n’apparaît dans cette capture. La génération d’un
 - Ne pas réutiliser la signature `modelReportList` comme preuve de compatibilité avec `getFeedDetail`.
 
 **État après cette capture :** récupération du produit confirmée à partir du HAR fourni et parsing couvert par test simulé ; transport bot → `getFeedDetail` non intégré ; `promoLink` live non validé ; aucune conversion bout en bout revendiquée.
+
+
+## Mise à jour du suivi et correction — 8 novembre 2026
+
+### Vérification supplémentaire du dépôt
+
+Inspection effectuée sur la branche `feat/hacoo-publication-first-product` et la PR #41 :
+
+- Recherche GitHub des termes `getFeedDetail`, `signRequest`, `iphone plat sign`, `cggv.js` et `ets feedId`.
+- Lecture des implémentations `lib/hacoo-feed-detail.js`, `lib/hacoo-affiliate.js`, `lib/hacoo-promo-link.js`, `lib/hacoo-publication.js` et des tests associés.
+- Aucun autre signataire iOS/Apple, aucune constante iPhone et aucun vecteur de test de signature iOS n'ont été retrouvés dans les fichiers indexés du dépôt.
+- La seule signature implémentée est celle H5/PC utilisée pour les services Affiliate déjà connus. Elle n'est pas une preuve de compatibilité avec la requête iPhone `getFeedDetail`.
+
+### Défaut logique corrigé
+
+La relecture a révélé une incohérence importante : malgré la règle métier « premier produit uniquement », le parseur continuait auparavant après une première carte produit externe et pouvait convertir une carte suivante.
+
+Correction appliquée dans `lib/hacoo-publication.js` :
+
+- Les modules explicitement non-produits (par exemple une bannière sans identifiant produit) restent ignorés.
+- Dès que la première carte produit est identifiée comme externe, la résolution renvoie `external-first-product` sans examiner les produits suivants.
+- Un premier produit Hacoo avec identifiant absent ou invalide reste bloquant.
+- Seul un premier produit Hacoo valide produit une URL produit.
+
+Tests mis à jour dans `test/hacoo-publication.test.js` pour vérifier qu'un ou plusieurs produits externes en tête ne sont jamais contournés. La réponse HAR déjà connue reste couverte par le test de parsing.
+
+### État de résolution après cette correction
+
+- [x] Recherche supplémentaire dans le dépôt : aucun code de signature iOS/Apple réutilisable retrouvé.
+- [x] Correction de la règle « premier produit uniquement » dans le parseur.
+- [x] Tests adaptés aux cas de premier produit externe.
+- [ ] Signature iOS de `getFeedDetail` identifiée et validée : toujours bloquée par absence de documentation ou vecteur officiel.
+- [ ] Transport `getFeedDetail` utilisable depuis le bot : non résolu.
+- [ ] Injection d'un récupérateur authentifié dans `index.js` : volontairement non faite tant que le transport n'est pas validé.
+- [ ] Conversion réelle publication → produit → `promoLink` : non démontrée.
+
+### Pourquoi la partie iPhone n'est pas « réparée » par cette mise à jour
+
+Le HAR prouve qu'une requête iPhone a fonctionné dans une session de l'application. Il ne fournit pas à lui seul une méthode sûre et reproductible pour signer une nouvelle requête indépendante. Copier/rejouer les paramètres de session ou déduire une signature à partir d'identifiants capturés ne serait ni une validation de l'algorithme ni une intégration robuste.
+
+La seule suite acceptable pour lever ce blocage est un SDK/document officiel, un environnement de test autorisé, ou un vecteur de signature synthétique fourni par Hacoo. En attendant, le fallback public anonyme conserve le lien d'origine quand la page ne publie pas les données produit.
+
+### Validation GitHub
+
+Les changements sont faits uniquement sur la branche de la PR #41. Attendre les résultats CI déclenchés par ces commits. La PR reste en brouillon ; aucune fusion, modification de `main`, modification de FadeHost ou mise en production n'est autorisée par cette mise à jour.
