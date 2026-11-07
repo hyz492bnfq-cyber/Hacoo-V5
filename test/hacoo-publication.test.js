@@ -14,13 +14,12 @@ test('sélectionne le premier produit Hacoo valide', () => {
   assert.equal(result.productUrl, 'https://www.hacoo.pl/en-FR/detail/40860854');
 });
 
-test('saute un produit étranger et sélectionne le premier produit Hacoo valide suivant', () => {
+test('ne convertit pas une publication dont le premier produit est externe', () => {
   const result = selectFirstPublicationProduct({ productCardDetail: [
     { moduleType: 'item_detail_card', moduleData: { out_site: true, extPlat: 'taobao', domain: 'taobao.com' } },
     { moduleType: 'item_detail_card', moduleData: { item_id: 40665765, extPlat: 'hacoo', out_site: false } }
   ] });
-  assert.equal(result.status, 'product');
-  assert.equal(result.itemId, '40665765');
+  assert.deepEqual(result, { status: 'external-first-product', productUrl: null });
 });
 
 test('ne saute pas un premier produit Hacoo dont l’identifiant est invalide', () => {
@@ -39,13 +38,13 @@ test('conserve la première carte Hacoo sans identifiant plutôt que de prendre 
   assert.deepEqual(result, { status: 'invalid-item-id', productUrl: null });
 });
 
-test('saute plusieurs produits étrangers avant un produit Hacoo', () => {
+test('ne saute pas plusieurs produits externes pour atteindre un produit Hacoo', () => {
   const result = selectFirstPublicationProduct({ productCardDetail: [
     { moduleType: 'item_detail_card', moduleData: { extPlat: 'taobao', domain: 'taobao.com' } },
     { moduleType: 'item_detail_card', moduleData: { out_site: true, extPlat: 'aliexpress', domain: 'aliexpress.com' } },
     { moduleType: 'item_detail_card', moduleData: { item_id: 40886057, extPlat: 'hacoo', out_site: false } }
   ] });
-  assert.equal(result.itemId, '40886057');
+  assert.deepEqual(result, { status: 'external-first-product', productUrl: null });
 });
 
 test('ignore les modules explicitement non produits', () => {
@@ -81,10 +80,10 @@ test('refuse un code API en erreur même avec une payload partielle', () => {
   }), { status: 'api-error', productUrl: null });
 });
 
-test('renvoie aucun produit Hacoo si toutes les cartes sont étrangères', () => {
+test('signale un premier produit externe même si aucune carte Hacoo ne suit', () => {
   assert.deepEqual(selectFirstPublicationProduct({ productCardDetail: [
     { moduleType: 'item_detail_card', moduleData: { extPlat: 'taobao', domain: 'taobao.com' } }
-  ] }), { status: 'no-valid-hacoo-product', productUrl: null });
+  ] }), { status: 'external-first-product', productUrl: null });
 });
 
 test('la résolution reste fermée par défaut sans authentification injectée', async () => {
