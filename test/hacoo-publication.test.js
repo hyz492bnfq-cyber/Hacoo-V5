@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { selectFirstPublicationProduct, resolvePublicationFirstProduct } = require('../lib/hacoo-publication');
+const { selectFirstPublicationProduct, parsePublicPublicationHtml, resolvePublicationFirstProduct } = require('../lib/hacoo-publication');
 
 test('sélectionne le premier produit Hacoo valide', () => {
   const result = selectFirstPublicationProduct({ productCardDetail: [
