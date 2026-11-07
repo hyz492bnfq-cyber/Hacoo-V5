@@ -108,3 +108,35 @@ test('une erreur API ne produit jamais de lien produit', async () => {
     fetchFeedDetail: async () => { throw new Error('unauthorized'); }
   }), { status: 'api-error', productUrl: null });
 });
+
+
+test('parse la forme exacte observée dans la réponse HAR getFeedDetail', () => {
+  const result = selectFirstPublicationProduct({
+    api: 'dwp.feed-center.getFeedDetail',
+    code: 1001,
+    data: {
+      productCardDetail: {
+        'https://www.hacoo.pl/en-FR/detail/40870813': {
+          moduleType: 'item_detail_card',
+          moduleData: {
+            item_id: 40870813,
+            extItemId: 40870813,
+            extPlat: 'hacoo',
+            out_site: false
+          }
+        },
+        'https://www.hacoo.pl/en-FR/detail/another-product': {
+          moduleType: 'item_detail_card',
+          moduleData: {
+            item_id: 40665765,
+            extPlat: 'hacoo',
+            out_site: false
+          }
+        }
+      }
+    }
+  });
+  assert.equal(result.status, 'product');
+  assert.equal(result.itemId, '40870813');
+  assert.equal(result.productUrl, 'https://www.hacoo.pl/en-FR/detail/40870813');
+});
