@@ -114,8 +114,9 @@ Ne pas demander ni partager **Headers**, **Cookies**, Authorization, paramètres
 - [ ] Identifier la requête métier web qui fournit les données de la publication, si elle existe dans ce contexte.
 - [ ] Méthode d’authentification/signature compatible avec `getFeedDetail` depuis le bot.
 - [ ] Transport `getFeedDetail` validé de bout en bout.
-- [ ] Injection de `fetchFeedDetail` dans `index.js`.
-- [ ] Tests d’intégration couvrant la chaîne publication → premier produit → `promoLink`.
+- [ ] Injection de `fetchFeedDetail` dans `index.js` — volontairement non activée tant qu’une méthode H5 officiellement compatible et vérifiée n’est pas disponible.
+- [x] Tests simulés couvrant la chaîne publication → premier produit → `promoLink` lorsque `fetchFeedDetail` est fourni par un intégrateur validé.
+- [x] Garde ajoutée : les URL Hacoo directes qui ne correspondent pas à une fiche `/detail/{id}` ou `/product/{id}` ne sont plus envoyées à `promoLink` ; l’URL d’origine est conservée.
 - [ ] Validation sur un cas réel autorisé, sans contourner les protections Hacoo.
 
 ## Instructions de reprise pour la prochaine IA
