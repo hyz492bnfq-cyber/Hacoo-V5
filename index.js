@@ -2908,6 +2908,8 @@ function affiliatePublicOrder(order) {
     signCommissionAmount: Number(order.signCommissionAmount || 0),
     signSubsidyAmount: Number(order.signSubsidyAmount || 0),
     signTotalCommissionAmount: Number(order.signTotalCommissionAmount || 0),
+    actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? 0),
+    actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? 0),
     commissionRate: Number(order.commissionRate || 0),
     appName: String(order.appName || ''),
     feedId: String(order.feedId || ''),
