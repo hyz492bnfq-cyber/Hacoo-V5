@@ -94,8 +94,9 @@ test('remplace aussi les liens affiliés reçus avec un nouveau lien généré p
     };
     return { status: 200, ok: true, headers: { get: () => null } };
   };
-  const fetchImpl = async (_url, init) => {
+  const fetchImpl = async (url, init) => {
     generated++;
+    assert.equal(new URL(url).searchParams.get('sid'), 'test');
     const data = JSON.parse(new URLSearchParams(init.body).get('data'));
     assert.equal(data.link, 'https://www.hacoo.pl/en-FR/detail/40886057');
     return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/NEWCODE', linkType: 'DETAIL' } }) };
