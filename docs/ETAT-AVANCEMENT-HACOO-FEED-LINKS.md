@@ -1,6 +1,6 @@
 # État d’avancement — conversion des liens de publications Hacoo
 
-Dernière mise à jour : 7 novembre 2026
+Dernière mise à jour : 7 novembre 2026 (inspection complémentaire des requêtes réseau)
 
 ## Objectif
 
@@ -64,33 +64,42 @@ Un appel observé à `dwp.feed-center.getShareChannelFeedDetail` en H5 a renvoy�
 
 L’utilisateur a ouvert les DevTools de Chrome/Edge sur la publication `https://www.hacoo.app/p/15591744`, onglet Network, filtre **All**.
 
-### Capture d’écran Network
+### Capture d’écran Network et HTML du document
 
-La liste montre :
+La liste Network initiale montrait :
 - La requête document `15591744` avec statut HTTP 200 et type `document`.
 - Plusieurs ressources statiques (CSS, JS, images, polices).
-- Quelques requêtes XHR/fetch de télémétrie, notamment `rum`, `dotRecords`, `dotMets` et `collect`.
+- Des requêtes XHR/fetch de télémétrie, notamment `rum`, `dotRecords`, `dotMets` et `collect`.
 - Aucun nom de requête visible `getFeedDetail` dans cette capture.
 
-La capture est une vue de la liste Network seulement. Elle ne montre pas encore le contenu de l’onglet **Response** d’une requête API.
+Le fichier `15591744.devtools` (HTML, environ 128 Ko, 130 948 caractères) est le corps HTML du document principal, pas un HAR ni une réponse API de détail. Il contient le chemin `/en-FR/p/15591744`, mais pas l’identifiant produit `40722058`, ni `getFeedDetail`, `productCardDetail`, `feed-center` ou des données produit exploitables.
 
-### Fichier envoyé ensuite par l’utilisateur
+Le fichier ultérieur `response.txt` a également été inspecté : HTML générique de la page Hacoo (environ 197 020 caractères), sans `40722058`, `getFeedDetail`, `feed-center`, `productCardDetail`, `item_id` ou `feedId`. Il ne contient donc pas la réponse de détail recherchée.
 
-Fichier de conversation reçu : `15591744.devtools` (HTML, environ 128 Ko, 130 948 caractères). L’inspection locale montre qu’il s’agit du corps HTML du document principal de la publication, pas d’un HAR ni d’une réponse API de détail.
+### Requêtes réseau examinées ensuite
 
-Constats vérifiés dans ce HTML :
-- Le chemin de publication `/en-FR/p/15591744` apparaît dans les métadonnées/canonical et liens de langue.
-- Aucun identifiant produit `40722058`.
-- Aucun texte `getFeedDetail`, `productCardDetail` ou `feed-center`.
-- Aucune donnée produit exploitable dans ce document.
+L’utilisateur a fourni les commandes cURL de quatre requêtes observées pendant le chargement de la page :
 
-**Conclusion de cette nouvelle étape :** la capture HTML ne permet pas encore de récupérer le premier produit. Elle confirme seulement que la page de publication a répondu en HTTP 200. Il faut inspecter une réponse de requête pertinente, et non réutiliser ce document HTML comme détail de publication.
+| Endpoint | Nature constatée | Utilité pour le détail de publication |
+|---|---|---|
+| `/cdn-cgi/rum` sur `www.hacoo.app` | Télémétrie de performance Cloudflare ; le corps contient notamment URL de page, timings et informations navigateur | Aucune donnée produit |
+| `/api/dotMets` sur `dot.hacoo.app` | Collecte de mesures/télémétrie au format JSON | Aucune donnée produit |
+| `/g/collect` sur `region1.google-analytics.com` | Google Analytics 4, événement `page_view` | URL de page uniquement, aucune donnée produit |
+| `/api/v2/dotRecords` sur `dot.hacoo.app` | Trace utilisateur `user_trace`, contexte de page `hacoo~home`, URL de navigation | Aucune donnée produit |
+
+Les quatre requêtes sont des événements de mesure ou de navigation. La présence de `/p/15591744` dans leurs champs URL ne signifie pas qu’elles transportent le contenu de la publication. Aucun de ces corps ne fournit `item_id=40722058`, une liste de produits ou une réponse `getFeedDetail`.
+
+**Conclusion de l’inspection complémentaire :** les requêtes copiées jusqu’ici sont des requêtes de télémétrie, pas l’API métier de détail. Aucune nouvelle méthode de récupération ni signature compatible H5/PC n’a été démontrée. Aucun appel API Hacoo live supplémentaire n’a été effectué par l’assistant pendant cette inspection.
+
+### Sécurité des captures
+
+Plusieurs commandes cURL partagées dans la conversation contenaient des cookies et des jetons d’authentification. Ces valeurs ne sont pas reproduites dans ce document ni dans le dépôt. Considérer les identifiants exposés comme compromis et renouveler la session/les jetons concernés. Pour la suite, ne partager que les URL, méthodes et corps de réponse expurgés ; ne jamais partager les en-têtes Cookie, Authorization ou x-token, ni les identifiants de session.
 
 ### Prochaine action exacte avec l’utilisateur
 
-L’utilisateur doit revenir dans DevTools → Network, cliquer sur la ligne document `15591744`, puis sélectionner l’onglet **Response** dans le panneau de détails et envoyer une capture de ce panneau. S’il ne trouve pas cet onglet ou si le panneau reste vide, demander une capture après avoir cliqué sur la ligne.
+La capture du document principal et les quatre cURL de télémétrie ont été écartés. Reprendre dans DevTools → Network → **Fetch/XHR**, avec la liste vidée avant le rechargement de `https://www.hacoo.app/p/15591744`. Chercher une requête métier vers Hacoo (ou un sous-domaine Hacoo) dont le nom, l’URL ou le corps évoque `feed`, `detail`, `product` ou `item`. Partager une capture de la liste avec Name, Method, Status et Domain, puis uniquement l’URL et le corps **Response** de la requête candidate, après expurgation des données sensibles.
 
-Ne pas lui demander d’ouvrir ou de partager **Headers**, **Cookies**, Authorization, paramètres de session ou tokens. Si la réponse est seulement le HTML générique déjà analysé, arrêter cette piste et identifier une requête de données distincte dans Network, sans demander de secrets.
+Ne pas demander ni partager **Headers**, **Cookies**, Authorization, paramètres de session ou tokens. Si aucune requête métier de détail n’apparaît dans ce contexte web, documenter ce constat et ne pas inventer d’endpoint.
 
 ## État réel
 
@@ -100,8 +109,9 @@ Ne pas lui demander d’ouvrir ou de partager **Headers**, **Cookies**, Authoriz
 - [x] Sélection du premier produit et règle « ne pas sauter un premier produit externe » prévues dans le code.
 - [x] Mécanisme de signature H5/PC du bundle web décodé.
 - [x] Inspection Network de la page web effectuée ; aucun `getFeedDetail` visible dans la liste fournie.
-- [x] Réponse HTML du document principal inspectée ; elle ne contient pas le détail produit.
-- [ ] Identifier la requête web qui fournit les données de la publication, si elle existe dans ce contexte.
+- [x] Réponse HTML du document principal et fichier `response.txt` inspectés ; ils ne contiennent pas le détail produit.
+- [x] Quatre requêtes réseau identifiées comme télémétrie/analytics (`rum`, `dotMets`, `g/collect`, `dotRecords)) et écartées comme sources du détail.
+- [ ] Identifier la requête métier web qui fournit les données de la publication, si elle existe dans ce contexte.
 - [ ] Méthode d’authentification/signature compatible avec `getFeedDetail` depuis le bot.
 - [ ] Transport `getFeedDetail` validé de bout en bout.
 - [ ] Injection de `fetchFeedDetail` dans `index.js`.
@@ -112,9 +122,9 @@ Ne pas lui demander d’ouvrir ou de partager **Headers**, **Cookies**, Authoriz
 
 Lire ce document en entier avant toute action, puis reprendre sur la branche `feat/hacoo-publication-first-product` et la PR #41.
 
-**Ne pas recommencer l’analyse depuis zéro et ne pas supposer que la fonctionnalité est terminée.** Le blocage actuel est l’identification d’un moyen web sûr et vérifié pour obtenir le détail de la publication `15591744`. La dernière pièce fournie (`15591744.devtools`) est seulement le HTML du document principal et ne contient pas les produits.
+**Ne pas recommencer l’analyse depuis zéro et ne pas supposer que la fonctionnalité est terminée.** Le blocage actuel reste l’identification d’une requête métier web sûre et vérifiée pour obtenir le détail de la publication `15591744`. Le HTML du document et les quatre cURL examinés ensuite ne contiennent pas les produits : les cURL correspondent à des collectes de télémétrie/analytics.
 
-Prochaine étape avec l’utilisateur : lui demander la capture de l’onglet **Response** après clic sur la ligne document `15591744` dans Network. Protéger toutes les données de session ; ne jamais demander ou enregistrer des cookies, mots de passe, Authorization, SID, web IDs ou jetons. Ne pas effectuer d’appel API live tant que la stratégie de requête/signature/contexte n’est pas comprise et autorisée.
+Prochaine étape avec l’utilisateur : repartir de Network → **Fetch/XHR** et isoler une requête métier Hacoo, puis examiner uniquement son URL et son corps Response expurgé. Ne jamais demander ou enregistrer des cookies, mots de passe, Authorization, SID, web IDs ou jetons. Ne pas effectuer d’appel API live tant que la stratégie de requête/signature/contexte n’est pas comprise et autorisée.
 
 ## Prochaines étapes techniques après identification de la requête
 
