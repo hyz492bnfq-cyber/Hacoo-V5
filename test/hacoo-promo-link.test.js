@@ -50,6 +50,28 @@ test('remplace chaque lien Hacoo et conserve les autres domaines et la ponctuati
   assert.equal(result.text, 'A https://c.onlyaff.app/one, B https://c.onlyaff.app/two! C https://example.com/x');
 });
 
+test('ne transmet pas les URL Hacoo qui ne sont pas des fiches produit à promoLink', async () => {
+  let calls = 0;
+  for (const url of [
+    'https://www.hacoo.pl/',
+    'https://www.hacoo.pl/search?q=shoes',
+    'https://www.hacoo.pl/category/123',
+    'https://www.hacoo.pl/unknown/123'
+  ]) {
+    const result = await replaceHacooLinks(url, {
+      config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+      fetchImpl: async () => {
+        calls++;
+        throw new Error('promoLink ne doit pas être appelé');
+      }
+    });
+    assert.equal(result.text, url);
+    assert.equal(result.changed, false);
+    assert.equal(result.errors.length, 1);
+  }
+  assert.equal(calls, 0);
+});
+
 test('en cas de refus Hacoo, conserve le lien original et signale l’erreur', async () => {
   const config = { cookie: 'sid=test', sid: '10', appname: 'saramart', platform: 'pc' };
   const result = await replaceHacooLinks('https://www.hacoo.pl/detail/1', {
