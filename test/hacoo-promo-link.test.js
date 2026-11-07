@@ -108,3 +108,57 @@ test('si le lien court ne mène pas à Hacoo, conserve le lien reçu', async () 
   assert.equal(result.changed, false);
   assert.equal(result.errors.length, 1);
 });
+
+
+test('ne transmet jamais directement une URL de publication /p/ à promoLink', async () => {
+  let promoCalls = 0;
+  const original = 'https://www.hacoo.pl/p/15580911';
+  const result = await replaceHacooLinks(original, {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    fetchImpl: async () => {
+      promoCalls++;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/SHOULD-NOT-HAPPEN' } }) };
+    }
+  });
+  assert.equal(result.text, original);
+  assert.equal(result.changed, false);
+  assert.equal(promoCalls, 0);
+  assert.equal(result.errors.length, 1);
+});
+
+test('convertit uniquement le premier produit résolu d’une publication', async () => {
+  let promoLink;
+  const result = await replaceHacooLinks('Publication : https://www.hacoo.pl/p/15607115', {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    fetchFeedDetail: async id => {
+      assert.equal(id, '15607115');
+      return { productCardDetail: [
+        { moduleType: 'item_detail_card', moduleData: { item_id: 40860854 } },
+        { moduleType: 'item_detail_card', moduleData: { item_id: 40665765 } }
+      ] };
+    },
+    fetchImpl: async (_url, init) => {
+      promoLink = JSON.parse(new URLSearchParams(init.body).get('data')).link;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/FIRST' } }) };
+    },
+    timestamp: '123'
+  });
+  assert.equal(promoLink, 'https://www.hacoo.pl/en-FR/detail/40860854');
+  assert.equal(result.text, 'Publication : https://c.onlyaff.app/FIRST');
+});
+
+test('conserve une publication dont le premier produit est externe', async () => {
+  let promoCalls = 0;
+  const original = 'https://www.hacoo.pl/p/15591709';
+  const result = await replaceHacooLinks(original, {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    fetchFeedDetail: async () => ({ productCardDetail: [
+      { moduleType: 'item_detail_card', moduleData: { domain: 'taobao.com', extPlat: 'taobao', out_site: true } },
+      { moduleType: 'item_detail_card', moduleData: { item_id: 40665765 } }
+    ] }),
+    fetchImpl: async () => { promoCalls++; throw new Error('Ne doit pas appeler promoLink'); }
+  });
+  assert.equal(result.text, original);
+  assert.equal(result.changed, false);
+  assert.equal(promoCalls, 0);
+});
