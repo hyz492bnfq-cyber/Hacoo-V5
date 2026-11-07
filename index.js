@@ -2908,8 +2908,9 @@ function affiliatePublicOrder(order) {
     signCommissionAmount: Number(order.signCommissionAmount || 0),
     signSubsidyAmount: Number(order.signSubsidyAmount || 0),
     signTotalCommissionAmount: Number(order.signTotalCommissionAmount || 0),
-    actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? 0),
-    actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? 0),
+    // Hacoo renvoie les montants réels dans les champs sign* (en centimes).
+    actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? order.signCommissionAmount ?? 0),
+    actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? order.signSubsidyAmount ?? 0),
     commissionRate: Number(order.commissionRate || 0),
     appName: String(order.appName || ''),
     feedId: String(order.feedId || ''),
@@ -2929,16 +2930,6 @@ async function syncHacooAffiliate() {
     const existing = new Map((data.affiliateOrders || []).map((o, i) => [String(o.orderNo || o.code || ''), i]));
     const now = new Date().toISOString();
     for (const raw of result.records) {
-      // Diagnostic temporaire et ciblé : identifier les champs de commission Hacoo
-      // sans journaliser les données personnelles de la commande.
-      if (String(raw.orderNo || raw.order_no || raw.code || raw.trackingCode || '') === '92023485208451242202') {
-        const commissionFields = Object.fromEntries(
-          Object.entries(raw).filter(([key, value]) =>
-            /actual|commission|subsidy/i.test(key) && (typeof value === 'number' || typeof value === 'string')
-          )
-        );
-        console.log('[HACOO_ACTUAL_FIELDS]', JSON.stringify(commissionFields));
-      }
       const normalized = affiliatePublicOrder(raw);
       const key = normalized.orderNo || normalized.code;
       if (!key) continue;
