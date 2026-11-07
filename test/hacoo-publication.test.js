@@ -88,7 +88,7 @@ test('renvoie aucun produit Hacoo si toutes les cartes sont étrangères', () =>
 });
 
 test('la résolution reste fermée par défaut sans authentification injectée', async () => {
-  assert.equal((await resolvePublicationFirstProduct('https://www.hacoo.pl/p/15580911')).status, 'unavailable-auth');
+  assert.equal((await resolvePublicationFirstProduct('https://www.hacoo.pl/p/15580911')).status, 'no-public-product-data');
 });
 
 test('résout une publication Hacoo avec le résolveur injecté', async () => {
