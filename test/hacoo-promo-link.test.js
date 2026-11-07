@@ -147,18 +147,24 @@ test('convertit uniquement le premier produit résolu d’une publication', asyn
   assert.equal(result.text, 'Publication : https://c.onlyaff.app/FIRST');
 });
 
-test('conserve une publication dont le premier produit est externe', async () => {
+test('ignore le premier produit externe et convertit le premier produit Hacoo valide suivant', async () => {
   let promoCalls = 0;
-  const original = 'https://www.hacoo.pl/p/15591709';
-  const result = await replaceHacooLinks(original, {
+  let promoProductUrl = '';
+  const result = await replaceHacooLinks('Publication : https://www.hacoo.pl/p/15591709', {
     config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
     fetchFeedDetail: async () => ({ productCardDetail: [
       { moduleType: 'item_detail_card', moduleData: { domain: 'taobao.com', extPlat: 'taobao', out_site: true } },
       { moduleType: 'item_detail_card', moduleData: { item_id: 40665765 } }
     ] }),
-    fetchImpl: async () => { promoCalls++; throw new Error('Ne doit pas appeler promoLink'); }
+    fetchImpl: async (_url, init) => {
+      promoCalls++;
+      promoProductUrl = JSON.parse(new URLSearchParams(init.body).get('data')).link;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/NEXT' } }) };
+    },
+    timestamp: '123'
   });
-  assert.equal(result.text, original);
-  assert.equal(result.changed, false);
-  assert.equal(promoCalls, 0);
+  assert.equal(promoProductUrl, 'https://www.hacoo.pl/en-FR/detail/40665765');
+  assert.equal(result.text, 'Publication : https://c.onlyaff.app/NEXT');
+  assert.equal(result.changed, true);
+  assert.equal(promoCalls, 1);
 });
