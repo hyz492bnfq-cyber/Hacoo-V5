@@ -114,7 +114,7 @@ Ne pas demander ni partager **Headers**, **Cookies**, Authorization, paramètres
 - [ ] Identifier la requête métier web qui fournit les données de la publication, si elle existe dans ce contexte.
 - [ ] Méthode d’authentification/signature compatible avec `getFeedDetail` depuis le bot.
 - [ ] Transport `getFeedDetail` validé de bout en bout.
-- [ ] Injection de `fetchFeedDetail` dans `index.js` — volontairement non activée tant qu’une méthode H5 officiellement compatible et vérifiée n’est pas disponible.
+- [x] Fallback public anonyme branché dans le flux de résolution ; aucun transport iPhone/H5 ni signature propriétaire n’est reproduit.\n- [ ] Vérifier sur une publication réelle si le HTML public expose des données JSON de produits ; les captures déjà fournies ne les exposent pas.
 - [x] Tests simulés couvrant la chaîne publication → premier produit → `promoLink` lorsque `fetchFeedDetail` est fourni par un intégrateur validé.
 - [x] Garde ajoutée : les URL Hacoo directes qui ne correspondent pas à une fiche `/detail/{id}` ou `/product/{id}` ne sont plus envoyées à `promoLink` ; l’URL d’origine est conservée.
 - [ ] Validation sur un cas réel autorisé, sans contourner les protections Hacoo.
@@ -125,7 +125,7 @@ Lire ce document en entier avant toute action, puis reprendre sur la branche `fe
 
 **Ne pas recommencer l’analyse depuis zéro et ne pas supposer que la fonctionnalité est terminée.** Le blocage actuel reste l’identification d’une requête métier web sûre et vérifiée pour obtenir le détail de la publication `15591744`. Le HTML du document et les quatre cURL examinés ensuite ne contiennent pas les produits : les cURL correspondent à des collectes de télémétrie/analytics.
 
-Prochaine étape avec l’utilisateur : repartir de Network → **Fetch/XHR** et isoler une requête métier Hacoo, puis examiner uniquement son URL et son corps Response expurgé. Ne jamais demander ou enregistrer des cookies, mots de passe, Authorization, SID, web IDs ou jetons. Ne pas effectuer d’appel API live tant que la stratégie de requête/signature/contexte n’est pas comprise et autorisée.
+Le fallback public anonyme est maintenant en place. Après validation des tests, vérifier une URL `/p/` réelle : si le HTML public ne contient pas de données JSON `productCardDetail`, il faudra encore identifier une API métier documentée ou accepter que ce type de publication conserve son URL d’origine. Ne jamais demander ou enregistrer des cookies, mots de passe, Authorization, SID, web IDs ou jetons.
 
 ## Prochaines étapes techniques après identification de la requête
 
