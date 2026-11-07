@@ -2929,6 +2929,16 @@ async function syncHacooAffiliate() {
     const existing = new Map((data.affiliateOrders || []).map((o, i) => [String(o.orderNo || o.code || ''), i]));
     const now = new Date().toISOString();
     for (const raw of result.records) {
+      // Diagnostic temporaire et ciblé : identifier les champs de commission Hacoo
+      // sans journaliser les données personnelles de la commande.
+      if (String(raw.orderNo || raw.order_no || raw.code || raw.trackingCode || '') === '92023485208451242202') {
+        const commissionFields = Object.fromEntries(
+          Object.entries(raw).filter(([key, value]) =>
+            /actual|commission|subsidy/i.test(key) && (typeof value === 'number' || typeof value === 'string')
+          )
+        );
+        console.log('[HACOO_ACTUAL_FIELDS]', JSON.stringify(commissionFields));
+      }
       const normalized = affiliatePublicOrder(raw);
       const key = normalized.orderNo || normalized.code;
       if (!key) continue;
