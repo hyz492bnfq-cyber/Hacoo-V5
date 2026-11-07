@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#06080c">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>M2 HACOO BOT</title>
+<title>MAE HACOO BOT</title>
 <style>
 :root{color-scheme:dark;--bg:#06080c;--s1:#0e1218;--s2:#131820;--s3:#1a212c;--s4:#222b38;--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.13);--text:#ece9e2;--text2:#c9ccd3;--muted:#8b94a5;--faint:#5d6676;--ok:#34d399;--ok2:#10b981;--bad:#f87171;--warn:#fb923c;--info:#7aa2ff;--violet:#a78bfa;--danger:var(--bad);--accent:var(--ok);--accent2:var(--violet);--r:18px;--side:248px;--safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);--ease:cubic-bezier(.22,.8,.24,1);--font:"Inter","SF Pro Display",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -476,7 +476,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
 
 <div class="app">
  <aside class="side">
-  <div class="brand-block"><div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 17V8l6 5 6-5v9"/></svg></div><div><b>M2 HACOO BOT</b><span id="verLine">Centre de contrôle</span></div></div>
+  <div class="brand-block"><div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 17V8l6 5 6-5v9"/></svg></div><div><b>MAE HACOO BOT</b><span id="verLine">Centre de contrôle</span></div></div>
   <nav class="nav" id="tabbar" aria-label="Navigation">
    <i class="nav-ind" id="navInd" aria-hidden="true"></i>
    <button class="active" data-tab="home" type="button"><svg class="ic"><use href="#i-home"/></svg><span>Accueil</span><span class="badge hidden" id="badgeHome"></span></button>
@@ -523,7 +523,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
     </div>
     <div class="wallet" id="wallet" aria-label="Portefeuille de commissions Hacoo">
      <div class="wl-top">
-      <div class="wl-brand"><i></i>M2 · Hacoo Affiliate</div>
+      <div class="wl-brand"><i></i>MAE · Hacoo Affiliate</div>
       <button class="wl-eye" id="wlEye" type="button" aria-label="Masquer ou afficher les montants"><svg class="on" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A9.7 9.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6C3.6 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4-.9M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
      </div>
      <div class="wl-body">
@@ -1848,7 +1848,7 @@ function showTab(name){
  $$('#tabbar button').forEach(b=>{const on=b.dataset.tab===name;b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
  moveInd();
  $('#pageTitle').textContent=TAB_META[name][0];$('#pageSub').textContent=TAB_META[name][1];
- document.title=TAB_META[name][0]+' · M2 HACOO BOT';
+ document.title=TAB_META[name][0]+' · MAE HACOO BOT';
  try{history.replaceState(null,'','#'+name);}catch{}
  window.scrollTo({top:0});
  replayNums($('#tab-'+name));
