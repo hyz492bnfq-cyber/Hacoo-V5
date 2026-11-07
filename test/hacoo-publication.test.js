@@ -46,6 +46,55 @@ test('préserve les cas sans identifiant valide ou structure inconnue', () => {
   assert.equal(selectFirstPublicationProduct({}).status, 'unrecognized');
 });
 
+test('lit le véritable format getFeedDetail : enveloppe code 1001 et cartes indexées par shortlink', () => {
+  const result = selectFirstPublicationProduct({
+    code: 1001,
+    data: {
+      feedId: '15607115',
+      productCardDetail: {
+        'url.com/first': {
+          moduleType: 'item_detail_card',
+          moduleData: { item_id: 40860854, extPlat: 'hacoo', out_site: false }
+        },
+        'url.com/second': {
+          moduleType: 'item_detail_card',
+          moduleData: { item_id: 40665765, extPlat: 'hacoo', out_site: false }
+        }
+      }
+    }
+  });
+  assert.equal(result.status, 'product');
+  assert.equal(result.itemId, '40860854');
+  assert.equal(result.productUrl, 'https://www.hacoo.pl/en-FR/detail/40860854');
+});
+
+test('refuse un code API en erreur même si une payload partielle contient une carte', () => {
+  const result = selectFirstPublicationProduct({
+    code: 401,
+    data: {
+      productCardDetail: {
+        first: { moduleType: 'item_detail_card', moduleData: { item_id: 40860854 } }
+      }
+    }
+  });
+  assert.deepEqual(result, { status: 'api-error', productUrl: null });
+});
+
+test('reconnaît le format getFeedDetail d’une publication externe Taobao', () => {
+  const result = selectFirstPublicationProduct({
+    code: 1001,
+    data: {
+      productCardDetail: {
+        'taobao.com/short': {
+          moduleType: 'item_detail_card',
+          moduleData: { out_site: true, extPlat: 'taobao', domain: 'taobao.com', extItemId: '1077940485713' }
+        }
+      }
+    }
+  });
+  assert.deepEqual(result, { status: 'external', productUrl: null });
+});
+
 test('la résolution est fermée par défaut tant que l’authentification serveur n’est pas fournie', async () => {
   assert.equal((await resolvePublicationFirstProduct('https://www.hacoo.pl/p/15580911')).status, 'unavailable-auth');
 });
