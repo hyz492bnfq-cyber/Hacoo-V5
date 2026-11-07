@@ -143,3 +143,21 @@ Le fallback public anonyme est maintenant en place. Après validation des tests,
 - Aucun changement n’a été fait sur `main`, `data.json` ou la configuration FadeHost.
 - Aucun déploiement n’a été effectué.
 - Les rapports de commandes/conversions restent hors périmètre de cette fonctionnalité.
+
+
+## HAR supplémentaire analysé — 7 novembre 2026
+
+Une seconde capture HAR fournie ensuite contient une réponse réussie à `dwp.feed-center.getFeedDetail` pour la publication `15611867`. La réponse expose `data.productCardDetail` sous forme d’objet indexé par URL. La première carte produit observée est de type `item_detail_card`, avec `moduleData.item_id=40870813`, `extPlat=hacoo` et `out_site=false`. Le lien OnlyAff observé redirige vers la publication Hacoo correspondante.
+
+Cette capture confirme donc le **format de réponse réel** et un exemple de premier produit. Elle ne valide pas un transport exécutable depuis le bot : la requête HAR est liée à une session/appareil et ses paramètres de signature/session ne doivent pas être copiés dans le dépôt. Aucun secret ni en-tête d’authentification n’est conservé ici.
+
+Aucun appel `promoLink` n’apparaît dans cette capture. La génération d’un nouveau lien affilié n’est donc pas validée en conditions réelles.
+
+### Conséquence code
+
+- Le parseur `selectFirstPublicationProduct` accepte déjà l’enveloppe `{ code: 1001, data: { productCardDetail: { ... } } }` et lit `moduleData.item_id`.
+- Un test de non-régression est ajouté avec la forme de données observée dans ce HAR.
+- `index.js` n’injecte toujours pas `fetchFeedDetail`. Le bot conserve donc le lien original `/p/{feedId}` si le HTML public ne révèle pas de données produit. C’est volontaire tant qu’un contexte d’appel documenté et compatible n’est pas disponible.
+- Ne pas réutiliser la signature `modelReportList` comme preuve de compatibilité avec `getFeedDetail`.
+
+**État après cette capture :** récupération du produit confirmée à partir du HAR fourni et parsing couvert par test simulé ; transport bot → `getFeedDetail` non intégré ; `promoLink` live non validé ; aucune conversion bout en bout revendiquée.
