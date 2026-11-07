@@ -551,7 +551,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      <div class="kpi c3 info"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-box"/></svg></span><span class="kpi-l">Commandes récupérées</span></div><div class="kpi-v" id="affTotal">—</div><div class="kpi-s" id="affTotalSub">&nbsp;</div></div>
      <div class="kpi c3 warn"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-plus"/></svg></span><span class="kpi-l">Nouvelles commandes</span></div><div class="kpi-v" id="affNew">—</div><div class="kpi-s">Vues pour la 1ʳᵉ fois il y a moins de 24 h</div></div>
      <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-coin"/></svg></span><span class="kpi-l">Commissions estimées</span></div><div class="kpi-v" id="affEstimated">—</div><div class="kpi-s" id="affEstimatedSub">Hors annulées</div></div>
-     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-check"/></svg></span><span class="kpi-l">Montants signés API</span></div><div class="kpi-v" id="affSigned">—</div><div class="kpi-s">Hors annulées</div></div>
+     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-check"/></svg></span><span class="kpi-l">Commission confirmée en attente</span></div><div class="kpi-v" id="affSigned">—</div><div class="kpi-s">Actual Commission + Actual Subsidy · hors annulées</div></div>
     </div>
 
     <div class="period-bar" data-noswipe>
@@ -1730,7 +1730,7 @@ function openOrderDetail(no){
  const s=String(o.orderStatus||'Inconnu'),cnl=isCanceled(o);
  const dg=(l,v)=>`<div class="dg"><span>${esc(l)}</span><b>${esc(v)}</b></div>`;
  openSheet('Commande '+(o.orderNo||'—'),`<div class="fgrid"><div class="row between"><span class="tag ${STATUS_TAG[s]||''}">${esc(s)}</span><span class="small muted">${esc(orderDateText(o))}</span></div>
- <div class="detail-grid">${dg('Montant de la commande',affiliateMoney(o.orderAmount))}${dg('Commission totale',affiliateMoney(o.totalCommissionAmount))}${dg('Commission',affiliateMoney(o.commissionAmount))}${dg('Subvention',affiliateMoney(o.subsidyAmount))}${dg('Commission signée (API)',affiliateMoney(o.signTotalCommissionAmount))}${dg('Région',o.region||'—')}${dg('Application',o.appName||'—')}${dg('Première vue',o.firstSeenAt?new Date(o.firstSeenAt).toLocaleString('fr-FR',{timeZone:PARIS,day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—')}</div>
+ <div class="detail-grid">${dg('Montant de la commande',affiliateMoney(o.orderAmount))}${dg('Commission totale',affiliateMoney(o.totalCommissionAmount))}${dg('Commission',affiliateMoney(o.commissionAmount))}${dg('Subvention',affiliateMoney(o.subsidyAmount))}${dg('Actual Commission',affiliateMoney(o.actualCommission))}${dg('Actual Subsidy',affiliateMoney(o.actualSubsidy))}${dg('Région',o.region||'—')}${dg('Application',o.appName||'—')}${dg('Première vue',o.firstSeenAt?new Date(o.firstSeenAt).toLocaleString('fr-FR',{timeZone:PARIS,day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—')}</div>
  ${cnl?'<p class="note">Commande annulée : exclue des gains et des graphiques de commissions.</p>':''}</div>`);
 }
 
@@ -1746,8 +1746,8 @@ async function loadAffiliate(){
   const todayParis=new Date().toLocaleDateString('sv-SE',{timeZone:PARIS});
   setNum($('#affNew'),affiliateRows.filter(o=>{const ms=affiliateDate(o);return ms!=null&&new Date(ms).toLocaleDateString('sv-SE',{timeZone:PARIS})===todayParis;}).length);
   setNum($('#affEstimated'),valid.reduce((sum,o)=>sum+Number(o.totalCommissionAmount||0),0),affiliateMoney);
-  const signed=valid.filter(o=>String(o.orderStatus||'').trim().toLowerCase()==='signed');
-  setNum($('#affSigned'),signed.reduce((sum,o)=>sum+Number(o.signTotalCommissionAmount||0),0),affiliateMoney);
+  const confirmedPending=valid.reduce((sum,o)=>sum+Number(o.actualCommission||0)+Number(o.actualSubsidy||0),0);
+  setNum($('#affSigned'),confirmedPending,affiliateMoney);
   const cnt=k=>affiliateRows.filter(o=>normalizedStatus(o)===k).length;
   $('#affTotalSub').textContent=`${nf(status.count??affiliateRows.length)} au total · dont ${nf(cnt('Canceled'))} annulées`;
   $('#affEstimatedSub').textContent=`${nf(valid.length)} commande(s) hors annulées`;
