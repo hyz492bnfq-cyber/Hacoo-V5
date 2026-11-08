@@ -2023,7 +2023,7 @@ function showTab(name){
  if(name==='settings')loadChannelSync();
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
-$('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.tab==='affiliate')loadAffiliate();});
+$('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.tab==='affiliate'||S.tab==='forecast')loadAffiliate();});
 window.addEventListener('resize',()=>{moveInd();});
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(moveInd);
 
