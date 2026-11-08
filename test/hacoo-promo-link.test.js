@@ -191,7 +191,7 @@ test('convertit uniquement le premier produit résolu d’une publication', asyn
   assert.equal(result.text, 'Publication : https://c.onlyaff.app/FIRST');
 });
 
-test('ignore le premier produit externe et convertit le premier produit Hacoo valide suivant', async () => {
+test('ne contourne pas un premier produit externe et conserve le lien de publication', async () => {
   let promoCalls = 0;
   let promoProductUrl = '';
   const result = await replaceHacooLinks('Publication : https://www.hacoo.pl/p/15591709', {
@@ -207,8 +207,9 @@ test('ignore le premier produit externe et convertit le premier produit Hacoo va
     },
     timestamp: '123'
   });
-  assert.equal(promoProductUrl, 'https://www.hacoo.pl/en-FR/detail/40665765');
-  assert.equal(result.text, 'Publication : https://c.onlyaff.app/NEXT');
-  assert.equal(result.changed, true);
-  assert.equal(promoCalls, 1);
+  assert.equal(promoProductUrl, '');
+  assert.equal(result.text, 'Publication : https://www.hacoo.pl/p/15591709');
+  assert.equal(result.changed, false);
+  assert.equal(result.errors.length, 1);
+  assert.equal(promoCalls, 0);
 });
