@@ -582,6 +582,60 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      </div>
     </div>
 
+   <!-- COMMANDES HACOO -->
+   <section class="tab" id="tab-affiliate" aria-label="Commandes Hacoo">
+    <div class="grid12">
+     <div class="kpi c3 info"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-box"/></svg></span><span class="kpi-l">Commandes récupérées</span></div><div class="kpi-v" id="affTotal">—</div><div class="kpi-s" id="affTotalSub">&nbsp;</div></div>
+     <div class="kpi c3 warn"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-plus"/></svg></span><span class="kpi-l">Nouvelles commandes</span></div><div class="kpi-v" id="affNew">—</div><div class="kpi-s">Vues pour la 1ʳᵉ fois il y a moins de 24 h</div></div>
+     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-coin"/></svg></span><span class="kpi-l">Commissions estimées</span></div><div class="kpi-v" id="affEstimated">—</div><div class="kpi-s" id="affEstimatedSub">Hors annulées</div></div>
+     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-check"/></svg></span><span class="kpi-l">Commission confirmée en attente</span></div><div class="kpi-v" id="affSigned">—</div><div class="kpi-s">Actual Commission + Actual Subsidy · hors annulées</div></div>
+    </div>
+
+    <div class="period-bar" data-noswipe>
+     <div class="seg scroll" id="affPeriod" role="tablist" aria-label="Période">
+      <button type="button" data-aff-period="24h">24 h</button><button type="button" data-aff-period="7d">7 j</button><button type="button" class="on" data-aff-period="30d">30 j</button><button type="button" data-aff-period="90d">90 j</button><button type="button" data-aff-period="6m">6 mois</button><button type="button" data-aff-period="12m">12 mois</button><button type="button" data-aff-period="all">Tout</button><button type="button" data-aff-period="custom">Perso</button>
+     </div>
+     <div class="range hidden" id="affRange"><input type="date" id="affFrom" aria-label="Du"><span class="muted">→</span><input type="date" id="affTo" aria-label="Au"></div>
+    </div>
+
+    <div class="card">
+     <div class="card-h"><div><h3>Évolution des commissions</h3><p class="sub" id="affCommSub">Commissions estimées, hors commandes annulées</p></div><div class="legend" id="affCommLegend"></div></div>
+     <div class="stat-line"><span class="big-n" id="affCommTotal">—</span><span id="affCommDelta"></span><span class="small muted" id="affCommPrev"></span></div>
+     <div id="affCommissionChart" class="ch chart-wide" data-noswipe aria-label="Évolution des commissions"></div>
+     <div class="note" id="affCommissionNote"></div>
+    </div>
+
+    <div class="grid12">
+     <div class="card c6">
+      <div class="card-h"><div><h3>Commandes par statut</h3><p class="sub">Sélectionne un ou plusieurs statuts à comparer.</p></div></div>
+      <div class="row wrap" id="affStatusChoices">
+       <label class="aff-choice" style="--sc:#fb923c"><input type="checkbox" value="Pending" checked><i></i>Pending <b data-cnt="Pending">0</b></label>
+       <label class="aff-choice" style="--sc:#34d399"><input type="checkbox" value="Delivered" checked><i></i>Delivered <b data-cnt="Delivered">0</b></label>
+       <label class="aff-choice" style="--sc:#f87171"><input type="checkbox" value="Canceled"><i></i>Canceled <b data-cnt="Canceled">0</b></label>
+      </div>
+      <div id="affStatusChart" class="ch chart-box" data-noswipe></div>
+      <div class="share" id="affShare"></div>
+      <div class="share-rows" id="affShareRows"></div>
+      <div class="note" id="affStatusNote"></div>
+     </div>
+     <div class="card c6">
+      <div class="card-h"><div><h3>Ventes et commandes</h3><p class="sub">Montant des ventes (axe gauche) et nombre de commandes (axe droit)</p></div><div class="legend" id="affSalesLegend"></div></div>
+      <div class="stat-line"><span class="big-n" id="affSalesTotal">—</span><span class="small muted" id="affSalesMeta"></span></div>
+      <div id="affSalesChart" class="ch chart-box" data-noswipe></div>
+      <div class="note" id="affSalesNote"></div>
+     </div>
+    </div>
+
+    <div class="card">
+     <div class="card-h"><div><h3>Historique des commandes</h3><p class="sub">Clique sur une ligne pour voir le détail.</p></div><span class="small muted" id="affCount"></span></div>
+     <div class="toolbar" style="margin:14px 0">
+      <input id="affSearch" type="search" placeholder="Rechercher un numéro de commande…" autocomplete="off" aria-label="Rechercher une commande">
+      <select id="affStatus" aria-label="Filtrer par statut"><option value="">Tous les statuts</option><option>Pending</option><option>Delivered</option><option>Canceled</option></select>
+      <select id="affSort" aria-label="Trier"><option value="date">Plus récentes</option><option value="dateAsc">Plus anciennes</option><option value="commission">Commission ↓</option><option value="amount">Montant ↓</option></select>
+     </div>
+     <div id="affOrders"><div class="skeleton" style="height:120px"></div></div>
+     <div class="pager" style="margin-top:14px"><span class="small muted" id="affPageInfo"></span><button class="btn sm hidden" id="affMore" type="button">Afficher plus</button></div>
+    </div>
    </section>
 
    <!-- PRÉVISIONS : onglet séparé des statistiques de commandes -->
@@ -646,62 +700,6 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
       <h3 class="forecast-subtitle">Données manquantes</h3><div id="forecastMissing" class="list"></div>
       <h3 class="forecast-subtitle">Analyses complémentaires</h3><div id="forecastExtra" class="list"></div>
      </details>
-    </div>
-   </section>
-
-   <!-- COMMANDES HACOO -->
-   <section class="tab" id="tab-affiliate" aria-label="Commandes Hacoo">
-    <div class="grid12">
-     <div class="kpi c3 info"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-box"/></svg></span><span class="kpi-l">Commandes récupérées</span></div><div class="kpi-v" id="affTotal">—</div><div class="kpi-s" id="affTotalSub">&nbsp;</div></div>
-     <div class="kpi c3 warn"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-plus"/></svg></span><span class="kpi-l">Nouvelles commandes</span></div><div class="kpi-v" id="affNew">—</div><div class="kpi-s">Vues pour la 1ʳᵉ fois il y a moins de 24 h</div></div>
-     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-coin"/></svg></span><span class="kpi-l">Commissions estimées</span></div><div class="kpi-v" id="affEstimated">—</div><div class="kpi-s" id="affEstimatedSub">Hors annulées</div></div>
-     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-check"/></svg></span><span class="kpi-l">Commission confirmée en attente</span></div><div class="kpi-v" id="affSigned">—</div><div class="kpi-s">Actual Commission + Actual Subsidy · hors annulées</div></div>
-    </div>
-
-    <div class="period-bar" data-noswipe>
-     <div class="seg scroll" id="affPeriod" role="tablist" aria-label="Période">
-      <button type="button" data-aff-period="24h">24 h</button><button type="button" data-aff-period="7d">7 j</button><button type="button" class="on" data-aff-period="30d">30 j</button><button type="button" data-aff-period="90d">90 j</button><button type="button" data-aff-period="6m">6 mois</button><button type="button" data-aff-period="12m">12 mois</button><button type="button" data-aff-period="all">Tout</button><button type="button" data-aff-period="custom">Perso</button>
-     </div>
-     <div class="range hidden" id="affRange"><input type="date" id="affFrom" aria-label="Du"><span class="muted">→</span><input type="date" id="affTo" aria-label="Au"></div>
-    </div>
-
-    <div class="card">
-     <div class="card-h"><div><h3>Évolution des commissions</h3><p class="sub" id="affCommSub">Commissions estimées, hors commandes annulées</p></div><div class="legend" id="affCommLegend"></div></div>
-     <div class="stat-line"><span class="big-n" id="affCommTotal">—</span><span id="affCommDelta"></span><span class="small muted" id="affCommPrev"></span></div>
-     <div id="affCommissionChart" class="ch chart-wide" data-noswipe aria-label="Évolution des commissions"></div>
-     <div class="note" id="affCommissionNote"></div>
-    </div>
-
-    <div class="grid12">
-     <div class="card c6">
-      <div class="card-h"><div><h3>Commandes par statut</h3><p class="sub">Sélectionne un ou plusieurs statuts à comparer.</p></div></div>
-      <div class="row wrap" id="affStatusChoices">
-       <label class="aff-choice" style="--sc:#fb923c"><input type="checkbox" value="Pending" checked><i></i>Pending <b data-cnt="Pending">0</b></label>
-       <label class="aff-choice" style="--sc:#34d399"><input type="checkbox" value="Delivered" checked><i></i>Delivered <b data-cnt="Delivered">0</b></label>
-       <label class="aff-choice" style="--sc:#f87171"><input type="checkbox" value="Canceled"><i></i>Canceled <b data-cnt="Canceled">0</b></label>
-      </div>
-      <div id="affStatusChart" class="ch chart-box" data-noswipe></div>
-      <div class="share" id="affShare"></div>
-      <div class="share-rows" id="affShareRows"></div>
-      <div class="note" id="affStatusNote"></div>
-     </div>
-     <div class="card c6">
-      <div class="card-h"><div><h3>Ventes et commandes</h3><p class="sub">Montant des ventes (axe gauche) et nombre de commandes (axe droit)</p></div><div class="legend" id="affSalesLegend"></div></div>
-      <div class="stat-line"><span class="big-n" id="affSalesTotal">—</span><span class="small muted" id="affSalesMeta"></span></div>
-      <div id="affSalesChart" class="ch chart-box" data-noswipe></div>
-      <div class="note" id="affSalesNote"></div>
-     </div>
-    </div>
-
-    <div class="card">
-     <div class="card-h"><div><h3>Historique des commandes</h3><p class="sub">Clique sur une ligne pour voir le détail.</p></div><span class="small muted" id="affCount"></span></div>
-     <div class="toolbar" style="margin:14px 0">
-      <input id="affSearch" type="search" placeholder="Rechercher un numéro de commande…" autocomplete="off" aria-label="Rechercher une commande">
-      <select id="affStatus" aria-label="Filtrer par statut"><option value="">Tous les statuts</option><option>Pending</option><option>Delivered</option><option>Canceled</option></select>
-      <select id="affSort" aria-label="Trier"><option value="date">Plus récentes</option><option value="dateAsc">Plus anciennes</option><option value="commission">Commission ↓</option><option value="amount">Montant ↓</option></select>
-     </div>
-     <div id="affOrders"><div class="skeleton" style="height:120px"></div></div>
-     <div class="pager" style="margin-top:14px"><span class="small muted" id="affPageInfo"></span><button class="btn sm hidden" id="affMore" type="button">Afficher plus</button></div>
     </div>
    </section>
 
