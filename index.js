@@ -2931,7 +2931,7 @@ function affiliatePublicOrder(order) {
 }
 
 function affiliateForecastStatus(order) {
-  const status = String(order?.orderStatus || order?.status || '').trim().toLowerCase().replace(/[\\s_-]+/g, '');
+  const status = String(order?.orderStatus || order?.status || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   if (/cancel|annul|refund|return/.test(status)) return 'Canceled';
   const signedValue = Number(order?.signTotalCommissionAmount || 0) || Number(order?.signCommissionAmount || 0) + Number(order?.signSubsidyAmount || 0);
   if (/sign|complete|finished|settled|validated/.test(status) || signedValue > 0) return 'Signed';
