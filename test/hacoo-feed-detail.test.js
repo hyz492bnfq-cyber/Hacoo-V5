@@ -19,8 +19,10 @@ test('construit une requÃªte H5 getFeedDetail avec contexte et signature injectÃ
   let captured;
   const fetchFeedDetail = createFeedDetailFetcher({
     config: { cookie: 'session=test' },
-    contextProvider: async ({ feedId }) => {
+    contextProvider: async ({ feedId, ets, f }) => {
       assert.equal(feedId, '15607115');
+      assert.equal(ets, '1794063867916');
+      assert.equal(f, 'campaign-from-publication-link');
       return { ets: '1794576803237', f: 'campaign-context' };
     },
     signRequest: async input => {
@@ -35,7 +37,7 @@ test('construit une requÃªte H5 getFeedDetail avec contexte et signature injectÃ
     }
   });
 
-  const result = await fetchFeedDetail('15607115');
+  const result = await fetchFeedDetail('15607115', { ets: '1794063867916', f: 'campaign-from-publication-link' });
   assert.equal(result.code, 1001);
   assert.equal(captured.url.origin + captured.url.pathname, ENDPOINT);
   assert.deepEqual(JSON.parse(captured.url.searchParams.get('data')), {
