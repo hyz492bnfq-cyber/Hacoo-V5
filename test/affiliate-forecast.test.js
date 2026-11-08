@@ -66,6 +66,47 @@ test('ignores canceled orders in revenue while retaining cancellation counts', (
 });
 
 
+test('Actual Commission amounts do not imply delivery, signature or payment', () => {
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const result = buildForecast({
+    now,
+    orders: [{
+      orderNo: 'ACTUAL-1',
+      createTime: Date.UTC(2026, 10, 5),
+      orderStatus: 'Pending',
+      totalCommissionAmount: 2400,
+      actualCommission: 1800,
+      actualSubsidy: 200,
+      signCommissionAmount: 0,
+      signSubsidyAmount: 0
+    }]
+  });
+  assert.equal(result.statusCounts.Pending, 1);
+  assert.equal(result.statusCounts.Delivered, 0);
+  assert.equal(result.statusCounts.Signed, 0);
+  assert.equal(result.totals.signed, 0);
+  assert.equal(result.pipeline.deliveredOrders, 0);
+  assert.equal(result.pipeline.signedOrders, 0);
+  assert.equal(result.monthToDate.generated, 2000);
+  assert.ok(result.projections.monthEnd.realistic >= result.monthToDate.expectedFinal);
+});
+
+test('only explicit Delivered and Signed order statuses advance the pipeline', () => {
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const result = buildForecast({
+    now,
+    orders: [
+      { orderNo: 'D', createTime: now - 2 * 86400000, orderStatus: 'Delivered', totalCommissionAmount: 1000, actualCommission: 900 },
+      { orderNo: 'S', createTime: now - 86400000, orderStatus: 'Signed', totalCommissionAmount: 1200, signCommissionAmount: 1100, signSubsidyAmount: 100 },
+      { orderNo: 'A', createTime: now - 86400000, orderStatus: 'Pending', totalCommissionAmount: 1300, signCommissionAmount: 1300 }
+    ]
+  });
+  assert.equal(result.statusCounts.Delivered, 1);
+  assert.equal(result.statusCounts.Signed, 1);
+  assert.equal(result.statusCounts.Pending, 1);
+  assert.equal(result.totals.signed, 1200);
+});
+
 test('calibrates only after three non-overlapping completed forecast periods', () => {
   const now = Date.parse('2026-11-09T12:00:00Z');
   const day = 86400000;
@@ -78,7 +119,8 @@ test('calibrates only after three non-overlapping completed forecast periods', (
     fromStatus: 'Pending',
     toStatus: 'Signed',
     at: new Date(now + offset * day).toISOString(),
-    signedCommission: 1200
+    signedCommission: 1200,
+    statusEvidence: 'orderStatus'
   }));
   const result = buildForecast({ now, snapshots, events, orders: [] });
   assert.equal(result.dataQuality.forecastBacktests, 3);
