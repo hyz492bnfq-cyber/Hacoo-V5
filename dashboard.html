@@ -651,7 +651,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
        <div class="kpi"><div class="kpi-l">Déjà validé ce mois-ci</div><div class="kpi-v" id="forecastSignedMonth">—</div><div class="kpi-s">Commissions au statut Signed uniquement.</div></div>
       </div>
      </div>
-     <p class="forecast-help">La prévision pondère le potentiel déjà généré selon les risques de retour ou d’annulation, puis ajoute les commissions estimées pour chaque jour restant. Le rythme est ajusté selon les tendances récentes, les jours de la semaine si l’historique le permet, les commandes en cours et les taux de validation et d’annulation.</p>
+     <p class="forecast-help">La prévision pondère le potentiel déjà généré selon les risques de retour ou d’annulation, puis ajoute les commissions estimées pour chaque jour restant. Le rythme est ajusté selon les tendances récentes, les jours de la semaine si l’historique le permet, les commandes en cours et les risques d’annulation et de retour.</p>
      <details class="card forecast-details">
       <summary>Afficher les détails, les autres prévisions et les paramètres</summary>
       <div class="card flat forecast-inner">
@@ -678,7 +678,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
        </div>
       </details>
       <details class="forecast-details"><summary>Commandes en cours et étapes des commissions</summary>
-       <p class="forecast-detail-intro">Estimated Commission est l’estimation initiale. Actual Commission / Actual Subsidy est le même montant après vérification d’une commande Pending : ce n’est pas un gain supplémentaire. Signed Commission correspond au montant définitivement validé. Les étapes ne s’additionnent jamais.</p>
+       <p class="forecast-detail-intro">Estimated Commission est l’estimation initiale. Actual Commission / Actual Subsidy est ce même revenu actualisé après vérification d’une commande Pending. On considère ce revenu comme devant être perçu, en retirant seulement une marge liée au risque d’annulation ou de retour. Commission et subsidy sont additionnés comme un seul revenu. Signed Commission correspond au montant définitivement validé. Les étapes d’une même commande ne s’additionnent jamais.</p>
        <div class="mini">
         <div class="m"><span>Pending — montant estimé ou actualisé</span><b id="forecastPending">—</b></div><div class="m"><span>Delivered — montant actualisé</span><b id="forecastDelivered">—</b></div>
         <div class="m"><span>Signed — commission validée</span><b id="forecastSigned">—</b></div><div class="m"><span>Potentiel futur pondéré</span><b id="forecastPipeline">—</b></div>
@@ -1875,7 +1875,7 @@ function renderAffiliateForecast(){
  set('forecastOrderCount',num(q.orders));set('forecastDays',num(q.historyDays));
  set('forecastTransitions',num(f.transitionCount||0));
  set('forecastLastSync',dateText(q.lastSyncAt));
- set('forecastAssumptions','Probabilité de livraison : '+(Number(pipe.deliveryProbability||0)*100).toFixed(0)+' % · signature après livraison : '+(Number(pipe.signatureProbability||0)*100).toFixed(0)+' % · annulation : '+(Number(pipe.cancellationProbability||0)*100).toFixed(0)+' %. Source : '+(pipe.assumptionSource||'hypothèses provisoires prudentes')+'. Ces taux sont des hypothèses, pas des résultats garantis.');
+ set('forecastAssumptions','Risque de perte Pending (annulation/retour) : '+((1-Number(pipe.finalizationProbabilityPending||0))*100).toFixed(0)+' % · risque résiduel après livraison : '+((1-Number(pipe.deliveryProbability||0))*100).toFixed(0)+' %. Commission et subsidy sont inclus ensemble. Source : '+(pipe.assumptionSource||'hypothèses provisoires prudentes')+'.');
  const goal=Number(store('m2.forecastGoal')||0);
  const missing=(f.missingInputs||[]).filter(x=>!(goal>0&&x==='Objectifs financiers non configurés'));
  $('#forecastMissing').innerHTML=missing.length?missing.map(x=>'<div class="item"><span class="small muted">'+esc(x)+'</span></div>').join(''):'<div class="item"><span class="small muted">Les principaux paramètres sont disponibles.</span></div>';
