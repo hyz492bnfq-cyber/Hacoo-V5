@@ -551,6 +551,10 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      <div class="card-h"><div><h3>Prévisionnel My MAE</h3><p class="sub">Projection des commissions futures · recalculée à chaque synchronisation Hacoo</p></div><span class="pill" id="forecastConfidence">Analyse des données…</span></div>
      <p class="note" id="forecastIntro">Le calcul démarre avec les commandes disponibles, même si aucune n’est encore signée. Les hypothèses provisoires sont clairement séparées des résultats réels.</p>
      <div class="grid12">
+      <div class="kpi c6 info"><div class="kpi-l">Prévision du prochain jour · 24 h</div><div class="kpi-v" id="forecast1d">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecast1dBounds"></div></div>
+      <div class="kpi c6 info"><div class="kpi-l">Prévision de la prochaine semaine · 7 jours</div><div class="kpi-v" id="forecast7d">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecast7dBounds"></div></div>
+     </div>
+     <div class="grid12">
       <div class="kpi c3 info"><div class="kpi-l">Fin du mois</div><div class="kpi-v" id="forecastMonth">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecastMonthBounds"></div></div>
       <div class="kpi c3 info"><div class="kpi-l">Dans 3 mois</div><div class="kpi-v" id="forecast3m">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecast3mBounds"></div></div>
       <div class="kpi c3 info"><div class="kpi-l">Dans 6 mois</div><div class="kpi-v" id="forecast6m">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecast6mBounds"></div></div>
@@ -1770,7 +1774,7 @@ function renderAffiliateForecast(){
  if(!f||f.unavailable){
   set('forecastConfidence','Prévision indisponible');
   set('forecastIntro',f?.error||'Les données de prévision ne sont pas encore disponibles. Les autres fonctions Hacoo restent utilisables.');
-  ['forecastMonth','forecast3m','forecast6m','forecast12m','forecastAvg7','forecastAvg30','forecastAvgAll','forecastTrend','forecastOrdersDay','forecastAvgOrder','forecast1d','forecast7d','forecast30d','forecastPending','forecastDelivered','forecastSigned','forecastPipeline','forecastCanceled','forecastAge','forecastOrderCount','forecastDays','forecastTransitions','forecastLastSync'].forEach(id=>set(id,'—'));
+  ['forecast1d','forecast7d','forecastMonth','forecast3m','forecast6m','forecast12m','forecastAvg7','forecastAvg30','forecastAvgAll','forecastTrend','forecastOrdersDay','forecastAvgOrder','forecast1d','forecast7d','forecast30d','forecastPending','forecastDelivered','forecastSigned','forecastPipeline','forecastCanceled','forecastAge','forecastOrderCount','forecastDays','forecastTransitions','forecastLastSync'].forEach(id=>set(id,'—'));
   $('#forecastMissing').textContent='Les données de prévision ne sont pas disponibles.';
   return;
  }
@@ -1779,7 +1783,7 @@ function renderAffiliateForecast(){
   set(prefix,obj?money(obj.realistic):'—');
   set(prefix+'Bounds',obj?'Pessimiste '+money(obj.pessimistic)+' · Optimiste '+money(obj.optimistic):'—');
  };
- showProjection('forecastMonth',p.monthEnd);
+ showProjection('forecast1d',p.oneDay);\n showProjection('forecast7d',p.sevenDays);\n showProjection('forecastMonth',p.monthEnd);
  showProjection('forecast3m',p.threeMonths);
  showProjection('forecast6m',p.sixMonths);
  showProjection('forecast12m',p.twelveMonths);
@@ -1789,7 +1793,7 @@ function renderAffiliateForecast(){
  set('forecastTrend',(a.trendLabel||'stable')+(Number.isFinite(a.trend)?' · '+(a.trend>=0?'+':'')+(a.trend*100).toFixed(1)+' %':''));
  set('forecastOrdersDay',Number(a.averageOrdersPerDay||0).toFixed(2));
  set('forecastAvgOrder',money(a.averageCommissionPerOrder));
- set('forecast1d',money(p.oneDay?.realistic));set('forecast7d',money(p.sevenDays?.realistic));set('forecast30d',money(p.thirtyDays?.realistic));
+ set('forecast30d',money(p.thirtyDays?.realistic));
  set('forecastPending',money(pipe.pendingEstimated));set('forecastDelivered',money(pipe.deliveredConfirmed));
  set('forecastSigned',money(tot.signed));set('forecastPipeline',money(pipe.expectedSigned));
  set('forecastCanceled',num(pipe.canceledOrders));set('forecastAge',Number(pipe.averageAgeDays||0).toFixed(1)+' j');
