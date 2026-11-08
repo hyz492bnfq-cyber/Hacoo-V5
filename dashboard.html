@@ -558,7 +558,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      </div>
      <div class="grid12">
       <div class="card c6 flat" style="padding:16px"><h3>Base de calcul</h3><div class="mini">
-       <div class="m"><span>Moyenne journalière · 7 jours</span><b id="forecastAvg7">—</b></div><div class="m"><span>Moyenne journalière · 30 jours</span><b id="forecastAvg30">—</b></div><div class="m"><span>Moyenne depuis le début</span><b id="forecastAvgAll">—</b></div><div class="m"><span>Tendance récente</span><b id="forecastTrend">—</b></div><div class="m"><span>Commandes moyennes / jour</span><b id="forecastOrdersDay">—</b></div><div class="m"><span>Commission moyenne / commande</span><b id="forecastAvgOrder">—</b></div><div class="m"><span>Projection signée · 24 h</span><b id="forecast1d">—</b></div><div class="m"><span>Projection signée · 7 jours</span><b id="forecast7d">—</b></div><div class="m"><span>Projection signée · 30 jours</span><b id="forecast30d">—</b></div>
+       <div class="m"><span>Commission estimée générée / jour · 7 j</span><b id="forecastAvg7">—</b></div><div class="m"><span>Commission estimée générée / jour · 30 j</span><b id="forecastAvg30">—</b></div><div class="m"><span>Commission estimée générée / jour · depuis le début</span><b id="forecastAvgAll">—</b></div><div class="m"><span>Tendance récente</span><b id="forecastTrend">—</b></div><div class="m"><span>Commandes moyennes / jour</span><b id="forecastOrdersDay">—</b></div><div class="m"><span>Commission moyenne / commande</span><b id="forecastAvgOrder">—</b></div><div class="m"><span>Projection signée · 24 h</span><b id="forecast1d">—</b></div><div class="m"><span>Projection signée · 7 jours</span><b id="forecast7d">—</b></div><div class="m"><span>Projection signée · 30 jours</span><b id="forecast30d">—</b></div>
       </div></div>
       <div class="card c6 flat" style="padding:16px"><h3>Commandes en cours et revenus</h3><div class="mini">
        <div class="m"><span>Commission estimée · Pending</span><b id="forecastPending">—</b></div><div class="m"><span>Commission confirmée · Delivered</span><b id="forecastDelivered">—</b></div><div class="m"><span>Commission signée · définitive</span><b id="forecastSigned">—</b></div><div class="m"><span>Potentiel attendu du portefeuille</span><b id="forecastPipeline">—</b></div><div class="m"><span>Commandes annulées</span><b id="forecastCanceled">—</b></div><div class="m"><span>Âge moyen des commandes actives</span><b id="forecastAge">—</b></div>
@@ -1821,7 +1821,9 @@ function renderAffiliateForecast(){
  if(goal>0&&usdToEur!=null){
   const projected30=Number(a.dailyRunRate||0)*30*Number(pipe.finalizationProbabilityPending||0);
   const eur=(projected30/100)*usdToEur;
-  set('forecastGoalResult','Rythme projeté sur 30 jours : '+eur.toLocaleString('fr-FR',{style:'currency',currency:'EUR'})+' · '+(eur>=goal?'objectif théoriquement atteint':'objectif non atteint au rythme actuel')+' ('+(eur/goal*100).toFixed(0)+' %).');
+  const avgOrderEur=Number(a.averageCommissionPerOrder||0)/100*usdToEur;
+  const requiredOrders=avgOrderEur>0?Math.ceil(goal/avgOrderEur):null;
+  set('forecastGoalResult','Rythme projeté sur 30 jours : '+eur.toLocaleString('fr-FR',{style:'currency',currency:'EUR'})+' · '+(eur>=goal?'objectif théoriquement atteint':'objectif non atteint au rythme actuel')+' ('+(eur/goal*100).toFixed(0)+' %). '+(requiredOrders==null?'Commission moyenne par commande indisponible.':'Environ '+requiredOrders+' commande(s) signée(s) nécessaires au rythme moyen actuel.'));
  }else set('forecastGoalResult',goal>0?'Taux USD → EUR indisponible : objectif en euros non comparable pour le moment.':'Définis un objectif pour comparer ton rythme actuel à ta cible.');
 }
 
