@@ -1783,7 +1783,9 @@ function renderAffiliateForecast(){
   set(prefix,obj?money(obj.realistic):'—');
   set(prefix+'Bounds',obj?'Pessimiste '+money(obj.pessimistic)+' · Optimiste '+money(obj.optimistic):'—');
  };
- showProjection('forecast1d',p.oneDay);\n showProjection('forecast7d',p.sevenDays);\n showProjection('forecastMonth',p.monthEnd);
+ showProjection('forecast1d',p.oneDay);
+ showProjection('forecast7d',p.sevenDays);
+ showProjection('forecastMonth',p.monthEnd);
  showProjection('forecast3m',p.threeMonths);
  showProjection('forecast6m',p.sixMonths);
  showProjection('forecast12m',p.twelveMonths);
