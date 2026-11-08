@@ -127,3 +127,25 @@ test('calibrates only after three non-overlapping completed forecast periods', (
   assert.equal(result.dataQuality.calibrationFactor, 1.2);
   assert.ok(result.dataQuality.forecastMeanAbsoluteError > 0.16);
 });
+
+
+test('month-end projection uses exact remaining calendar days and a risk-adjusted daily pace', () => {
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const orders = Array.from({ length: 9 }, (_, i) => ({
+    orderNo: 'PACE-' + i,
+    createTime: Date.UTC(2026, 10, 1 + i),
+    orderStatus: 'Pending',
+    totalCommissionAmount: 6000,
+    actualCommission: 6000,
+    actualSubsidy: 0,
+    orderAmount: 10000
+  }));
+  const result = buildForecast({ now, orders });
+  const month = result.projections.monthEnd;
+  assert.equal(month.daysRemaining, 21);
+  assert.equal(month.monthToDateGenerated, 54000);
+  assert.ok(month.dailyGenerated > 0);
+  assert.ok(month.dailyExpected > 0);
+  assert.ok(month.futureExpectedCommission > 0);
+  assert.ok(month.realistic >= result.monthToDate.expectedFinal);
+});
