@@ -206,3 +206,26 @@ La seule suite acceptable pour lever ce blocage est un SDK/document officiel, un
 ### Validation GitHub
 
 Les changements sont faits uniquement sur la branche de la PR #41. Attendre les résultats CI déclenchés par ces commits. La PR reste en brouillon ; aucune fusion, modification de `main`, modification de FadeHost ou mise en production n'est autorisée par cette mise à jour.
+
+
+## Intégration H5 et génération promoLink — 8 novembre 2026
+
+### Changements ajoutés sur la branche de la PR #41
+
+- Ajout d'un signataire candidat H5 pour `dwp.feed-center.getFeedDetail`, reprenant la forme DWP H5 générique et le sel H5 déjà utilisé par le client Affiliate du projet. Un appelant peut toujours injecter un signataire différent.
+- Le contexte H5 est lu depuis `HACOO_FEED_DETAIL_ETS` et `HACOO_FEED_DETAIL_F`. Ces deux valeurs doivent être configurées depuis une source autorisée et active ; elles ne sont pas déduites d'un HAR ni générées artificiellement.
+- Le récupérateur H5 est maintenant injecté dans `index.js` et transmis à `replaceHacooLinks`. En l'absence de cookie Affiliate ou de contexte H5, l'appel échoue sans requête utile et le texte original est conservé.
+- La génération `promoLink` existante reste le second maillon : après identification du premier produit Hacoo, elle génère un lien court avec la configuration Affiliate existante.
+- Correction de regex dans l'analyse du HTML public et ajout d'un test de script JSON.
+- Correction du test qui permettait encore de sauter un premier produit externe ; la règle « premier produit uniquement » est maintenant testée aussi au niveau du remplacement.
+
+### Limite de validation
+
+Le signataire H5 ajouté est un candidat basé sur la forme générique du bundle H5 et le sel du service Affiliate déjà utilisé. Il n'existe toujours pas de réponse Hacoo live prouvant que `getFeedDetail` accepte cette signature, ce contexte et ces en-têtes. Les tests sont simulés ; ils valident la construction et le chaînage logiciel, pas l'acceptation distante. Ne pas marquer le transport comme validé avant une réponse réelle autorisée.
+
+Variables de configuration à fournir dans l'environnement d'exécution, si elles sont disponibles via une intégration autorisée :
+- `HACOO_FEED_DETAIL_ETS`
+- `HACOO_FEED_DETAIL_F`
+- configuration Affiliate déjà utilisée par `promoLink` : cookie/session, SID, nom d'application et plateforme.
+
+Aucun secret ne doit être ajouté au dépôt, à la documentation ou à un HAR partagé.
