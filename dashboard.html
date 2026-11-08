@@ -1805,6 +1805,7 @@ function renderAffiliateForecast(){
  const missing=(f.missingInputs||[]).filter(x=>!(goal>0&&x==='Objectifs financiers non configurés'));
  $('#forecastMissing').innerHTML=missing.length?missing.map(x=>'<div class="item"><span class="small muted">'+esc(x)+'</span></div>').join(''):'<div class="item"><span class="small muted">Les principaux paramètres sont disponibles.</span></div>';
  const extra=[];
+ const breakdown=f.breakdowns||{};
  extra.push('Médiane journalière : '+money(a.medianDaily)+' · meilleure journée : '+money(a.bestDay)+' · pire journée : '+money(a.worstDay)+'.');
  extra.push(num(a.zeroDays)+' jour(s) sans commande · '+num(a.activeRevenueDays)+' jour(s) avec commissions.');
  extra.push('Taux de commission effectif observé : '+Number(a.effectiveCommissionRate||0).toFixed(2)+' % · ventes suivies : '+money(tot.sales)+'.');
@@ -1821,7 +1822,7 @@ function renderAffiliateForecast(){
  if(breakdown.regions?.length)extra.push('Régions les plus représentées : '+breakdown.regions.map(x=>x.name+' ('+money(x.amount)+')').join(' · ')+'.');
  if(f.weekday?.length)extra.push('Commandes par jour : '+f.weekday.map(x=>x.day+' '+num(x.orders)).join(' · ')+'.');
 
- const breakdown=f.breakdowns||{};
+
  if(breakdown.categories?.length)extra.push('Catégories : '+breakdown.categories.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
  if(breakdown.products?.length)extra.push('Produits : '+breakdown.products.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
  if(breakdown.promotions?.length)extra.push('Promotions : '+breakdown.promotions.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
