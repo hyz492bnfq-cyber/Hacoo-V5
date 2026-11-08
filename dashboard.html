@@ -1810,6 +1810,13 @@ function renderAffiliateForecast(){
  extra.push('Délai moyen de livraison : '+(f.delays?.deliverySamples?Number(f.delays.deliveryAverageDays).toFixed(1)+' j':'pas encore mesurable')+' · délai moyen livraison → signature : '+(f.delays?.signatureSamples?Number(f.delays.signatureAverageDays).toFixed(1)+' j':'pas encore mesurable')+'.');
  extra.push('Croissance : 7 j '+(f.growth?.sevenDays==null?'—':(f.growth.sevenDays*100).toFixed(1)+' %')+' · 30 j '+(f.growth?.thirtyDays==null?'—':(f.growth.thirtyDays*100).toFixed(1)+' %')+' · 90 j '+(f.growth?.ninetyDays==null?'—':(f.growth.ninetyDays*100).toFixed(1)+' %')+'.');
  extra.push('Précision du modèle : '+(q.forecastBacktests||0)+' comparaison(s) complète(s) · erreur moyenne '+(q.forecastMeanAbsoluteError==null?'pas encore mesurable':(q.forecastMeanAbsoluteError*100).toFixed(1)+' %')+' · facteur de calibration '+Number(q.calibrationFactor||1).toFixed(2)+'.');
+ extra.push('Panier moyen : '+money(f.orderDistribution?.averageOrderAmount)+' · médiane : '+money(f.orderDistribution?.medianOrderAmount)+' · commandes atypiques : '+num(f.orderDistribution?.outlierCommissions)+'.');
+ extra.push('Commission moyenne par commande livrée : '+money(f.rates?.commissionPerDelivered)+' · par commande signée : '+money(f.rates?.commissionPerSigned)+' · remboursements/retours observés : '+num(f.orderDistribution?.refunds)+'.');
+ extra.push('Taux de remboursement observé : '+(f.rates?.refund==null?'non calculable':(f.rates.refund*100).toFixed(1)+' %')+' · commandes en attente : '+num(f.statusCounts?.Pending)+' · livrées : '+num(f.statusCounts?.Delivered)+' · signées : '+num(f.statusCounts?.Signed)+'.');
+ if(breakdown.currencies&&Object.keys(breakdown.currencies).length)extra.push('Devises présentes : '+Object.entries(breakdown.currencies).map(([k,v])=>k+' ('+num(v)+')').join(' · ')+'.');
+ if(breakdown.regions?.length)extra.push('Régions les plus représentées : '+breakdown.regions.map(x=>x.name+' ('+money(x.amount)+')').join(' · ')+'.');
+ if(f.weekday?.length)extra.push('Commandes par jour : '+f.weekday.map(x=>x.day+' '+num(x.orders)).join(' · ')+'.');
+
  const breakdown=f.breakdowns||{};
  if(breakdown.categories?.length)extra.push('Catégories : '+breakdown.categories.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
  if(breakdown.products?.length)extra.push('Produits : '+breakdown.products.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
