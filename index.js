@@ -2924,6 +2924,8 @@ function affiliatePublicOrder(order) {
     refundedAt: order.refundedAt || order.refundTime || null,
     appName: String(order.appName || ''),
     feedId: String(order.feedId || ''),
+    deliveredAt: order.deliveredAt || order.deliveryTime || order.receiveTime || null,
+    signedAt: order.signedAt || order.signTime || order.validateTime || null,
     firstSeenAt: order.firstSeenAt || new Date().toISOString(),
     lastSeenAt: new Date().toISOString(),
     isNew: Boolean(order.isNew)
@@ -2977,13 +2979,18 @@ async function syncHacooAffiliate() {
     }
     data.affiliateOrders = data.affiliateOrders.slice(-10000);
     data.affiliateOrderEvents = (data.affiliateOrderEvents || []).slice(-30000);
-    const syncForecast = buildAffiliateForecast({
-      orders: data.affiliateOrders || [], events: data.affiliateOrderEvents || [],
-      snapshots: data.affiliateForecastSnapshots || [], now: Date.now()
-    });
+    let syncForecast = null;
+    try {
+      syncForecast = buildAffiliateForecast({
+        orders: data.affiliateOrders || [], events: data.affiliateOrderEvents || [],
+        snapshots: data.affiliateForecastSnapshots || [], now: Date.now()
+      });
+    } catch (forecastError) {
+      console.warn('Prévisionnel non calculé pendant la synchronisation :', forecastError.message);
+    }
     const snapshot = {
       date: now.slice(0, 10), at: now, total: data.affiliateOrders.length,
-      forecast30: Number(syncForecast.projections?.thirtyDays?.realistic || 0),
+      forecast30: Number(syncForecast?.projections?.thirtyDays?.realistic || 0),
       pending: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Pending').length,
       delivered: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Delivered').length,
       signed: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Signed').length,
