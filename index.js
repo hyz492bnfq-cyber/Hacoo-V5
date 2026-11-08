@@ -2964,7 +2964,7 @@ async function syncHacooAffiliate() {
             orderNo: key, fromStatus, toStatus, at: now,
             estimatedCommission: Number(normalized.totalCommissionAmount || 0),
             actualCommission: Number(normalized.actualCommission || 0) + Number(normalized.actualSubsidy || 0),
-            signedCommission: Number(normalized.signTotalCommissionAmount || 0)
+            signedCommission: Number(normalized.signTotalCommissionAmount || 0) || Number(normalized.signCommissionAmount || 0) + Number(normalized.signSubsidyAmount || 0) || Number(normalized.actualCommission || 0) + Number(normalized.actualSubsidy || 0) || Number(normalized.totalCommissionAmount || 0)
           });
         }
         data.affiliateOrders[i] = { ...previous, ...normalized, firstSeenAt: previous.firstSeenAt || now, isNew: false };
@@ -2977,8 +2977,13 @@ async function syncHacooAffiliate() {
     }
     data.affiliateOrders = data.affiliateOrders.slice(-10000);
     data.affiliateOrderEvents = (data.affiliateOrderEvents || []).slice(-30000);
+    const syncForecast = buildAffiliateForecast({
+      orders: data.affiliateOrders || [], events: data.affiliateOrderEvents || [],
+      snapshots: data.affiliateForecastSnapshots || [], now: Date.now()
+    });
     const snapshot = {
       date: now.slice(0, 10), at: now, total: data.affiliateOrders.length,
+      forecast30: Number(syncForecast.projections?.thirtyDays?.realistic || 0),
       pending: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Pending').length,
       delivered: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Delivered').length,
       signed: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Signed').length,
