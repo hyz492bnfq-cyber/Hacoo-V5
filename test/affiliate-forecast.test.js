@@ -47,3 +47,24 @@ test('ignores canceled orders in revenue while retaining cancellation counts', (
   assert.equal(result.totals.estimated, 500);
   assert.equal(result.totals.canceledPotential, 1000);
 });
+
+
+test('calibrates only after three non-overlapping completed forecast periods', () => {
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const day = 86400000;
+  const snapshots = [-100, -65, -30].map(offset => ({
+    at: new Date(now + offset * day).toISOString(),
+    forecast30: 1000
+  }));
+  const events = [-90, -55, -15].map((offset, index) => ({
+    orderNo: 'S' + index,
+    fromStatus: 'Pending',
+    toStatus: 'Signed',
+    at: new Date(now + offset * day).toISOString(),
+    signedCommission: 1200
+  }));
+  const result = buildForecast({ now, snapshots, events, orders: [] });
+  assert.equal(result.dataQuality.forecastBacktests, 3);
+  assert.equal(result.dataQuality.calibrationFactor, 1.2);
+  assert.ok(result.dataQuality.forecastMeanAbsoluteError > 0.16);
+});
