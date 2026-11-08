@@ -2912,8 +2912,8 @@ function affiliatePublicOrder(order) {
     signSubsidyAmount: Number(order.signSubsidyAmount || 0),
     signTotalCommissionAmount: Number(order.signTotalCommissionAmount || 0),
     // Hacoo renvoie les montants réels dans les champs sign* (en centimes).
-    actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? order.signCommissionAmount ?? 0),
-    actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? order.signSubsidyAmount ?? 0),
+    actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? 0),
+    actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? 0),
     commissionRate: Number(order.commissionRate || 0),
     productName: String(order.productName || order.productTitle || order.goodsName || order.skuName || ''),
     productCategory: String(order.productCategory || order.categoryName || order.category || ''),
@@ -2935,10 +2935,10 @@ function affiliatePublicOrder(order) {
 function affiliateForecastStatus(order) {
   const status = String(order?.orderStatus || order?.status || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
   if (/cancel|annul|refund|return/.test(status)) return 'Canceled';
-  const signedValue = Number(order?.signTotalCommissionAmount || 0) || Number(order?.signCommissionAmount || 0) + Number(order?.signSubsidyAmount || 0);
-  if (/sign|complete|finished|settled|validated/.test(status) || signedValue > 0) return 'Signed';
-  const confirmed = Number(order?.actualCommission || 0) + Number(order?.actualSubsidy || 0);
-  if (/deliver|received|arrived/.test(status) || confirmed > 0) return 'Delivered';
+  // Le statut de commande est la seule preuve de l'étape : les montants Actual/Sign
+  // ne signifient ni livraison, ni signature, ni paiement reçu.
+  if (/^(signed|sign|complete|completed|finished|settled|validated|valide|validé)$/.test(status)) return 'Signed';
+  if (/^(delivered|received|arrived|livre|livré)$/.test(status)) return 'Delivered';
   if (status === 'pending') return 'Pending';
   return 'Other';
 }
@@ -2966,7 +2966,9 @@ async function syncHacooAffiliate() {
             orderNo: key, fromStatus, toStatus, at: now,
             estimatedCommission: Number(normalized.totalCommissionAmount || 0),
             actualCommission: Number(normalized.actualCommission || 0) + Number(normalized.actualSubsidy || 0),
-            signedCommission: Number(normalized.signTotalCommissionAmount || 0) || Number(normalized.signCommissionAmount || 0) + Number(normalized.signSubsidyAmount || 0) || Number(normalized.actualCommission || 0) + Number(normalized.actualSubsidy || 0) || Number(normalized.totalCommissionAmount || 0)
+            signedCommission: Number(normalized.signTotalCommissionAmount || 0) || Number(normalized.signCommissionAmount || 0) + Number(normalized.signSubsidyAmount || 0),
+            statusEvidence: 'orderStatus',
+            rawOrderStatus: normalized.orderStatus
           });
         }
         data.affiliateOrders[i] = { ...previous, ...normalized, firstSeenAt: previous.firstSeenAt || now, isNew: false };
