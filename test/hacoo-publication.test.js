@@ -102,6 +102,34 @@ test('résout une publication Hacoo avec le résolveur injecté', async () => {
   assert.equal(result.itemId, '40886057');
 });
 
+test('transmet ets et f du lien de publication au transport getFeedDetail', async () => {
+  let received;
+  const result = await resolvePublicationFirstProduct(
+    'https://www.hacoo.pl/p/15611867?f=campaign-from-link&ets=1794063867916',
+    {
+      fetchFeedDetail: async (id, context) => {
+        received = { id, context };
+        return {
+          api: 'dwp.feed-center.getFeedDetail',
+          code: 1001,
+          data: {
+            productCardDetail: {
+              first: {
+                moduleType: 'item_detail_card',
+                moduleData: { item_id: 40870813, extPlat: 'hacoo', out_site: false }
+              }
+            }
+          }
+        };
+      }
+    }
+  );
+  assert.equal(received.id, '15611867');
+  assert.deepEqual(received.context, { ets: '1794063867916', f: 'campaign-from-link' });
+  assert.equal(result.status, 'product');
+  assert.equal(result.itemId, '40870813');
+});
+
 test('une erreur API ne produit jamais de lien produit', async () => {
   assert.deepEqual(await resolvePublicationFirstProduct('https://www.hacoo.pl/p/15580911', {
     fetchFeedDetail: async () => { throw new Error('unauthorized'); }
