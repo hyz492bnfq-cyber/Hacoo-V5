@@ -586,7 +586,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      <div class="kpi c3 info"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-box"/></svg></span><span class="kpi-l">Commandes récupérées</span></div><div class="kpi-v" id="affTotal">—</div><div class="kpi-s" id="affTotalSub">&nbsp;</div></div>
      <div class="kpi c3 warn"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-plus"/></svg></span><span class="kpi-l">Nouvelles commandes</span></div><div class="kpi-v" id="affNew">—</div><div class="kpi-s">Vues pour la 1ʳᵉ fois il y a moins de 24 h</div></div>
      <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-coin"/></svg></span><span class="kpi-l">Commissions estimées</span></div><div class="kpi-v" id="affEstimated">—</div><div class="kpi-s" id="affEstimatedSub">Hors annulées</div></div>
-     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-check"/></svg></span><span class="kpi-l">Commission confirmée en attente</span></div><div class="kpi-v" id="affSigned">—</div><div class="kpi-s">Actual Commission + Actual Subsidy · hors annulées</div></div>
+     <div class="kpi c3 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-check"/></svg></span><span class="kpi-l">Montants Actual Hacoo (non signés)</span></div><div class="kpi-v" id="affSigned">—</div><div class="kpi-s">Actual Commission + Actual Subsidy · pas un paiement reçu</div></div>
     </div>
 
     <div class="period-bar" data-noswipe>
@@ -644,7 +644,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      <div class="forecast-grid">
       <div class="kpi info"><div class="kpi-l">Prochaines 24 heures</div><div class="kpi-v" id="forecast1d">—</div><div class="kpi-s">Estimation centrale</div><div class="kpi-s" id="forecast1dBounds"></div></div>
       <div class="kpi info"><div class="kpi-l">Prochains 7 jours</div><div class="kpi-v" id="forecast7d">—</div><div class="kpi-s">Estimation centrale</div><div class="kpi-s" id="forecast7dBounds"></div></div>
-      <div class="kpi info"><div class="kpi-l">D’ici la fin du mois</div><div class="kpi-v" id="forecastMonth">—</div><div class="kpi-s">Estimation centrale</div><div class="kpi-s" id="forecastMonthBounds"></div></div>
+      <div class="kpi info"><div class="kpi-l">D’ici la fin du mois</div><div class="kpi-v" id="forecastMonth">—</div><div class="kpi-s">Cumul estimé du mois : déjà généré + reste à venir</div><div class="kpi-s" id="forecastMonthBounds"></div></div>
       <div class="kpi info"><div class="kpi-l">Dans 3 mois</div><div class="kpi-v" id="forecast3m">—</div><div class="kpi-s">Estimation centrale</div><div class="kpi-s" id="forecast3mBounds"></div></div>
       <div class="kpi info"><div class="kpi-l">Dans 6 mois</div><div class="kpi-v" id="forecast6m">—</div><div class="kpi-s">Estimation centrale</div><div class="kpi-s" id="forecast6mBounds"></div></div>
       <div class="kpi info"><div class="kpi-l">Dans 12 mois</div><div class="kpi-v" id="forecast12m">—</div><div class="kpi-s">Estimation centrale</div><div class="kpi-s" id="forecast12mBounds"></div></div>
@@ -1856,11 +1856,12 @@ function renderAffiliateForecast(){
  showProjection('forecast1d',p.oneDay);
  showProjection('forecast7d',p.sevenDays);
  showProjection('forecastMonth',p.monthEnd);
+ if(p.monthEnd)set('forecastMonthBounds','Déjà généré : '+money(p.monthEnd.monthToDateGenerated||0)+' · fourchette fin de mois : '+money(p.monthEnd.pessimistic)+' à '+money(p.monthEnd.optimistic));
  showProjection('forecast3m',p.threeMonths);
  showProjection('forecast6m',p.sixMonths);
  showProjection('forecast12m',p.twelveMonths);
  set('forecastConfidence','Fiabilité '+(q.confidence||'faible'));
- set('forecastIntro','Prévision calculée à partir de '+num(q.orders)+' commande(s) et '+num(q.historyDays)+' jour(s) d’activité. Les commissions signées sont distinctes des commissions estimées et confirmées.');
+ set('forecastIntro','Prévision basée sur '+num(q.orders)+' commande(s). La fin du mois inclut les commissions générées depuis le 1er et une estimation du reste. Actual Commission ne signifie pas paiement reçu ; seule une commande au statut Signed est comptée comme définitivement validée.');
  set('forecastAvg7',money(a.daily7));set('forecastAvg30',money(a.daily30));set('forecastAvgAll',money(a.dailySinceStart));
  set('forecastTrend',(a.trendLabel||'stable')+(Number.isFinite(a.trend)?' · '+(a.trend>=0?'+':'')+(a.trend*100).toFixed(1)+' %':''));
  set('forecastOrdersDay',Number(a.averageOrdersPerDay||0).toFixed(2));
