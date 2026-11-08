@@ -4,14 +4,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SERVICE, ENDPOINT, signH5Request, createFeedDetailFetcher } = require('../lib/hacoo-feed-detail');
 
-test('n’effectue aucun appel si la signature validée est absente', async () => {
+test('n’effectue aucun appel si le contexte H5 est absent', async () => {
   let calls = 0;
   const fetchFeedDetail = createFeedDetailFetcher({
     config: { cookie: 'session=test' },
-    contextProvider: async () => ({ ets: '1794576803237', f: 'campaign-context' }),
+    contextProvider: async () => ({ ets: '', f: '' }),
     fetchImpl: async () => { calls++; throw new Error('unexpected'); }
   });
-  await assert.rejects(fetchFeedDetail('15607115'), /Signature getFeedDetail non validée/);
+  await assert.rejects(fetchFeedDetail('15607115'), /Contexte H5 invalide/);
   assert.equal(calls, 0);
 });
 
