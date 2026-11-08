@@ -558,7 +558,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      </div>
      <div class="grid12">
       <div class="card c6 flat" style="padding:16px"><h3>Base de calcul</h3><div class="mini">
-       <div class="m"><span>Moyenne journalière · 7 jours</span><b id="forecastAvg7">—</b></div><div class="m"><span>Moyenne journalière · 30 jours</span><b id="forecastAvg30">—</b></div><div class="m"><span>Moyenne depuis le début</span><b id="forecastAvgAll">—</b></div><div class="m"><span>Tendance récente</span><b id="forecastTrend">—</b></div><div class="m"><span>Commandes moyennes / jour</span><b id="forecastOrdersDay">—</b></div><div class="m"><span>Commission moyenne / commande</span><b id="forecastAvgOrder">—</b></div>
+       <div class="m"><span>Moyenne journalière · 7 jours</span><b id="forecastAvg7">—</b></div><div class="m"><span>Moyenne journalière · 30 jours</span><b id="forecastAvg30">—</b></div><div class="m"><span>Moyenne depuis le début</span><b id="forecastAvgAll">—</b></div><div class="m"><span>Tendance récente</span><b id="forecastTrend">—</b></div><div class="m"><span>Commandes moyennes / jour</span><b id="forecastOrdersDay">—</b></div><div class="m"><span>Commission moyenne / commande</span><b id="forecastAvgOrder">—</b></div><div class="m"><span>Projection signée · 24 h</span><b id="forecast1d">—</b></div><div class="m"><span>Projection signée · 7 jours</span><b id="forecast7d">—</b></div><div class="m"><span>Projection signée · 30 jours</span><b id="forecast30d">—</b></div>
       </div></div>
       <div class="card c6 flat" style="padding:16px"><h3>Commandes en cours et revenus</h3><div class="mini">
        <div class="m"><span>Commission estimée · Pending</span><b id="forecastPending">—</b></div><div class="m"><span>Commission confirmée · Delivered</span><b id="forecastDelivered">—</b></div><div class="m"><span>Commission signée · définitive</span><b id="forecastSigned">—</b></div><div class="m"><span>Potentiel attendu du portefeuille</span><b id="forecastPipeline">—</b></div><div class="m"><span>Commandes annulées</span><b id="forecastCanceled">—</b></div><div class="m"><span>Âge moyen des commandes actives</span><b id="forecastAge">—</b></div>
@@ -1770,7 +1770,7 @@ function renderAffiliateForecast(){
  if(!f||f.unavailable){
   set('forecastConfidence','Prévision indisponible');
   set('forecastIntro',f?.error||'Les données de prévision ne sont pas encore disponibles. Les autres fonctions Hacoo restent utilisables.');
-  ['forecastMonth','forecast3m','forecast6m','forecast12m','forecastAvg7','forecastAvg30','forecastAvgAll','forecastTrend','forecastOrdersDay','forecastAvgOrder','forecastPending','forecastDelivered','forecastSigned','forecastPipeline','forecastCanceled','forecastAge','forecastOrderCount','forecastDays','forecastTransitions','forecastLastSync'].forEach(id=>set(id,'—'));
+  ['forecastMonth','forecast3m','forecast6m','forecast12m','forecastAvg7','forecastAvg30','forecastAvgAll','forecastTrend','forecastOrdersDay','forecastAvgOrder','forecast1d','forecast7d','forecast30d','forecastPending','forecastDelivered','forecastSigned','forecastPipeline','forecastCanceled','forecastAge','forecastOrderCount','forecastDays','forecastTransitions','forecastLastSync'].forEach(id=>set(id,'—'));
   $('#forecastMissing').textContent='Les données de prévision ne sont pas disponibles.';
   return;
  }
@@ -1789,6 +1789,7 @@ function renderAffiliateForecast(){
  set('forecastTrend',(a.trendLabel||'stable')+(Number.isFinite(a.trend)?' · '+(a.trend>=0?'+':'')+(a.trend*100).toFixed(1)+' %':''));
  set('forecastOrdersDay',Number(a.averageOrdersPerDay||0).toFixed(2));
  set('forecastAvgOrder',money(a.averageCommissionPerOrder));
+ set('forecast1d',money(p.oneDay?.realistic));set('forecast7d',money(p.sevenDays?.realistic));set('forecast30d',money(p.thirtyDays?.realistic));
  set('forecastPending',money(pipe.pendingEstimated));set('forecastDelivered',money(pipe.deliveredConfirmed));
  set('forecastSigned',money(tot.signed));set('forecastPipeline',money(pipe.expectedSigned));
  set('forecastCanceled',num(pipe.canceledOrders));set('forecastAge',Number(pipe.averageAgeDays||0).toFixed(1)+' j');
@@ -1796,7 +1797,8 @@ function renderAffiliateForecast(){
  set('forecastTransitions',num(f.transitionCount||0));
  set('forecastLastSync',dateText(q.lastSyncAt));
  set('forecastAssumptions','Probabilité de livraison : '+(Number(pipe.deliveryProbability||0)*100).toFixed(0)+' % · signature après livraison : '+(Number(pipe.signatureProbability||0)*100).toFixed(0)+' % · annulation : '+(Number(pipe.cancellationProbability||0)*100).toFixed(0)+' %. Source : '+(pipe.assumptionSource||'hypothèses provisoires prudentes')+'. Ces taux sont des hypothèses, pas des résultats garantis.');
- const missing=f.missingInputs||[];
+ const goal=Number(store('m2.forecastGoal')||0);
+ const missing=(f.missingInputs||[]).filter(x=>!(goal>0&&x==='Objectifs financiers non configurés'));
  $('#forecastMissing').innerHTML=missing.length?missing.map(x=>'<div class="item"><span class="small muted">'+esc(x)+'</span></div>').join(''):'<div class="item"><span class="small muted">Les principaux paramètres sont disponibles.</span></div>';
  const extra=[];
  extra.push('Médiane journalière : '+money(a.medianDaily)+' · meilleure journée : '+money(a.bestDay)+' · pire journée : '+money(a.worstDay)+'.');
@@ -1804,6 +1806,10 @@ function renderAffiliateForecast(){
  extra.push('Taux de commission effectif observé : '+Number(a.effectiveCommissionRate||0).toFixed(2)+' % · ventes suivies : '+money(tot.sales)+'.');
  extra.push(f.weekdayFactorReady?'Répartition par jour de semaine exploitable.':'Répartition hebdomadaire non appliquée : historique encore trop court.');
  extra.push(f.calendar?.reason||'Aucun ajustement saisonnier automatique.');
+ extra.push('Annulations : '+(f.rates?.cancellation==null?'non calculable':(f.rates.cancellation*100).toFixed(1)+' %')+' · livraison : '+(f.rates?.delivery==null?'historique insuffisant':(f.rates.delivery*100).toFixed(1)+' %')+' · signature après livraison : '+(f.rates?.signatureAfterDelivery==null?'historique insuffisant':(f.rates.signatureAfterDelivery*100).toFixed(1)+' %')+'.');
+ extra.push('Délai moyen de livraison : '+(f.delays?.deliverySamples?Number(f.delays.deliveryAverageDays).toFixed(1)+' j':'pas encore mesurable')+' · délai moyen livraison → signature : '+(f.delays?.signatureSamples?Number(f.delays.signatureAverageDays).toFixed(1)+' j':'pas encore mesurable')+'.');
+ extra.push('Croissance : 7 j '+(f.growth?.sevenDays==null?'—':(f.growth.sevenDays*100).toFixed(1)+' %')+' · 30 j '+(f.growth?.thirtyDays==null?'—':(f.growth.thirtyDays*100).toFixed(1)+' %')+' · 90 j '+(f.growth?.ninetyDays==null?'—':(f.growth.ninetyDays*100).toFixed(1)+' %')+'.');
+ extra.push('Précision du modèle : '+(q.forecastBacktests||0)+' comparaison(s) complète(s) · erreur moyenne '+(q.forecastMeanAbsoluteError==null?'pas encore mesurable':(q.forecastMeanAbsoluteError*100).toFixed(1)+' %')+' · facteur de calibration '+Number(q.calibrationFactor||1).toFixed(2)+'.');
  const breakdown=f.breakdowns||{};
  if(breakdown.categories?.length)extra.push('Catégories : '+breakdown.categories.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
  if(breakdown.products?.length)extra.push('Produits : '+breakdown.products.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
@@ -1811,7 +1817,6 @@ function renderAffiliateForecast(){
  $('#forecastExtra').innerHTML=extra.map(x=>'<div class="item"><span class="small muted">'+esc(x)+'</span></div>').join('');
  const sims=f.growthSimulations||[];
  $('#forecastGrowthSims').innerHTML=sims.map(x=>'<div class="m"><span>+'+Math.round(x.growth*100)+' % d’activité</span><b>'+money(x.monthly)+'</b></div>').join('')||'<span class="small muted">Pas assez de données.</span>';
- const goal=Number(store('m2.forecastGoal')||0);
  if($('#forecastGoal').value==='')$('#forecastGoal').value=goal||'';
  if(goal>0&&usdToEur!=null){
   const projected30=Number(a.dailyRunRate||0)*30*Number(pipe.finalizationProbabilityPending||0);
