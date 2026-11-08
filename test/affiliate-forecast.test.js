@@ -149,3 +149,22 @@ test('month-end projection uses exact remaining calendar days and a risk-adjuste
   assert.ok(month.futureExpectedCommission > 0);
   assert.ok(month.realistic >= result.monthToDate.expectedFinal);
 });
+
+
+test('Pending amounts are treated as expected income, with only cancellation/return risk deducted; commission and subsidy are combined', () => {
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const orders = [
+    { orderNo: 'PENDING-1', createTime: Date.UTC(2026, 10, 8), orderStatus: 'Pending',
+      totalCommissionAmount: 10000, actualCommission: 8000, actualSubsidy: 2000, orderAmount: 50000 },
+    { orderNo: 'SIGNED-1', createTime: Date.UTC(2026, 10, 7), orderStatus: 'Signed',
+      signCommissionAmount: 7000, signSubsidyAmount: 3000, signTotalCommissionAmount: 10000, orderAmount: 50000 }
+  ];
+  const result = buildForecast({ now, orders });
+  const month = result.projections.monthEnd;
+  assert.equal(month.monthToDateGenerated, 20000);
+  assert.equal(month.monthToDateSigned, 10000);
+  assert.ok(month.monthToDateExpected > 10000);
+  assert.ok(month.monthToDateExpected <= 20000);
+  assert.ok(month.monthToDateExpected >= 17000);
+  assert.ok(result.assumptions.pendingProbability >= 0.8);
+});
