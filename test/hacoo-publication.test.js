@@ -147,3 +147,31 @@ test('extrait le premier produit depuis un script JSON public', () => {
   assert.equal(result.status, 'product');
   assert.equal(result.itemId, '40870813');
 });
+
+
+test('retombe sur les données publiques quand getFeedDetail rejette un identifiant /p/ numérique', async () => {
+  let apiCalls = 0;
+  let pageCalls = 0;
+  const html = '<html><script type="application/json">{"productCardDetail":{"first":{"moduleType":"item_detail_card","moduleData":{"item_id":40870813,"extPlat":"hacoo","out_site":false}}}}</script></html>';
+  const result = await resolvePublicationFirstProduct('https://www.hacoo.pl/p/15459430?f=campaign&ets=1794063867916', {
+    fetchFeedDetail: async id => {
+      apiCalls++;
+      assert.equal(id, '15459430');
+      throw new Error('getFeedDetail refusé (102500001) : post uuid invalid');
+    },
+    fetchImpl: async url => {
+      pageCalls++;
+      assert.equal(new URL(url).pathname, '/p/15459430');
+      return {
+        ok: true, status: 200,
+        headers: { get: name => name.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null },
+        text: async () => html
+      };
+    }
+  });
+  assert.equal(apiCalls, 1);
+  assert.equal(pageCalls, 1);
+  assert.equal(result.status, 'product');
+  assert.equal(result.itemId, '40870813');
+  assert.equal(result.productUrl, 'https://www.hacoo.pl/en-FR/detail/40870813');
+});
