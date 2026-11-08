@@ -36,7 +36,6 @@ test('does not claim medium confidence when all orders are still pending', () =>
   assert.equal(result.dataQuality.confidence, 'faible');
   assert.ok(result.projections.monthEnd.realistic > 0);
 });
-});
 
 test('does not count the same order as estimated, confirmed and signed revenue', () => {
   const now = Date.parse('2026-11-09T12:00:00Z');
