@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { SERVICE, ENDPOINT, createFeedDetailFetcher } = require('../lib/hacoo-feed-detail');
+const { SERVICE, ENDPOINT, signH5Request, createFeedDetailFetcher } = require('../lib/hacoo-feed-detail');
 
 test('n’effectue aucun appel si la signature validée est absente', async () => {
   let calls = 0;
@@ -67,4 +67,13 @@ test('refuse une réponse métier en erreur', async () => {
     fetchImpl: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 401, msg: 'unauthorized' }) })
   });
   await assert.rejects(fetchFeedDetail('15607115'), /getFeedDetail refusé \(401\)/);
+});
+
+
+test('signe la requête H5 avec la forme DWP documentée dans le projet', () => {
+  const crypto = require('node:crypto');
+  const data = { ets: '1794576803237', f: 'campaign-context', feedId: '15607115' };
+  const ct = '1794576803237';
+  const expected = crypto.createHash('md5').update('1' + SERVICE + '1' + JSON.stringify(data) + ct + 'E8748EF263C69EEE30A77CC6E0CD2CAC').digest('hex');
+  assert.equal(signH5Request({ service: SERVICE, data, ct }), expected);
 });
