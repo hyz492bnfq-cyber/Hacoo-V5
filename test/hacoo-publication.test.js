@@ -139,3 +139,11 @@ test('parse la forme exacte observée dans la réponse HAR getFeedDetail', () =>
   assert.equal(result.itemId, '40870813');
   assert.equal(result.productUrl, 'https://www.hacoo.pl/en-FR/detail/40870813');
 });
+
+
+test('extrait le premier produit depuis un script JSON public', () => {
+  const html = '<html><script type="application/json">{"productCardDetail":{"one":{"moduleType":"item_detail_card","moduleData":{"item_id":40870813,"extPlat":"hacoo","out_site":false}}}}</script></html>';
+  const result = parsePublicPublicationHtml(html);
+  assert.equal(result.status, 'product');
+  assert.equal(result.itemId, '40870813');
+});
