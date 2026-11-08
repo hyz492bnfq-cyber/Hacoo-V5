@@ -166,5 +166,5 @@ test('Pending amounts are treated as expected income, with only cancellation/ret
   assert.ok(month.monthToDateExpected > 10000);
   assert.ok(month.monthToDateExpected <= 20000);
   assert.ok(month.monthToDateExpected >= 17000);
-  assert.ok(result.assumptions.pendingProbability >= 0.8);
+  assert.ok(result.pipeline.finalizationProbabilityPending >= 0.8);
 });
