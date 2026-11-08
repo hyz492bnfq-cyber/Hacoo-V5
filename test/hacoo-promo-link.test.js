@@ -213,3 +213,39 @@ test('ne contourne pas un premier produit externe et conserve le lien de publica
   assert.equal(result.errors.length, 1);
   assert.equal(promoCalls, 0);
 });
+
+
+test('résout un lien OnlyAff qui redirige vers une publication Hacoo puis convertit son premier produit', async () => {
+  let redirectCalls = 0;
+  let promoProductUrl = '';
+  const result = await replaceHacooLinks('https://c.onlyaff.app/dYxHUS', {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    resolveFetchImpl: async () => {
+      redirectCalls++;
+      if (redirectCalls === 1) return {
+        status: 302, ok: false,
+        headers: { get: () => 'https://www.hacoo.pl/p/15591744' }
+      };
+      return { status: 200, ok: true, headers: { get: () => null } };
+    },
+    fetchFeedDetail: async feedId => {
+      assert.equal(feedId, '15591744');
+      return { code: 1001, data: { productCardDetail: {
+        first: { moduleType: 'item_detail_card', moduleData: { item_id: 40722058, extPlat: 'hacoo', out_site: false } },
+        second: { moduleType: 'item_detail_card', moduleData: { item_id: 40665765, extPlat: 'hacoo', out_site: false } }
+      } } };
+    },
+    fetchImpl: async (_url, init) => {
+      promoProductUrl = JSON.parse(new URLSearchParams(init.body).get('data')).link;
+      return { ok: true, status: 200, text: async () => JSON.stringify({
+        code: 1001, data: { promoLink: 'https://c.onlyaff.app/REGENERATED', linkType: 'DETAIL' }
+      }) };
+    },
+    timestamp: '123'
+  });
+  assert.equal(redirectCalls, 2);
+  assert.equal(promoProductUrl, 'https://www.hacoo.pl/en-FR/detail/40722058');
+  assert.equal(result.text, 'https://c.onlyaff.app/REGENERATED');
+  assert.equal(result.changed, true);
+  assert.equal(result.errors.length, 0);
+});
