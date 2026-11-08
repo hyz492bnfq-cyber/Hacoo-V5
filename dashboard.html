@@ -643,12 +643,12 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      <div class="card-h"><div><h3>Prévisions de revenus</h3><p class="sub">Estimation des commissions à venir, basée sur tes commandes Hacoo</p></div><span class="pill" id="forecastConfidence">Fiabilité en cours…</span></div>
      <p class="note" id="forecastIntro">Les prévisions sont des estimations, pas des gains garantis. Elles sont recalculées après chaque synchronisation.</p>
      <div class="forecast-main">
-      <div class="kpi info forecast-month-card"><div class="kpi-l">Prévision de fin de mois</div><div class="kpi-v" id="forecastMonth">—</div><div class="kpi-s" id="forecastMonthBounds">Scénario réaliste, montant déjà généré et activité restante compris.</div></div>
+      <div class="kpi info forecast-month-card"><div class="kpi-l">Prévision de fin de mois</div><div class="kpi-v" id="forecastMonth">—</div><div class="kpi-s" id="forecastMonthBounds">Scénario réaliste, montant déjà généré et activité restante compris.</div><div class="kpi-s" id="forecastFuture">Reste estimé : —</div></div>
       <div class="forecast-summary-grid">
-       <div class="kpi"><div class="kpi-l">Déjà généré ce mois-ci</div><div class="kpi-v" id="forecastGenerated">—</div><div class="kpi-s">Actual ou estimé, hors annulations.</div></div>
-       <div class="kpi"><div class="kpi-l">Rythme prévu par jour</div><div class="kpi-v" id="forecastDaily">—</div><div class="kpi-s">Après ajustement des risques.</div></div>
+       <div class="kpi"><div class="kpi-l">Potentiel généré ce mois-ci</div><div class="kpi-v" id="forecastGenerated">—</div><div class="kpi-s">Actual ou Estimated, hors annulations.</div></div>
+       <div class="kpi"><div class="kpi-l">Gain estimé par jour</div><div class="kpi-v" id="forecastDaily">—</div><div class="kpi-s">Après ajustement des risques.</div></div>
        <div class="kpi"><div class="kpi-l">Jours restants</div><div class="kpi-v" id="forecastRemaining">—</div><div class="kpi-s">Journées complètes après aujourd’hui.</div></div>
-       <div class="kpi"><div class="kpi-l">À générer d’ici la fin du mois</div><div class="kpi-v" id="forecastFuture">—</div><div class="kpi-s">Nouvelles commissions et pipeline restant estimés.</div></div>
+       <div class="kpi"><div class="kpi-l">Déjà validé ce mois-ci</div><div class="kpi-v" id="forecastSignedMonth">—</div><div class="kpi-s">Commissions au statut Signed uniquement.</div></div>
       </div>
      </div>
      <p class="forecast-help">La prévision part du potentiel déjà généré ce mois-ci, puis estime les commissions de chaque jour restant. Le rythme est ajusté selon les tendances récentes, les jours de la semaine si l’historique le permet, les commandes en cours et les taux de validation et d’annulation.</p>
@@ -1840,7 +1840,7 @@ function renderAffiliateForecast(){
  if(!f||f.unavailable){
   set('forecastConfidence','Prévision indisponible');
   set('forecastIntro',f?.error||'Les données de prévision ne sont pas encore disponibles. Les autres fonctions Hacoo restent utilisables.');
-  ['forecast1d','forecast7d','forecastMonth','forecastGenerated','forecastDaily','forecastRemaining','forecastFuture','forecast3m','forecast6m','forecast12m','forecastAvg7','forecastAvg30','forecastAvgAll','forecastTrend','forecastOrdersDay','forecastAvgOrder','forecast1d','forecast7d','forecast30d','forecastPending','forecastDelivered','forecastSigned','forecastPipeline','forecastCanceled','forecastAge','forecastOrderCount','forecastDays','forecastTransitions','forecastLastSync'].forEach(id=>set(id,'—'));
+  ['forecast1d','forecast7d','forecastMonth','forecastGenerated','forecastDaily','forecastRemaining','forecastSignedMonth','forecastFuture','forecast3m','forecast6m','forecast12m','forecastAvg7','forecastAvg30','forecastAvgAll','forecastTrend','forecastOrdersDay','forecastAvgOrder','forecast1d','forecast7d','forecast30d','forecastPending','forecastDelivered','forecastSigned','forecastPipeline','forecastCanceled','forecastAge','forecastOrderCount','forecastDays','forecastTransitions','forecastLastSync'].forEach(id=>set(id,'—'));
   $('#forecastMissing').textContent='Les données de prévision ne sont pas disponibles.';
   return;
  }
@@ -1857,7 +1857,8 @@ function renderAffiliateForecast(){
    set('forecastGenerated',money(p.monthEnd.monthToDateGenerated||0));
    set('forecastDaily',money(p.monthEnd.dailyExpected||0));
    set('forecastRemaining',num(p.monthEnd.daysRemaining||0));
-   set('forecastFuture',money(p.monthEnd.futureExpectedCommission||0));
+   set('forecastSignedMonth',money(p.monthEnd.monthToDateSigned||0));
+   set('forecastFuture','Reste estimé : '+money(p.monthEnd.futureExpectedCommission||0));
   }
  showProjection('forecast3m',p.threeMonths);
  showProjection('forecast6m',p.sixMonths);
