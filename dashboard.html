@@ -1764,7 +1764,7 @@ function openOrderDetail(no){
 function renderAffiliateForecast(){
  const f=affiliateForecast;
  const set=(id,value)=>{const el=$('#'+id);if(el)el.textContent=value;};
- const money=v=>usdToEur==null?'—':affiliateMoney(v);
+ const money=v=>usdToEur==null?Number((Number(v||0)/100)).toLocaleString('fr-FR',{style:'currency',currency:'USD'}):affiliateMoney(v);
  const num=v=>nf(Number(v||0));
  const dateText=v=>v?new Date(v).toLocaleString('fr-FR',{timeZone:PARIS,day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'Jamais';
  if(!f||f.unavailable){
@@ -1822,7 +1822,7 @@ function renderAffiliateForecast(){
   const projected30=Number(a.dailyRunRate||0)*30*Number(pipe.finalizationProbabilityPending||0);
   const eur=(projected30/100)*usdToEur;
   set('forecastGoalResult','Rythme projeté sur 30 jours : '+eur.toLocaleString('fr-FR',{style:'currency',currency:'EUR'})+' · '+(eur>=goal?'objectif théoriquement atteint':'objectif non atteint au rythme actuel')+' ('+(eur/goal*100).toFixed(0)+' %).');
- }else set('forecastGoalResult','Définis un objectif pour comparer ton rythme actuel à ta cible.');
+ }else set('forecastGoalResult',goal>0?'Taux USD → EUR indisponible : objectif en euros non comparable pour le moment.':'Définis un objectif pour comparer ton rythme actuel à ta cible.');
 }
 
 /* ---- Chargement et événements ---- */
