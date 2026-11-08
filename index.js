@@ -2,6 +2,7 @@
 
 const { Bot, InlineKeyboard } = require('grammy');
 const hacooAffiliate = require('./lib/hacoo-affiliate');
+const { buildForecast: buildAffiliateForecast } = require('./lib/affiliate-forecast');
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -87,6 +88,8 @@ const DEFAULTS = {
   manualPublicationHistory: [],
   manualPublicationTrash: [],
   affiliateOrders: [],
+  affiliateOrderEvents: [],
+  affiliateForecastSnapshots: [],
   affiliateSync: { lastSyncAt: null, lastError: null, total: 0 },
   channelSync: { enabled: false, sourceChatId: '', destinationChatId: '', mode: 'automatic' },
   channelSyncConnections: [],
@@ -228,7 +231,7 @@ function normalizeData(saved) {
     'history', 'duplicateHistory', 'deletions',
     'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
     'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
-    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports', 'channelSyncImportSeen', 'affiliateOrders'
+    'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports', 'channelSyncImportSeen', 'affiliateOrders', 'affiliateOrderEvents', 'affiliateForecastSnapshots'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
@@ -2912,12 +2915,30 @@ function affiliatePublicOrder(order) {
     actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? order.signCommissionAmount ?? 0),
     actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? order.signSubsidyAmount ?? 0),
     commissionRate: Number(order.commissionRate || 0),
+    productName: String(order.productName || order.productTitle || order.goodsName || order.skuName || ''),
+    productCategory: String(order.productCategory || order.categoryName || order.category || ''),
+    promoCode: String(order.promoCode || order.couponCode || order.coupon || ''),
+    campaignId: String(order.campaignId || order.activityId || ''),
+    clicks: Number(order.clicks || order.clickCount || order.affiliateClicks || 0),
+    refundAmount: Number(order.refundAmount || order.refundedAmount || 0),
+    refundedAt: order.refundedAt || order.refundTime || null,
     appName: String(order.appName || ''),
     feedId: String(order.feedId || ''),
     firstSeenAt: order.firstSeenAt || new Date().toISOString(),
     lastSeenAt: new Date().toISOString(),
     isNew: Boolean(order.isNew)
   };
+}
+
+function affiliateForecastStatus(order) {
+  const status = String(order?.orderStatus || order?.status || '').trim().toLowerCase().replace(/[\\s_-]+/g, '');
+  if (/cancel|annul|refund|return/.test(status)) return 'Canceled';
+  const signedValue = Number(order?.signTotalCommissionAmount || 0) || Number(order?.signCommissionAmount || 0) + Number(order?.signSubsidyAmount || 0);
+  if (/sign|complete|finished|settled|validated/.test(status) || signedValue > 0) return 'Signed';
+  const confirmed = Number(order?.actualCommission || 0) + Number(order?.actualSubsidy || 0);
+  if (/deliver|received|arrived/.test(status) || confirmed > 0) return 'Delivered';
+  if (status === 'pending') return 'Pending';
+  return 'Other';
 }
 
 let affiliateSyncRunning = false;
@@ -2935,7 +2956,18 @@ async function syncHacooAffiliate() {
       if (!key) continue;
       if (existing.has(key)) {
         const i = existing.get(key);
-        data.affiliateOrders[i] = { ...data.affiliateOrders[i], ...normalized, firstSeenAt: data.affiliateOrders[i].firstSeenAt || now, isNew: false };
+        const previous = data.affiliateOrders[i];
+        const fromStatus = affiliateForecastStatus(previous);
+        const toStatus = affiliateForecastStatus(normalized);
+        if (fromStatus !== toStatus) {
+          data.affiliateOrderEvents.push({
+            orderNo: key, fromStatus, toStatus, at: now,
+            estimatedCommission: Number(normalized.totalCommissionAmount || 0),
+            actualCommission: Number(normalized.actualCommission || 0) + Number(normalized.actualSubsidy || 0),
+            signedCommission: Number(normalized.signTotalCommissionAmount || 0)
+          });
+        }
+        data.affiliateOrders[i] = { ...previous, ...normalized, firstSeenAt: previous.firstSeenAt || now, isNew: false };
       } else {
         normalized.firstSeenAt = now;
         normalized.isNew = true;
@@ -2944,6 +2976,18 @@ async function syncHacooAffiliate() {
       }
     }
     data.affiliateOrders = data.affiliateOrders.slice(-10000);
+    data.affiliateOrderEvents = (data.affiliateOrderEvents || []).slice(-30000);
+    const snapshot = {
+      date: now.slice(0, 10), at: now, total: data.affiliateOrders.length,
+      pending: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Pending').length,
+      delivered: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Delivered').length,
+      signed: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Signed').length,
+      canceled: data.affiliateOrders.filter(o => affiliateForecastStatus(o) === 'Canceled').length
+    };
+    const previousSnapshot = data.affiliateForecastSnapshots[data.affiliateForecastSnapshots.length - 1];
+    if (previousSnapshot && previousSnapshot.date === snapshot.date) data.affiliateForecastSnapshots[data.affiliateForecastSnapshots.length - 1] = snapshot;
+    else data.affiliateForecastSnapshots.push(snapshot);
+    data.affiliateForecastSnapshots = data.affiliateForecastSnapshots.slice(-730);
     data.affiliateSync = { lastSyncAt: now, lastError: null, total: result.total, pages: result.pages };
     saveNow();
     return { ok: true, fetched: result.records.length, stored: data.affiliateOrders.length, total: result.total, pages: result.pages, lastSyncAt: now };
@@ -3034,6 +3078,26 @@ app.get('/api/affiliate/exchange-rate', async (_req, res) => {
 
 app.get('/api/affiliate/status', (_req, res) => {
   res.json({ configured: hacooAffiliate.isConfigured(), sync: data.affiliateSync || {}, count: (data.affiliateOrders || []).length });
+});
+app.get('/api/affiliate/forecast', (_req, res) => {
+  try {
+    const forecast = buildAffiliateForecast({
+      orders: data.affiliateOrders || [],
+      events: data.affiliateOrderEvents || [],
+      snapshots: data.affiliateForecastSnapshots || [],
+      now: Date.now()
+    });
+    forecast.dataQuality.lastSyncAt = data.affiliateSync?.lastSyncAt || null;
+    forecast.dataQuality.syncError = data.affiliateSync?.lastError || null;
+    res.json(forecast);
+  } catch (error) {
+    // Une prévision ne doit jamais bloquer les autres fonctions Hacoo.
+    res.status(200).json({
+      unavailable: true,
+      error: String(error?.message || error).slice(0, 240),
+      generatedAt: new Date().toISOString()
+    });
+  }
 });
 app.get('/api/affiliate/orders', (req, res) => {
   const query = String(req.query.q || '').trim().toLowerCase();
