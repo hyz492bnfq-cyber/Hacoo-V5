@@ -547,6 +547,32 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
      </div>
     </div>
 
+    <div class="card stack" id="affiliateForecast">
+     <div class="card-h"><div><h3>Prévisionnel My MAE</h3><p class="sub">Projection des commissions futures · recalculée à chaque synchronisation Hacoo</p></div><span class="pill" id="forecastConfidence">Analyse des données…</span></div>
+     <p class="note" id="forecastIntro">Le calcul démarre avec les commandes disponibles, même si aucune n’est encore signée. Les hypothèses provisoires sont clairement séparées des résultats réels.</p>
+     <div class="grid12">
+      <div class="kpi c3 info"><div class="kpi-l">Fin du mois</div><div class="kpi-v" id="forecastMonth">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecastMonthBounds"></div></div>
+      <div class="kpi c3 info"><div class="kpi-l">Dans 3 mois</div><div class="kpi-v" id="forecast3m">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecast3mBounds"></div></div>
+      <div class="kpi c3 info"><div class="kpi-l">Dans 6 mois</div><div class="kpi-v" id="forecast6m">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecast6mBounds"></div></div>
+      <div class="kpi c3 info"><div class="kpi-l">Dans 12 mois</div><div class="kpi-v" id="forecast12m">—</div><div class="kpi-s">Scénario réaliste</div><div class="kpi-s" id="forecast12mBounds"></div></div>
+     </div>
+     <div class="grid12">
+      <div class="card c6 flat" style="padding:16px"><h3>Base de calcul</h3><div class="mini">
+       <div class="m"><span>Moyenne journalière · 7 jours</span><b id="forecastAvg7">—</b></div><div class="m"><span>Moyenne journalière · 30 jours</span><b id="forecastAvg30">—</b></div><div class="m"><span>Moyenne depuis le début</span><b id="forecastAvgAll">—</b></div><div class="m"><span>Tendance récente</span><b id="forecastTrend">—</b></div><div class="m"><span>Commandes moyennes / jour</span><b id="forecastOrdersDay">—</b></div><div class="m"><span>Commission moyenne / commande</span><b id="forecastAvgOrder">—</b></div>
+      </div></div>
+      <div class="card c6 flat" style="padding:16px"><h3>Commandes en cours et revenus</h3><div class="mini">
+       <div class="m"><span>Commission estimée · Pending</span><b id="forecastPending">—</b></div><div class="m"><span>Commission confirmée · Delivered</span><b id="forecastDelivered">—</b></div><div class="m"><span>Commission signée · définitive</span><b id="forecastSigned">—</b></div><div class="m"><span>Potentiel attendu du portefeuille</span><b id="forecastPipeline">—</b></div><div class="m"><span>Commandes annulées</span><b id="forecastCanceled">—</b></div><div class="m"><span>Âge moyen des commandes actives</span><b id="forecastAge">—</b></div>
+      </div></div>
+     </div>
+     <div class="grid12">
+      <div class="card c6 flat" style="padding:16px"><div class="row between wrap"><h3>Objectif mensuel</h3><span class="small muted">Facultatif</span></div><label class="lb" for="forecastGoal">Objectif de commissions signées (€)</label><div class="row"><input id="forecastGoal" type="number" min="0" step="10" placeholder="Ex. 500"><button class="btn sm" id="forecastGoalSave" type="button">Enregistrer</button></div><p class="note" id="forecastGoalResult">Définis un objectif pour comparer ton rythme actuel à ta cible.</p><h3 style="margin-top:18px">Simulations de croissance</h3><div id="forecastGrowthSims" class="mini"></div></div>
+      <div class="card c6 flat" style="padding:16px"><h3>Qualité et couverture des données</h3><div class="mini">
+       <div class="m"><span>Commandes analysées</span><b id="forecastOrderCount">—</b></div><div class="m"><span>Jours d’activité disponibles</span><b id="forecastDays">—</b></div><div class="m"><span>Transitions de statut observées</span><b id="forecastTransitions">—</b></div><div class="m"><span>Dernière synchronisation</span><b id="forecastLastSync">—</b></div>
+      </div><p class="note" id="forecastAssumptions"></p></div>
+     </div>
+     <div class="grid12"><div class="card c6 flat" style="padding:16px"><h3>Paramètres encore indisponibles</h3><div id="forecastMissing" class="list"></div></div><div class="card c6 flat" style="padding:16px"><h3>Analyses complémentaires</h3><div id="forecastExtra" class="list"></div></div></div>
+    </div>
+
     <div class="grid12">
      <div class="kpi c3 info"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-box"/></svg></span><span class="kpi-l">Commandes récupérées</span></div><div class="kpi-v" id="affTotal">—</div><div class="kpi-s" id="affTotalSub">&nbsp;</div></div>
      <div class="kpi c3 warn"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-plus"/></svg></span><span class="kpi-l">Nouvelles commandes</span></div><div class="kpi-v" id="affNew">—</div><div class="kpi-s">Vues pour la 1ʳᵉ fois il y a moins de 24 h</div></div>
@@ -1543,6 +1569,7 @@ const STATUS_COLOR={Pending:'#fb923c',Delivered:'#34d399',Canceled:'#f87171'};
 const STATUS_TAG={Pending:'warn',Delivered:'ok',Canceled:'bad'};
 
 let affiliateRows=[],affiliateLoaded=false,affiliateError='';
+let affiliateForecast=null;
 let affPeriod=(store('m2.affPeriod')||'30d'),affCustom=store('m2.affCustom')||{};
 const affiliateStatuses=new Set(['Pending','Delivered']);
 let affSortKey='date',affShown=25;
@@ -1734,11 +1761,71 @@ function openOrderDetail(no){
  ${cnl?'<p class="note">Commande annulée : exclue des gains et des graphiques de commissions.</p>':''}</div>`);
 }
 
+function renderAffiliateForecast(){
+ const f=affiliateForecast;
+ const set=(id,value)=>{const el=$('#'+id);if(el)el.textContent=value;};
+ const money=v=>usdToEur==null?'—':affiliateMoney(v);
+ const num=v=>nf(Number(v||0));
+ const dateText=v=>v?new Date(v).toLocaleString('fr-FR',{timeZone:PARIS,day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'Jamais';
+ if(!f||f.unavailable){
+  set('forecastConfidence','Prévision indisponible');
+  set('forecastIntro',f?.error||'Les données de prévision ne sont pas encore disponibles. Les autres fonctions Hacoo restent utilisables.');
+  ['forecastMonth','forecast3m','forecast6m','forecast12m','forecastAvg7','forecastAvg30','forecastAvgAll','forecastTrend','forecastOrdersDay','forecastAvgOrder','forecastPending','forecastDelivered','forecastSigned','forecastPipeline','forecastCanceled','forecastAge','forecastOrderCount','forecastDays','forecastTransitions','forecastLastSync'].forEach(id=>set(id,'—'));
+  $('#forecastMissing').textContent='Les données de prévision ne sont pas disponibles.';
+  return;
+ }
+ const p=f.projections||{},a=f.averages||{},pipe=f.pipeline||{},q=f.dataQuality||{},tot=f.totals||{};
+ const showProjection=(prefix,obj)=>{
+  set(prefix,obj?money(obj.realistic):'—');
+  set(prefix+'Bounds',obj?'Pessimiste '+money(obj.pessimistic)+' · Optimiste '+money(obj.optimistic):'—');
+ };
+ showProjection('forecastMonth',p.monthEnd);
+ showProjection('forecast3m',p.threeMonths);
+ showProjection('forecast6m',p.sixMonths);
+ showProjection('forecast12m',p.twelveMonths);
+ set('forecastConfidence','Fiabilité '+(q.confidence||'faible'));
+ set('forecastIntro','Prévision calculée à partir de '+num(q.orders)+' commande(s) et '+num(q.historyDays)+' jour(s) d’activité. Les commissions signées sont distinctes des commissions estimées et confirmées.');
+ set('forecastAvg7',money(a.daily7));set('forecastAvg30',money(a.daily30));set('forecastAvgAll',money(a.dailySinceStart));
+ set('forecastTrend',(a.trendLabel||'stable')+(Number.isFinite(a.trend)?' · '+(a.trend>=0?'+':'')+(a.trend*100).toFixed(1)+' %':''));
+ set('forecastOrdersDay',Number(a.averageOrdersPerDay||0).toFixed(2));
+ set('forecastAvgOrder',money(a.averageCommissionPerOrder));
+ set('forecastPending',money(pipe.pendingEstimated));set('forecastDelivered',money(pipe.deliveredConfirmed));
+ set('forecastSigned',money(tot.signed));set('forecastPipeline',money(pipe.expectedSigned));
+ set('forecastCanceled',num(pipe.canceledOrders));set('forecastAge',Number(pipe.averageAgeDays||0).toFixed(1)+' j');
+ set('forecastOrderCount',num(q.orders));set('forecastDays',num(q.historyDays));
+ set('forecastTransitions',num(f.transitionCount||0));
+ set('forecastLastSync',dateText(q.lastSyncAt));
+ set('forecastAssumptions','Probabilité de livraison : '+(Number(pipe.deliveryProbability||0)*100).toFixed(0)+' % · signature après livraison : '+(Number(pipe.signatureProbability||0)*100).toFixed(0)+' % · annulation : '+(Number(pipe.cancellationProbability||0)*100).toFixed(0)+' %. Source : '+(pipe.assumptionSource||'hypothèses provisoires prudentes')+'. Ces taux sont des hypothèses, pas des résultats garantis.');
+ const missing=f.missingInputs||[];
+ $('#forecastMissing').innerHTML=missing.length?missing.map(x=>'<div class="item"><span class="small muted">'+esc(x)+'</span></div>').join(''):'<div class="item"><span class="small muted">Les principaux paramètres sont disponibles.</span></div>';
+ const extra=[];
+ extra.push('Médiane journalière : '+money(a.medianDaily)+' · meilleure journée : '+money(a.bestDay)+' · pire journée : '+money(a.worstDay)+'.');
+ extra.push(num(a.zeroDays)+' jour(s) sans commande · '+num(a.activeRevenueDays)+' jour(s) avec commissions.');
+ extra.push('Taux de commission effectif observé : '+Number(a.effectiveCommissionRate||0).toFixed(2)+' % · ventes suivies : '+money(tot.sales)+'.');
+ extra.push(f.weekdayFactorReady?'Répartition par jour de semaine exploitable.':'Répartition hebdomadaire non appliquée : historique encore trop court.');
+ extra.push(f.calendar?.reason||'Aucun ajustement saisonnier automatique.');
+ const breakdown=f.breakdowns||{};
+ if(breakdown.categories?.length)extra.push('Catégories : '+breakdown.categories.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
+ if(breakdown.products?.length)extra.push('Produits : '+breakdown.products.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
+ if(breakdown.promotions?.length)extra.push('Promotions : '+breakdown.promotions.map(x=>x.name+' ('+money(x.amount)+')').join(' · '));
+ $('#forecastExtra').innerHTML=extra.map(x=>'<div class="item"><span class="small muted">'+esc(x)+'</span></div>').join('');
+ const sims=f.growthSimulations||[];
+ $('#forecastGrowthSims').innerHTML=sims.map(x=>'<div class="m"><span>+'+Math.round(x.growth*100)+' % d’activité</span><b>'+money(x.monthly)+'</b></div>').join('')||'<span class="small muted">Pas assez de données.</span>';
+ const goal=Number(store('m2.forecastGoal')||0);
+ if($('#forecastGoal').value==='')$('#forecastGoal').value=goal||'';
+ if(goal>0&&usdToEur!=null){
+  const projected30=Number(a.dailyRunRate||0)*30*Number(pipe.finalizationProbabilityPending||0);
+  const eur=(projected30/100)*usdToEur;
+  set('forecastGoalResult','Rythme projeté sur 30 jours : '+eur.toLocaleString('fr-FR',{style:'currency',currency:'EUR'})+' · '+(eur>=goal?'objectif théoriquement atteint':'objectif non atteint au rythme actuel')+' ('+(eur/goal*100).toFixed(0)+' %).');
+ }else set('forecastGoalResult','Définis un objectif pour comparer ton rythme actuel à ta cible.');
+}
+
 /* ---- Chargement et événements ---- */
 async function loadAffiliate(){
  try{
   // Charger d'abord les données Hacoo : une panne du convertisseur ne doit pas masquer les commandes.
-  const [response,status]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status')]);
+  const [response,status,forecast]=await Promise.all([api('/api/affiliate/orders'),api('/api/affiliate/status'),api('/api/affiliate/forecast').catch(error=>({unavailable:true,error:error.message}))]);
+  affiliateForecast=forecast;
   try{await loadEurRate();}catch(rateError){console.warn('Conversion EUR temporairement indisponible :',rateError);}
   affiliateRows=response.orders||[];affiliateLoaded=true;affiliateError='';
   const valid=affiliateRows.filter(o=>!isCanceled(o));
@@ -1756,7 +1843,7 @@ async function loadAffiliate(){
   const undated=affiliateRows.filter(o=>affiliateDate(o)==null).length;
   $('#affHistoryNote').textContent=(undated?`${nf(undated)} commande(s) sans date exploitable : exclue(s) des graphiques. `:'Données de ton compte Hacoo Affiliate, séparées des publications du bot. ')+(usdToEur!=null?`Montants convertis en euros depuis USD au taux ${usdToEur.toFixed(4)} (${store('m2.usdEurRate')?.source||'taux de référence'}, ${eurRateDate}).`:'Taux USD → EUR indisponible : les commandes et quantités restent affichées, mais les montants seront rétablis dès que le taux sera récupéré.');
  }catch(error){affiliateError=error.message;affiliateLoaded=true;$('#affOrders').innerHTML=`<div class="empty">${ic('alert')}${esc(error.message)}</div>`;}
- renderAffiliate();renderAffiliateCharts();renderHomeCommission();renderWallet();
+ renderAffiliate();renderAffiliateCharts();renderHomeCommission();renderWallet();renderAffiliateForecast();
 }
 
 /* ---- Wallet Hacoo (étape 1) ---- */
@@ -1809,6 +1896,7 @@ $('#affOrders').addEventListener('click',e=>{
  if(th){const k=th.dataset.sort;affSortKey=k==='date'?(affSortKey==='date'?'dateAsc':'date'):k;$('#affSort').value=affSortKey;renderAffiliate();return;}
  const tr=e.target.closest('tr[data-order]');if(tr)openOrderDetail(tr.dataset.order);
 });
+$('#forecastGoalSave').addEventListener('click',()=>{const value=Math.max(0,Number($('#forecastGoal').value||0));store('m2.forecastGoal',value);renderAffiliateForecast();toast(value>0?'Objectif mensuel enregistré':'Objectif mensuel effacé','ok');});
 $('#affiliateSync').addEventListener('click',async event=>{
  try{await busy(event.currentTarget,'Synchronisation…',async()=>{await post('/api/affiliate/sync',{});toast('Commandes Hacoo synchronisées','ok');await loadAffiliate();});}
  catch(error){toast(error.message,'bad');await loadAffiliate();}
