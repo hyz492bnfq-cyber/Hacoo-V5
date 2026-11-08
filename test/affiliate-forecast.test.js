@@ -20,6 +20,24 @@ test('produces a usable forecast with only pending orders and no signed orders',
   assert.match(result.pipeline.assumptionSource, /hypothèses provisoires/);
 });
 
+test('does not claim medium confidence when all orders are still pending', () => {
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  const day = 86400000;
+  const orders = Array.from({ length: 30 }, (_, i) => ({
+    orderNo: 'P' + i,
+    createTime: now - i * day,
+    orderStatus: 'Pending',
+    totalCommissionAmount: 1000,
+    orderAmount: 5000
+  }));
+  const result = buildForecast({ now, orders });
+  assert.equal(result.statusCounts.Signed, 0);
+  assert.equal(result.statusCounts.Pending, 30);
+  assert.equal(result.dataQuality.confidence, 'faible');
+  assert.ok(result.projections.monthEnd.realistic > 0);
+});
+});
+
 test('does not count the same order as estimated, confirmed and signed revenue', () => {
   const now = Date.parse('2026-11-09T12:00:00Z');
   const result = buildForecast({
