@@ -1938,11 +1938,13 @@ function renderWallet(){
  if(affiliateError||!affiliateLoaded){ids.forEach(i=>{const e=$('#'+i);if(e){delete e.dataset.v;e.textContent='—';}});['wlTn','wl7n','wl30n'].forEach(i=>$('#'+i).textContent='');['wlTd','wl7d','wl30d'].forEach(i=>$('#'+i).innerHTML='');$('#wlSpark').innerHTML='';return;}
  const ok=affiliateRows.filter(o=>!isCanceled(o));
  const actualPending=o=>Math.max(0,Number(o.actualCommission??o.signCommissionAmount??0)+Number(o.actualSubsidy??o.signSubsidyAmount??0));
- const comm=o=>normalizedStatus(o)==='Pending'?actualPending(o):Number(o.totalCommissionAmount||0);
+ // Le total général et les graphiques restent sur les commissions estimées de toutes les commandes non annulées.
+ const comm=o=>Number(o.totalCommissionAmount||0);
  const sum=a=>a.reduce((s,o)=>s+comm(o),0);
  setNum($('#wlTotal'),sum(ok),affiliateMoney);
  setNum($('#wlDelivered'),sum(ok.filter(o=>normalizedStatus(o)==='Delivered')),affiliateMoney);
- setNum($('#wlPending'),sum(ok.filter(o=>normalizedStatus(o)==='Pending')),affiliateMoney);
+ // Seule la ligne « En attente » utilise les montants réels Actual Commission + Actual Subsidy.
+ setNum($('#wlPending'),ok.filter(o=>normalizedStatus(o)==='Pending').reduce((s,o)=>s+actualPending(o),0),affiliateMoney);
  const dayKey=ms=>new Date(ms).toLocaleDateString('sv-SE',{timeZone:PARIS}),t=dayKey(Date.now()).split('-').map(Number),keys=[];
  for(let i=0;i<60;i++)keys.push(new Date(Date.UTC(t[0],t[1]-1,t[2]-i)).toISOString().slice(0,10));
  const byDay={};
