@@ -2911,9 +2911,10 @@ function affiliatePublicOrder(order) {
     signCommissionAmount: Number(order.signCommissionAmount || 0),
     signSubsidyAmount: Number(order.signSubsidyAmount || 0),
     signTotalCommissionAmount: Number(order.signTotalCommissionAmount || 0),
-    // Hacoo renvoie les montants réels dans les champs sign* (en centimes).
-    actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? 0),
-    actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? 0),
+    // Hacoo expose les montants réellement validés dans sign* (en centimes).
+    // Les alias actual* sont conservés pour les réponses qui les fournissent directement.
+    actualCommission: Number(order.actualCommission ?? order.actual_commission ?? order.actualCommissionAmount ?? order.actual_commission_amount ?? order.signCommissionAmount ?? 0),
+    actualSubsidy: Number(order.actualSubsidy ?? order.actual_subsidy ?? order.actualSubsidyAmount ?? order.actual_subsidy_amount ?? order.signSubsidyAmount ?? 0),
     commissionRate: Number(order.commissionRate || 0),
     productName: String(order.productName || order.productTitle || order.goodsName || order.skuName || ''),
     productCategory: String(order.productCategory || order.categoryName || order.category || ''),
