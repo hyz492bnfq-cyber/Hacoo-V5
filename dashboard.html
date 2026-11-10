@@ -1916,7 +1916,8 @@ async function loadAffiliate(){
   setNum($('#affEstimated'),valid.reduce((sum,o)=>sum+Number(o.totalCommissionAmount||0),0),affiliateMoney);
   const pendingActualTotal=valid.reduce((sum,o)=>{
    if(normalizedStatus(o)!=='Pending')return sum;
-   return sum+Math.max(0,Number(o.actualCommission||0)+Number(o.actualSubsidy||0));
+   const actual=Number(o.actualCommission??o.signCommissionAmount??0)+Number(o.actualSubsidy??o.signSubsidyAmount??0);
+   return sum+Math.max(0,actual||Number(o.signTotalCommissionAmount||0));
   },0);
   setNum($('#affSigned'),pendingActualTotal,affiliateMoney);
   const cnt=k=>affiliateRows.filter(o=>normalizedStatus(o)===k).length;
@@ -1935,7 +1936,10 @@ function renderWallet(){
  const root=$('#wallet');if(!root)return;
  const ids=['wlTotal','wlDelivered','wlPending','wlT','wl7','wl30'];
  if(affiliateError||!affiliateLoaded){ids.forEach(i=>{const e=$('#'+i);if(e){delete e.dataset.v;e.textContent='—';}});['wlTn','wl7n','wl30n'].forEach(i=>$('#'+i).textContent='');['wlTd','wl7d','wl30d'].forEach(i=>$('#'+i).innerHTML='');$('#wlSpark').innerHTML='';return;}
- const ok=affiliateRows.filter(o=>!isCanceled(o)),comm=o=>Number(o.totalCommissionAmount||0),sum=a=>a.reduce((s,o)=>s+comm(o),0);
+ const ok=affiliateRows.filter(o=>!isCanceled(o));
+ const actualPending=o=>Math.max(0,Number(o.actualCommission??o.signCommissionAmount??0)+Number(o.actualSubsidy??o.signSubsidyAmount??0));
+ const comm=o=>normalizedStatus(o)==='Pending'?actualPending(o):Number(o.totalCommissionAmount||0);
+ const sum=a=>a.reduce((s,o)=>s+comm(o),0);
  setNum($('#wlTotal'),sum(ok),affiliateMoney);
  setNum($('#wlDelivered'),sum(ok.filter(o=>normalizedStatus(o)==='Delivered')),affiliateMoney);
  setNum($('#wlPending'),sum(ok.filter(o=>normalizedStatus(o)==='Pending')),affiliateMoney);
