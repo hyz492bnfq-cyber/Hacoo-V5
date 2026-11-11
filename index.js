@@ -2035,13 +2035,18 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
   const hasText = Boolean(msgText(message).trim());
   const now = Date.now();
 
-  // Les photos d'une même publication peuvent arriver avant la photo qui porte
-  // la légende. Ouvrir le groupe dès la première photo, même sans texte, puis
-  // ajouter toutes les photos suivantes (avec OU sans légende) dans l'ordre.
+  // Les photos sans légende peuvent précéder la photo qui porte la légende.
+  // On les regroupe, mais une deuxième photo légendée marque le début d'une
+  // nouvelle publication : cela évite de fusionner plusieurs annonces légendées.
   if (isPhoto && !message.media_group_id) {
+    const existingPhotoCaption = photoGroup &&
+      [photoGroup.anchor, ...(photoGroup.photos || [])]
+        .some(item => Boolean(item?.photo?.length) && Boolean(msgText(item).trim()));
+    const startsAnotherCaptionedPost = hasText && existingPhotoCaption;
     const canAppend = photoGroup &&
       photoGroup.mode === mode &&
-      now - photoGroup.startedAt <= GROUP_WINDOW_MS;
+      now - photoGroup.startedAt <= GROUP_WINDOW_MS &&
+      !startsAnotherCaptionedPost;
 
     if (canAppend) {
       photoGroup.photos.push(message);
