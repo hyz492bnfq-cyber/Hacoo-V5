@@ -35,6 +35,7 @@ const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 const { Api: ResenderApi, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
+const { isManualAdminPost } = require('./lib/channel-post-origin');
 
 let sharp;
 try {
@@ -1531,6 +1532,7 @@ let lastDeleteAlert = 0;
 
 const removedIds = new Set();
 const ownMessageIds = new Set();
+const channelSyncSentMessageIds = new Set();
 const inflight = new Set();
 
 function rememberId(set, id) {
@@ -1538,6 +1540,16 @@ function rememberId(set, id) {
   if (set.size > 5000) set.delete(set.values().next().value);
 }
 
+function rememberChannelSyncSentMessages(result) {
+  const sentMessages = Array.isArray(result) ? result : result ? [result] : [];
+  for (const message of sentMessages) {
+    const id = Number(message?.id);
+    if (Number.isSafeInteger(id) && id > 0) rememberId(channelSyncSentMessageIds, id);
+  }
+}
+function shouldSkipDuplicateCheck(messages) {
+  return Array.isArray(messages) && messages.length > 0 && messages.every(message => isManualAdminPost(message, ADMIN_ID, channelSyncSentMessageIds));
+}
 function rememberOwnMessageId(id) {
   rememberId(ownMessageIds, id);
   if (!data.ownMessageIds.includes(id)) data.ownMessageIds.push(id);
@@ -1660,36 +1672,52 @@ async function deleteMessageGroup(ctx, messages, reason) {
   return 'deleted';
 }
 
-async function processMessages(ctx, messages) {
+async function processMessages(ctx, messages, options = {}) {
   if (!messages.length) return;
-
   const first = messages[0];
   const groupId = first.media_group_id || null;
-
-  if (!data.enabled || data.botPaused) {
+  const duplicateOnly = options.duplicateOnly === true;
+  if (!duplicateOnly && (!data.enabled || data.botPaused)) {
     // Important: a paused task is deferred, never marked completed by the queue worker.
     // Counters are not incremented until the task is actually processed, avoiding double counts on resume.
     saveData();
     return 'deferred';
   }
 
-  data.stats.totalSeen += messages.length;
-  data.stats.lastActivity = new Date().toISOString();
-  lastTelegramOk = data.stats.lastActivity;
-  errorBurst = 0;
-
-  const reason = messages
-    .map(message => moderationReason(message))
-    .find(Boolean);
-
-  if (reason) {
-    data.stats.moderation += messages.length;
-    await deleteMessageGroup(ctx, messages, reason);
-    saveData();
-    return;
+  if (!duplicateOnly) {
+    data.stats.totalSeen += messages.length;
+    data.stats.lastActivity = new Date().toISOString();
+    lastTelegramOk = data.stats.lastActivity;
+    errorBurst = 0;
+    const reason = messages.map(message => moderationReason(message)).find(Boolean);
+    if (reason) {
+      data.stats.moderation += messages.length;
+      await deleteMessageGroup(ctx, messages, reason);
+      saveData();
+      return;
+    }
+  }
+  if (data.duplicates && options.skipDuplicateCheck) {
+    // Ignorer la comparaison pour l'auteur manuel, mais mémoriser sa publication
+    // afin que les futurs transferts Channel Sync puissent la détecter.
+    const text = msgText(first);
+    const currentPhotoFileId = messages.find(message => message.photo?.length)?.photo.at(-1)?.file_id || null;
+    if (text.trim()) findTextDuplicate(text, groupId, first.message_id, currentPhotoFileId);
+    if (data.duplicateImages) {
+      for (const message of messages) if (message.photo?.length) await findImageDuplicate(ctx, message);
+    }
+    if (groupId && data.duplicateAlbums) {
+      const signatures = messages.map(message => message.photo?.at(-1)?.file_unique_id || message.video?.file_unique_id || '').filter(Boolean).sort();
+      if (signatures.length) {
+        const cutoff = Date.now() - Number(data.windowMinutes) * 60000;
+        data.albumSeen = data.albumSeen.filter(item => item.time >= cutoff);
+        data.albumSeen.push({ signature: signatures.join(':'), time: Date.now(), text: text.slice(0, 1200), messageId: first.message_id, groupId });
+        data.albumSeen = data.albumSeen.slice(-MAX_HISTORY);
+      }
+    }
   }
 
-  if (data.duplicates) {
+  if (data.duplicates && !options.skipDuplicateCheck) {
     const text = msgText(first);
     const currentPhotoFileId = messages
       .find(message => message.photo?.length)
@@ -1718,7 +1746,7 @@ async function processMessages(ctx, messages) {
         const signature = signatures.join(':');
         const cutoff = Date.now() - Number(data.windowMinutes) * 60000;
         data.albumSeen = data.albumSeen.filter(item => item.time >= cutoff);
-        const exactAlbumMatch = data.albumSeen.find(item => item.signature === signature);
+        const exactAlbumMatch = data.albumSeen.find(item => item.signature === signature && item.messageId !== first.message_id);
         if (exactAlbumMatch) {
           const status = await deleteMessageGroup(ctx, messages, 'Doublon exact : album et fichiers identiques');
           addDuplicate({
@@ -1735,7 +1763,7 @@ async function processMessages(ctx, messages) {
             aiReason: 'Identifiants de fichiers Telegram strictement identiques'
           });
           saveData();
-          return;
+          return 'duplicate';
         }
         const currentPhotoFileIds = messages
           .filter(message => message.photo?.length)
@@ -1822,7 +1850,7 @@ async function processMessages(ctx, messages) {
         aiReason: result.reason
       });
       saveData();
-      return;
+      return 'duplicate';
     }
 
     if (result.reason && result.reason.includes('Erreur ou quota')) {
@@ -1831,6 +1859,7 @@ async function processMessages(ctx, messages) {
       console.log('Gemini : aucun doublon assez certain :', result.reason);
     }
   }
+  if (duplicateOnly) return 'clean';
 
   // Convertit les liens Hacoo uniquement si l'option est activée dans le tableau de bord.
   if (data.hacooLinkReplacementEnabled) {
@@ -1976,7 +2005,7 @@ function flushPhotoGroup() {
   if (!group.photos.length) {
     clearPersistedPhotoGroup(group);
     if (group.mode === 'manual') {
-      interceptManualPublication(group.ctx, [group.anchor]).catch(noteError);
+      interceptManualPublication(group.ctx, [group.anchor], { skipDuplicateCheck: shouldSkipDuplicateCheck([group.anchor]) }).catch(noteError);
     } else {
       enqueueProcessMessages(group.ctx, [group.anchor]);
     }
@@ -1985,7 +2014,7 @@ function flushPhotoGroup() {
 
   if (group.mode === 'manual') {
     const messages = [group.anchor, ...group.photos].sort((a, b) => a.message_id - b.message_id);
-    interceptManualPublication(group.ctx, messages)
+    interceptManualPublication(group.ctx, messages, { skipDuplicateCheck: shouldSkipDuplicateCheck(messages) })
       .then(() => clearPersistedPhotoGroup(group))
       .catch(error => {
         noteError(error);
@@ -2241,7 +2270,7 @@ async function regroupPhotos(group) {
 // File de traitement persistante : les tâches inachevées survivent aux redémarrages.
 let processingQueue = Promise.resolve();
 const activeJobIds = new Set();
-function enqueueProcessMessages(ctx, messages, existingJobId = null) {
+function enqueueProcessMessages(ctx, messages, existingJobId = null, options = {}) {
   if (!messages?.length) return Promise.resolve();
   const alreadyDone = messages.every(message => (data.processedMessageIds || []).includes(message.message_id));
   if (alreadyDone) {
@@ -2253,6 +2282,7 @@ function enqueueProcessMessages(ctx, messages, existingJobId = null) {
   }
 
   const job = persistJob(messages, existingJobId);
+  if (options.skipDuplicateCheck) job.skipDuplicateCheck = true;
   if (activeJobIds.has(job.id)) return Promise.resolve();
   activeJobIds.add(job.id);
   const task = processingQueue.then(async () => {
@@ -2267,7 +2297,7 @@ function enqueueProcessMessages(ctx, messages, existingJobId = null) {
         job.stage = 'moderating_and_deduplicating';
         job.updatedAt = Date.now();
         saveNow();
-        const outcome = await processMessages(ctx, job.messages);
+        const outcome = await processMessages(ctx, job.messages, { skipDuplicateCheck: Boolean(job.skipDuplicateCheck) });
         if (outcome === 'deferred') {
           job.status = 'queued';
           job.stage = 'paused';
@@ -2351,12 +2381,12 @@ function schedulePendingAlbum(groupId, album) {
     pendingAlbums.delete(groupId);
     const messages = album.messages.sort((a, b) => a.message_id - b.message_id);
     if (data.manualPublicationMode) {
-      interceptManualPublication(album.ctx, messages).catch(error => {
+      interceptManualPublication(album.ctx, messages, { skipDuplicateCheck: shouldSkipDuplicateCheck(messages) }).catch(error => {
         noteError(error);
         notifyAdmin(`Interception de l'album à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
       }).finally(() => removePersistedAlbum(groupId));
     } else {
-      enqueueProcessMessages(album.ctx, messages);
+      enqueueProcessMessages(album.ctx, messages, null, { skipDuplicateCheck: shouldSkipDuplicateCheck(messages) });
       removePersistedAlbum(groupId);
     }
   }, wait);
@@ -2491,12 +2521,12 @@ async function captureManualPublication(ctx, messages) {
     throw error;
   }
 }
-async function interceptManualPublication(ctx, messages) {
+async function interceptManualPublication(ctx, messages, options = {}) {
   const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
   // Le mode manuel passe par exactement les mêmes règles que le mode
   // automatique : types autorisés, mots/domaines, modération, doublons,
   // nettoyages, remplacements et formatage.
-  const outcome = await processMessages(ctx, ordered);
+  const outcome = await processMessages(ctx, ordered, { skipDuplicateCheck: Boolean(options.skipDuplicateCheck) });
   if (outcome === 'deferred') return { queued: false, reason: 'deferred' };
   if (interceptedMessagesWereRemoved(ordered, removedIds)) {
     return { queued: false, reason: 'duplicate_or_moderation' };
@@ -2510,6 +2540,9 @@ function safeManualId(value) {
 async function publishManualPublication(item) {
   if (!item || item.status === 'publishing' || item.status === 'published') throw new Error('Cette publication est déjà en cours ou déjà publiée.');
   if (item.status === 'uncertain') throw new Error('Résultat incertain : vérifie d’abord le canal Telegram pour éviter un doublon.');
+  const messages = [...(item.messages || [])].sort((a, b) => a.message_id - b.message_id);
+  const duplicateOutcome = await processMessages({ api: bot.api }, messages, { duplicateOnly: true });
+  if (duplicateOutcome === 'duplicate') throw new Error('Publication bloquée : un doublon a été détecté lors de la validation.');
   // Couvre aussi les publications qui étaient déjà dans la file avant
   // l'ajout du formatage au moment de la capture.
   const finalText = formatPostText(item.text || '');
@@ -2527,7 +2560,6 @@ async function publishManualPublication(item) {
   item.status = 'publishing';
   item.publishStartedAt = new Date().toISOString();
   saveNow();
-  const messages = [...(item.messages || [])].sort((a, b) => a.message_id - b.message_id);
   try {
     const sentIds = [];
     const contextMedia = manualPhotoContextMedia(messages);
@@ -2598,13 +2630,13 @@ async function publishManualPublication(item) {
 // ---------- CHANNEL SYNC : Resender / compte personnel ----------
 let resenderRuntime = null; let resenderLogin = null; let resenderWatching = false;
 function resenderConfigured() { return Number.isSafeInteger(TELEGRAM_API_ID) && TELEGRAM_API_ID > 0 && /^[a-f0-9]{32}$/iu.test(TELEGRAM_API_HASH); }
-async function activeResenderClient() { if (!resenderConfigured() || !data.channelSyncResenderSession) throw new Error('Configure TELEGRAM_API_ID, TELEGRAM_API_HASH puis connecte ton compte personnel.'); if (!resenderRuntime) resenderRuntime = createResenderClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH, session: data.channelSyncResenderSession }); if (!resenderRuntime.client.connected) await resenderRuntime.client.connect(); if (!await resenderRuntime.client.checkAuthorization()) throw new Error('Session personnelle expirée : reconnecte-toi.'); if (!resenderWatching) { watchResenderConnections(resenderRuntime.client, channelSyncConnections, async (connection, messages) => { await republishResender(resenderRuntime.client, connection.destinationChatId, messages, transformPublicationText); }, error => console.error('Resender:', String(error?.message || error))); resenderWatching = true; } return resenderRuntime.client; }
+async function activeResenderClient() { if (!resenderConfigured() || !data.channelSyncResenderSession) throw new Error('Configure TELEGRAM_API_ID, TELEGRAM_API_HASH puis connecte ton compte personnel.'); if (!resenderRuntime) resenderRuntime = createResenderClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH, session: data.channelSyncResenderSession }); if (!resenderRuntime.client.connected) await resenderRuntime.client.connect(); if (!await resenderRuntime.client.checkAuthorization()) throw new Error('Session personnelle expirée : reconnecte-toi.'); if (!resenderWatching) { watchResenderConnections(resenderRuntime.client, channelSyncConnections, async (connection, messages) => { await republishResender(resenderRuntime.client, connection.destinationChatId, messages, transformPublicationText, rememberChannelSyncSentMessages); }, error => console.error('Resender:', String(error?.message || error))); resenderWatching = true; } return resenderRuntime.client; }
 function saveResenderSession(runtime) { data.channelSyncResenderSession = runtime.session.save(); saveNow(); }
 async function runChannelSyncImport(job) {
   if (!job || job.status !== 'queued') return;
   job.status = 'running'; job.startedAt = new Date().toISOString(); saveNow();
   try {
-    const result = await copyResenderRecent(await activeResenderClient(), job.sourceChatId, job.destinationChatId, job.count, data.channelSyncImportSeen || [], transformPublicationText);
+    const result = await copyResenderRecent(await activeResenderClient(), job.sourceChatId, job.destinationChatId, job.count, data.channelSyncImportSeen || [], transformPublicationText, rememberChannelSyncSentMessages);
     data.channelSyncImportSeen = [...new Set([...(data.channelSyncImportSeen || []), ...(result.keys || [])])].slice(-10000); job.status = 'completed'; job.completedAt = new Date().toISOString(); job.copied = result.copied; job.publications = result.publications; job.error = null;
   } catch (error) {
     job.status = 'failed'; job.completedAt = new Date().toISOString(); job.error = String(error?.errorMessage || error?.message || error).slice(0, 300);
@@ -2635,16 +2667,17 @@ function queueChannelPost(ctx) {
   if (ownMessageIds.has(message.message_id) || (data.ownMessageIds || []).includes(message.message_id)) return;
   if ((data.processedMessageIds || []).includes(message.message_id)) return;
 
+  const skipDuplicateCheck = shouldSkipDuplicateCheck([message]);
   const groupId = message.media_group_id;
   if (!groupId) {
     const mode = data.manualPublicationMode ? 'manual' : 'automatic';
     if (observeForPhotoGroup(ctx, message, mode)) return;
     if (mode === 'manual') {
-      interceptManualPublication(ctx, [message]).catch(error => {
+      interceptManualPublication(ctx, [message], { skipDuplicateCheck }).catch(error => {
         noteError(error);
         notifyAdmin(`Interception du message ${message.message_id} à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
       });
-    } else enqueueProcessMessages(ctx, [message]);
+    } else enqueueProcessMessages(ctx, [message], null, { skipDuplicateCheck });
     return;
   }
 
