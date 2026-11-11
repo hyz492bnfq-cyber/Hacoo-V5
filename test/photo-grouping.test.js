@@ -60,10 +60,15 @@ test('plusieurs photos non légendées consécutives restent regroupables', () =
   assert.equal(canAppend(group(first, [second]), third), true);
 });
 
-test('un groupe contenant une photo légendée accepte encore des photos sans légende', () => {
+test('une photo sans légende après la légende clôt le groupe pour éviter une fusion', () => {
   const existing = group(photo(1), [photo(2, 'Légende')]);
-  assert.equal(canAppend(existing, photo(3)), true);
+  assert.equal(canAppend(existing, photo(3)), false);
   assert.equal(canAppend(existing, photo(4, 'Nouvelle légende')), false);
+});
+
+test('une légende sur la photo initiale clôt aussi le groupe', () => {
+  const existing = group(photo(1, 'Légende'));
+  assert.equal(canAppend(existing, photo(2)), false);
 });
 
 test('un texte/caption vide ou composé d’espaces ne crée pas une frontière', () => {
@@ -144,8 +149,7 @@ test('rafale : une publication avec légende finale est clôturée avant la publ
 
 test('limite connue : une photo sans légende du post suivant est indiscernable avant sa légende', () => {
   const firstPost = group(photo(401, 'Produit A'), [], { startedAt: 1000 });
-  // Sans media_group_id, texte séparateur ou autre identifiant, la photo 402
-  // peut être la suite de A ou le début de B : les métadonnées ne permettent
-  // pas de trancher. La règle actuelle l'ajoute au groupe ouvert.
-  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), true);
+  // Sans identifiant, impossible de prouver qu'elle appartient à A.
+  // La règle conservatrice ferme donc le groupe plutôt que de fusionner B.
+  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), false);
 });
