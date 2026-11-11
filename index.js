@@ -33,6 +33,7 @@ const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
+const { shouldAppendPhotoToGroup } = require('./lib/photo-grouping');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 const { Api: ResenderApi, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
 
@@ -2039,14 +2040,9 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
   // On les regroupe, mais une deuxième photo légendée marque le début d'une
   // nouvelle publication : cela évite de fusionner plusieurs annonces légendées.
   if (isPhoto && !message.media_group_id) {
-    const existingPhotoCaption = photoGroup &&
-      [photoGroup.anchor, ...(photoGroup.photos || [])]
-        .some(item => Boolean(item?.photo?.length) && Boolean(msgText(item).trim()));
-    const startsAnotherCaptionedPost = hasText && existingPhotoCaption;
-    const canAppend = photoGroup &&
-      photoGroup.mode === mode &&
-      now - photoGroup.startedAt <= GROUP_WINDOW_MS &&
-      !startsAnotherCaptionedPost;
+    const canAppend = shouldAppendPhotoToGroup(
+      photoGroup, message, mode, now, GROUP_WINDOW_MS, msgText
+    );
 
     if (canAppend) {
       photoGroup.photos.push(message);
