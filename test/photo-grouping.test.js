@@ -116,3 +116,36 @@ test('une publication avec une légende sur chaque photo est séparée à chaque
   const second = group(photo(2, 'Article B'), [], { startedAt: 2000 });
   assert.equal(canAppend(second, photo(3, 'Article C'), { now: 2500 }), false);
 });
+
+
+test('rafale : deux photos sans légende puis la légende 120 ms après restent ensemble', () => {
+  const first = photo(101);
+  const second = photo(102);
+  const captionLast = photo(103, 'Publication A');
+  const current = group(first, [], { startedAt: 1000 });
+  assert.equal(canAppend(current, second, { now: 1120 }), true);
+  current.photos.push(second);
+  assert.equal(canAppend(current, captionLast, { now: 1240 }), true);
+  current.photos.push(captionLast);
+  assert.deepEqual([current.anchor.message_id, ...current.photos.map(item => item.message_id)], [101, 102, 103]);
+});
+
+test('rafale : deux publications légendées séparées de 150 ms ne fusionnent pas', () => {
+  const firstPost = group(photo(201, 'Produit A'), [], { startedAt: 1000 });
+  assert.equal(canAppend(firstPost, photo(202, 'Produit B'), { now: 1150 }), false);
+});
+
+test('rafale : une publication avec légende finale est clôturée avant la publication légendée suivante', () => {
+  const firstPost = group(photo(301), [photo(302)], { startedAt: 1000 });
+  assert.equal(canAppend(firstPost, photo(303, 'Produit A'), { now: 1100 }), true);
+  firstPost.photos.push(photo(303, 'Produit A'));
+  assert.equal(canAppend(firstPost, photo(304, 'Produit B'), { now: 1250 }), false);
+});
+
+test('limite connue : une photo sans légende du post suivant est indiscernable avant sa légende', () => {
+  const firstPost = group(photo(401, 'Produit A'), [], { startedAt: 1000 });
+  // Sans media_group_id, texte séparateur ou autre identifiant, la photo 402
+  // peut être la suite de A ou le début de B : les métadonnées ne permettent
+  // pas de trancher. La règle actuelle l'ajoute au groupe ouvert.
+  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), true);
+});
