@@ -3732,6 +3732,24 @@ app.post('/api/manual-publications/:id/resolve', (req, res) => {
   }
   return res.status(400).json({ error: 'Action de vérification invalide.' });
 });
+app.post('/api/manual-publications/bulk-delete', (req, res) => {
+  const supplied = req.body?.ids;
+  if (!Array.isArray(supplied) || supplied.length < 1 || supplied.length > 500) return res.status(400).json({ error: 'Sélection invalide (1 à 500 publications).' });
+  const ids = [...new Set(supplied.map(safeManualId))];
+  if (ids.length !== supplied.length || ids.some(id => !id)) return res.status(400).json({ error: 'La sélection contient un identifiant invalide ou en double.' });
+  const selected = ids.map(id => data.manualPublications.find(entry => entry.id === id));
+  if (selected.some(item => !item)) return res.status(404).json({ error: 'Au moins une publication sélectionnée est introuvable. Actualise la file puis réessaie.' });
+  if (selected.some(item => item.status === 'publishing')) return res.status(409).json({ error: 'Une publication sélectionnée est en cours d’envoi. Aucune publication n’a été supprimée.' });
+  const now = new Date().toISOString();
+  const idSet = new Set(ids);
+  const moved = data.manualPublications.filter(item => idSet.has(item.id));
+  data.manualPublications = data.manualPublications.filter(item => !idSet.has(item.id));
+  for (const item of moved) { item.previousStatus = item.status; item.status = 'trashed'; item.trashedAt = now; }
+  data.manualPublicationTrash.push(...moved);
+  data.manualPublicationTrash = data.manualPublicationTrash.slice(-MAX_HISTORY);
+  saveNow();
+  res.json({ ok: true, deleted: moved.length });
+});
 app.delete('/api/manual-publications/:id', (req, res) => {
   const id = safeManualId(req.params.id);
   const index = data.manualPublications.findIndex(entry => entry.id === id);
