@@ -2037,8 +2037,10 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
   const now = Date.now();
 
   // Les photos sans légende peuvent précéder la photo qui porte la légende.
-  // On les regroupe, mais une deuxième photo légendée marque le début d'une
-  // nouvelle publication : cela évite de fusionner plusieurs annonces légendées.
+  // Dès qu'une légende est reçue, toute photo indépendante suivante démarre
+  // un nouveau groupe : sans media_group_id, on ne peut pas prouver qu'elle
+  // appartient encore à la publication précédente. On préfère séparer plutôt
+  // que fusionner silencieusement deux publications distinctes.
   if (isPhoto && !message.media_group_id) {
     const canAppend = shouldAppendPhotoToGroup(
       photoGroup, message, mode, now, GROUP_WINDOW_MS, msgText
