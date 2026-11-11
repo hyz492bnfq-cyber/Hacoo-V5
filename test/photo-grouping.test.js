@@ -38,8 +38,8 @@ test('la légende peut être sur la deuxième photo après une première photo s
   assert.equal(canAppend(group(photo(1)), photo(2, 'Description')), true);
 });
 
-test('une légende sur la première photo permet les photos suivantes sans légende', () => {
-  assert.equal(canAppend(group(photo(1, 'Description')), photo(2)), true);
+test('une légende sur la première photo clôt le groupe des photos indépendantes', () => {
+  assert.equal(canAppend(group(photo(1, 'Description')), photo(2)), false);
 });
 
 test('une photo légendée après un groupe qui possède déjà une légende démarre un nouveau post', () => {
