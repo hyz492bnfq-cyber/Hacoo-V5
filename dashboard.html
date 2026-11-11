@@ -740,7 +740,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
       <div class="kpi c4 ok"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-check"/></svg></span><span class="kpi-l">Publiées</span></div><div class="kpi-v" id="manualKpiPublished">0</div></div>
       <div class="kpi c4 bad"><div class="kpi-top"><span class="kpi-ic"><svg class="ic"><use href="#i-alert"/></svg></span><span class="kpi-l">En échec</span></div><div class="kpi-v" id="manualKpiFailed">0</div></div>
     </div>
-    <div class="row between"><h3>Publications en attente <span class="pcount" id="manualPendingCount">0</span></h3><button class="btn sm" id="refreshManual" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Actualiser</button></div>
+    <div class="row between wrap"><h3>Publications en attente <span class="pcount" id="manualPendingCount">0</span></h3><div class="manual-actions"><button class="btn sm" id="selectAllManual" type="button">Tout sélectionner</button><button class="btn sm" id="clearManualSelection" type="button">Désélectionner</button><button class="btn sm" id="refreshManual" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Actualiser</button></div></div><div class="row between wrap" id="manualBulkBar" hidden><span class="small muted" id="manualSelectedCount">0 sélectionnée(s)</span><button class="btn sm danger" id="deleteSelectedManual" type="button">Supprimer la sélection</button></div>
     <div id="manualPendingList" class="list cols2"></div>
     <div class="set-title">Corbeille</div>
     <div id="manualTrashList" class="list cols2"></div>
@@ -935,6 +935,7 @@ async function api(url,options={}){
 const post=(url,body={},o={})=>api(url,{method:'POST',body:JSON.stringify(body),...o});
 
 let manualItems=[],manualHistory=[],manualTrash=[],manualEditingId=null,manualRestorePosition=null;
+const manualSelectedIds=new Set();
 const manualStatusLabel=s=>({pending:'En attente',saving:'Sauvegarde',publishing:'Publication en cours',published:'Publiée',failed:'Échec',delete_failed:'Suppression à vérifier',uncertain:'Envoi à vérifier'}[s]||s||'—');
 function renderManual(){
  const sw=$('#manualModeSwitch');
@@ -944,8 +945,12 @@ function renderManual(){
  $('#manualKpiPending').textContent=nf(manualItems.filter(x=>['pending','delete_failed','saving'].includes(x.status)).length);
  $('#manualKpiPublished').textContent=nf(manualHistory.length);
  $('#manualKpiFailed').textContent=nf(manualItems.filter(x=>x.status==='failed'||x.status==='delete_failed'||x.status==='uncertain').length);
+ manualSelectedIds.forEach(id=>{if(!manualItems.some(x=>x.id===id))manualSelectedIds.delete(id);});
+ $('#manualBulkBar').hidden=manualSelectedIds.size===0;$('#manualSelectedCount').textContent=manualSelectedIds.size+' sélectionnée(s)';
+ $('#selectAllManual').disabled=!manualItems.some(x=>x.status!=='publishing');
  $('#manualPendingList').innerHTML=manualItems.length?manualItems.map(x=>`<article class="manual-card" data-manual-id="${esc(x.id)}">
-  <div class="row between"><b>${esc(({album:'Album',photo:'Photo',video:'Vidéo',document:'Document',text:'Texte'}[x.type]||'Publication'))}</b><span class="manual-status ${esc(x.status)}">${esc(manualStatusLabel(x.status))}</span></div>
+  <div class="row between"><label class="check manual-select-label"><input type="checkbox" data-manual-select value="${esc(x.id)}" ${manualSelectedIds.has(x.id)?'checked':''} ${x.status==='publishing'?'disabled':''}><span>Sélectionner</span></label><span class="manual-status ${esc(x.status)}">${esc(manualStatusLabel(x.status))}</span></div>
+  <b>${esc(({album:'Album',photo:'Photo',video:'Vidéo',document:'Document',text:'Texte'}[x.type]||'Publication'))}</b><span class="manual-status ${esc(x.status)}">${esc(manualStatusLabel(x.status))}</span></div>
   <div class="manual-meta"><span>Reçue ${esc(fdate(x.receivedAt))}</span>${x.group?`<span>Groupe : ${esc(x.group)}</span>`:''}<span>${nf(x.messageCount)} élément(s)</span><span>${nf((x.media||[]).filter(m=>m.fileId).length)} média(s)</span></div>
   <div class="manual-media">${(x.media||[]).map((m,i)=>m.type==='photo'?`<img loading="lazy" src="/api/manual-publications/${encodeURIComponent(x.id)}/media/${i}" alt="Photo de la publication">`:``).join('')}</div><div class="manual-text">${esc(x.text||'Publication sans texte')}</div>
   ${x.status==='delete_failed'?'<p class="small" style="color:var(--danger)">La sauvegarde est faite, mais la suppression du message original doit être vérifiée. La publication est bloquée pour éviter un doublon.</p>':''}
@@ -984,6 +989,10 @@ $('#manualModeSwitch').addEventListener('click',async()=>{
  catch(e){toast(e.message,'bad');}
 });
 $('#refreshManual').addEventListener('click',loadManual);
+$('#selectAllManual').addEventListener('click',()=>{manualItems.filter(x=>x.status!=='publishing').forEach(x=>manualSelectedIds.add(x.id));renderManual();});
+$('#clearManualSelection').addEventListener('click',()=>{manualSelectedIds.clear();renderManual();});
+$('#manualPendingList').addEventListener('change',e=>{const cb=e.target.closest('[data-manual-select]');if(!cb)return;if(cb.checked)manualSelectedIds.add(cb.value);else manualSelectedIds.delete(cb.value);renderManual();});
+$('#deleteSelectedManual').addEventListener('click',async()=>{const ids=[...manualSelectedIds];if(!ids.length)return;if(!await confirmSheet('Mettre '+ids.length+' publication(s) sélectionnée(s) dans la corbeille ?',{title:'Supprimer plusieurs publications',ok:'Oui, supprimer',danger:true}))return;const btn=$('#deleteSelectedManual');btn.disabled=true;try{const r=await post('/api/manual-publications/bulk-delete',{ids});manualSelectedIds.clear();toast(r.deleted+' publication(s) déplacée(s) dans la corbeille.','ok');await loadManual();}catch(err){toast(err.message,'bad');}finally{btn.disabled=false;}});
 $('#manualEditorClose').addEventListener('click',cancelManualEditor);
 $('#manualEditorCancel').addEventListener('click',cancelManualEditor);
 $('#manualEditorPasteAffiliate').addEventListener('click',async()=>{
