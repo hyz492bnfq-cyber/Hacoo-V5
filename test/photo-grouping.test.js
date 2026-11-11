@@ -5,29 +5,114 @@ const assert = require('node:assert/strict');
 const { shouldAppendPhotoToGroup } = require('../lib/photo-grouping');
 
 const getText = message => message.caption || message.text || '';
-const group = (anchor, photos = []) => ({ mode: 'automatic', startedAt: 1000, anchor, photos });
+const photo = (id, caption = '') => ({
+  message_id: id,
+  photo: [{ file_id: `photo-${id}` }],
+  ...(caption ? { caption } : {})
+});
+const group = (anchor, photos = [], overrides = {}) => ({
+  mode: 'automatic',
+  startedAt: 1000,
+  anchor,
+  photos,
+  ...overrides
+});
+const canAppend = (existing, incoming, options = {}) =>
+  shouldAppendPhotoToGroup(
+    existing,
+    incoming,
+    options.mode || 'automatic',
+    options.now ?? 2000,
+    options.windowMs ?? 90000,
+    getText
+  );
 
-test('deux photos sans légende puis une photo légendée restent dans le même album', () => {
-  const first = { message_id: 1, photo: [{}] };
-  const second = { message_id: 2, photo: [{}] };
-  const third = { message_id: 3, photo: [{}], caption: 'Légende du produit' };
-  assert.equal(shouldAppendPhotoToGroup(group(first, [second]), third, 'automatic', 2000, 90000, getText), true);
+test('deux photos sans légende puis une troisième légendée restent dans le même album', () => {
+  const first = photo(1);
+  const second = photo(2);
+  const third = photo(3, 'Légende du produit');
+  assert.equal(canAppend(group(first, [second]), third), true);
 });
 
-test('une deuxième publication avec sa propre légende démarre un nouveau groupe', () => {
-  const first = { message_id: 1, photo: [{}], caption: 'Premier produit' };
-  const second = { message_id: 2, photo: [{}], caption: 'Deuxième produit' };
-  assert.equal(shouldAppendPhotoToGroup(group(first), second, 'automatic', 2000, 90000, getText), false);
+test('la légende peut être sur la deuxième photo après une première photo sans texte', () => {
+  assert.equal(canAppend(group(photo(1)), photo(2, 'Description')), true);
 });
 
-test('une légende sur la première photo permet encore d’ajouter les photos suivantes sans légende', () => {
-  const first = { message_id: 1, photo: [{}], caption: 'Légende du produit' };
-  const second = { message_id: 2, photo: [{}] };
-  assert.equal(shouldAppendPhotoToGroup(group(first), second, 'automatic', 2000, 90000, getText), true);
+test('une légende sur la première photo permet les photos suivantes sans légende', () => {
+  assert.equal(canAppend(group(photo(1, 'Description')), photo(2)), true);
 });
 
-test('un groupe expiré ou appartenant à un autre mode ne reçoit pas la photo', () => {
-  const first = { message_id: 1, photo: [{}] };
-  assert.equal(shouldAppendPhotoToGroup(group(first), { photo: [{}] }, 'manual', 2000, 90000, getText), false);
-  assert.equal(shouldAppendPhotoToGroup(group(first), { photo: [{}] }, 'automatic', 91001, 90000, getText), false);
+test('une photo légendée après un groupe qui possède déjà une légende démarre un nouveau post', () => {
+  assert.equal(canAppend(group(photo(1, 'Premier produit'), [photo(2)]), photo(3, 'Deuxième produit')), false);
+});
+
+test('une troisième légende ne rejoint pas le groupe après la première frontière', () => {
+  const firstGroup = group(photo(1, 'Premier'), [photo(2)]);
+  assert.equal(canAppend(firstGroup, photo(3, 'Deuxième')), false);
+  const secondGroup = group(photo(3, 'Deuxième'), [], { startedAt: 2000 });
+  assert.equal(canAppend(secondGroup, photo(4, 'Troisième'), { now: 2500 }), false);
+});
+
+test('plusieurs photos non légendées consécutives restent regroupables', () => {
+  const first = photo(1);
+  const second = photo(2);
+  const third = photo(3);
+  assert.equal(canAppend(group(first, [second]), third), true);
+});
+
+test('un groupe contenant une photo légendée accepte encore des photos sans légende', () => {
+  const existing = group(photo(1), [photo(2, 'Légende')]);
+  assert.equal(canAppend(existing, photo(3)), true);
+  assert.equal(canAppend(existing, photo(4, 'Nouvelle légende')), false);
+});
+
+test('un texte/caption vide ou composé d’espaces ne crée pas une frontière', () => {
+  const existing = group(photo(1), [photo(2, '   ')]);
+  assert.equal(canAppend(existing, photo(3, 'Nouvelle légende')), true);
+});
+
+test('les entités ou la présence de texte ne sont pas nécessaires pour regrouper une photo', () => {
+  assert.equal(canAppend(group(photo(1)), photo(2)), true);
+});
+
+test('un groupe d’un autre mode est rejeté', () => {
+  assert.equal(canAppend(group(photo(1)), photo(2), { mode: 'manual' }), false);
+});
+
+test('un groupe expiré est rejeté', () => {
+  assert.equal(canAppend(group(photo(1)), photo(2), { now: 91001 }), false);
+});
+
+test('une photo exactement à la limite temporelle est acceptée', () => {
+  assert.equal(canAppend(group(photo(1)), photo(2), { now: 91000 }), true);
+});
+
+test('une horloge antérieure au début du groupe est rejetée', () => {
+  assert.equal(canAppend(group(photo(1)), photo(2), { now: 999 }), false);
+});
+
+test('un message sans photo ne peut jamais être ajouté par cette fonction', () => {
+  assert.equal(canAppend(group(photo(1)), { message_id: 2, text: 'texte indépendant' }), false);
+});
+
+test('un message déjà membre d’un album Telegram natif est laissé au traitement natif', () => {
+  assert.equal(canAppend(group(photo(1)), { ...photo(2), media_group_id: 'native-album-1' }), false);
+});
+
+test('un groupe absent ou incomplet ne provoque pas d’erreur', () => {
+  assert.equal(canAppend(null, photo(1)), false);
+  assert.equal(canAppend({ mode: 'automatic', startedAt: 1000 }, photo(1)), true);
+});
+
+test('les fenêtres invalides et les horodatages invalides sont rejetés', () => {
+  assert.equal(canAppend(group(photo(1)), photo(2), { now: NaN }), false);
+  assert.equal(canAppend(group(photo(1)), photo(2), { windowMs: -1 }), false);
+  assert.equal(shouldAppendPhotoToGroup(group(photo(1)), photo(2), 'automatic', 2000, 90000, null), true);
+});
+
+test('une publication avec une légende sur chaque photo est séparée à chaque légende', () => {
+  const first = group(photo(1, 'Article A'));
+  assert.equal(canAppend(first, photo(2, 'Article B')), false);
+  const second = group(photo(2, 'Article B'), [], { startedAt: 2000 });
+  assert.equal(canAppend(second, photo(3, 'Article C'), { now: 2500 }), false);
 });
