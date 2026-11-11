@@ -2033,36 +2033,52 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
 
   const isPhoto = Boolean(message.photo?.length);
   const hasText = Boolean(msgText(message).trim());
+  const now = Date.now();
 
-  // Tout texte (seul ou légende d'une photo) ouvre un nouveau contexte. Il
-  // clôt donc le précédent : aucune image ne traverse deux publications.
-  if (hasText && !message.media_group_id) {
+  // Les photos d'une même publication peuvent arriver avant la photo qui porte
+  // la légende. Ouvrir le groupe dès la première photo, même sans texte, puis
+  // ajouter toutes les photos suivantes (avec OU sans légende) dans l'ordre.
+  if (isPhoto && !message.media_group_id) {
+    const canAppend = photoGroup &&
+      photoGroup.mode === mode &&
+      now - photoGroup.startedAt <= GROUP_WINDOW_MS;
+
+    if (canAppend) {
+      photoGroup.photos.push(message);
+      photoGroup.lastMessageAt = now;
+      persistPhotoGroup(photoGroup);
+      schedulePhotoGroupFlush();
+      return true;
+    }
+
     flushPhotoGroup();
-
     photoGroup = {
       ctx,
       anchor: message,
       photos: [],
       mode,
-      startedAt: Date.now(),
-      lastMessageAt: Date.now(),
+      startedAt: now,
+      lastMessageAt: now,
       timer: null
     };
-
     persistPhotoGroup(photoGroup);
     schedulePhotoGroupFlush();
     return true;
   }
 
-  if (
-    photoGroup &&
-    isPhoto &&
-    !hasText &&
-    !message.media_group_id &&
-    Date.now() - photoGroup.startedAt <= GROUP_WINDOW_MS
-  ) {
-    photoGroup.photos.push(message);
-    photoGroup.lastMessageAt = Date.now();
+  // Un message texte indépendant peut servir de légende/contexte aux photos
+  // qui suivent. Il clôt toujours le groupe précédent pour éviter les mélanges.
+  if (hasText && !message.media_group_id) {
+    flushPhotoGroup();
+    photoGroup = {
+      ctx,
+      anchor: message,
+      photos: [],
+      mode,
+      startedAt: now,
+      lastMessageAt: now,
+      timer: null
+    };
     persistPhotoGroup(photoGroup);
     schedulePhotoGroupFlush();
     return true;
@@ -2116,11 +2132,13 @@ async function regroupPhotos(group) {
 
   if (!items.length) { clearPersistedPhotoGroup(group); return; }
 
-  const caption = msgText(anchor);
-
+  // La légende peut être portée par n'importe quelle photo de la séquence,
+  // pas nécessairement par la première (qui sert uniquement d'ancre).
+  const captionMessage = sourceMessages.find(message => msgText(message).trim()) || anchor;
+  const caption = msgText(captionMessage);
 
   let finalCaption = caption;
-  let entities = anchor.caption_entities || anchor.entities;
+  let entities = captionMessage.caption_entities || captionMessage.entities;
 
   if (anyCleaningEnabled()) {
     finalCaption = cleanText(caption);
@@ -2531,6 +2549,10 @@ async function publishManualPublication(item) {
   try {
     const sentIds = [];
     const contextMedia = manualPhotoContextMedia(messages);
+    const captionSource = messages.find(message => msgText(message).trim()) || messages[0];
+    const captionEntities = captionSource && item.text === msgText(captionSource)
+      ? (captionSource.caption_entities || captionSource.entities)
+      : undefined;
     if (supportsTelegramMediaGroup(messages) || (contextMedia && contextMedia.length >= 2)) {
       const albumMessages = contextMedia || messages;
       const media = albumMessages.map((m, index) => {
@@ -2539,7 +2561,7 @@ async function publishManualPublication(item) {
           : { type: 'document', media: m.document.file_id };
         if (index === 0) {
           entry.caption = item.text || '';
-          if (m.caption_entities?.length) entry.caption_entities = m.caption_entities;
+          if (captionEntities?.length) entry.caption_entities = captionEntities;
         } else if (m.caption) {
           entry.caption = m.caption;
           if (m.caption_entities?.length) entry.caption_entities = m.caption_entities;
