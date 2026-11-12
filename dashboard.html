@@ -762,6 +762,8 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
           <div><label class="lb" for="formatPromoCode">Code promo</label><input id="formatPromoCode" type="text" maxlength="60" placeholder="M2REPS"></div>
           <div><label class="lb" for="formatCouponTemplate">Ligne du coupon ({code} = code promo)</label><input id="formatCouponTemplate" type="text" maxlength="160" placeholder="-15% coupon : {code} 🎁"></div>
           <div><label class="lb" for="formatLinkPrefix">Début de la ligne du lien</label><input id="formatLinkPrefix" type="text" maxlength="160" placeholder="👉🏼 "></div>
+          <div class="set"><div class="tx"><b>Ajouter une mention à la fin</b><span>Ajoutée automatiquement en italique à chaque publication.</span></div><button class="sw" data-setting="formatFooterEnabled" role="switch" aria-label="Mention automatique en fin de publication" type="button"></button></div>
+          <div><label class="lb" for="formatFooterText">Texte de la mention finale</label><input id="formatFooterText" type="text" maxlength="300" placeholder="ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur."></div>
           <div><div class="lb">Aperçu</div><pre class="preview" id="formatPreview"></pre></div>
           <div class="btnrow"><button class="btn primary" id="saveFormat" type="button">Enregistrer le format</button><button class="btn" id="openFormatAssistant" type="button">✧ Assistant IA</button></div>
         </div>
@@ -1466,7 +1468,7 @@ function renderSettings(){
  if(!fmtDirty){
   $('#formatTitlePrefix').value=String(s.formatTitlePrefix??'🛍️ ');$('#formatTitleSuffix').value=String(s.formatTitleSuffix??' 🤩‼️');
   $('#formatPromoCode').value=String(s.formatPromoCode??'M2REPS');$('#formatLinkPrefix').value=String(s.formatLinkPrefix??'👉🏼 ');
-  $('#formatCouponTemplate').value=String(s.formatCouponTemplate??'-15% coupon : {code} 🎁');
+  $('#formatCouponTemplate').value=String(s.formatCouponTemplate??'-15% coupon : {code} 🎁');$('#formatFooterText').value=String(s.formatFooterText??'ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur.');
  }
  renderFormatPreview();
  const gem=r.geminiConfigured;
@@ -1504,11 +1506,12 @@ $('#addReplacement').addEventListener('click',()=>openSheet('Nouveau remplacemen
 }));
 function renderFormatPreview(){
  const g=id=>$('#'+id).value;const code=g('formatPromoCode')||'M2REPS';
- $('#formatPreview').textContent=`${g('formatTitlePrefix')}Nom du produit${g('formatTitleSuffix')}\n${g('formatCouponTemplate').replace(/\{code\}/gi,code)}\n\n${g('formatLinkPrefix')}https://c.onlyaff.app/EXEMPLE`;
+  const footer=$('#formatFooterEnabled').classList.contains('on')?g('formatFooterText').trim():'';
+  $('#formatPreview').textContent=`${g('formatTitlePrefix')}Nom du produit${g('formatTitleSuffix')}\n${g('formatCouponTemplate').replace(/\{code\}/gi,code)}\n\n${g('formatLinkPrefix')}https://c.onlyaff.app/EXEMPLE${footer?'\n'+footer:''}`;
 }
-['formatTitlePrefix','formatTitleSuffix','formatPromoCode','formatLinkPrefix','formatCouponTemplate'].forEach(id=>$('#'+id).addEventListener('input',()=>{fmtDirty=true;renderFormatPreview();}));
+['formatTitlePrefix','formatTitleSuffix','formatPromoCode','formatLinkPrefix','formatCouponTemplate','formatFooterText'].forEach(id=>$('#'+id).addEventListener('input',()=>{fmtDirty=true;renderFormatPreview();}));
 $('#saveFormat').addEventListener('click',e=>busy(e.currentTarget,'Enregistrement…',async()=>{
- try{await saveSettings({formatTitlePrefix:$('#formatTitlePrefix').value,formatTitleSuffix:$('#formatTitleSuffix').value,formatPromoCode:$('#formatPromoCode').value,formatLinkPrefix:$('#formatLinkPrefix').value,formatCouponTemplate:$('#formatCouponTemplate').value},'Format enregistré ✓');fmtDirty=false;renderSettings();}
+ try{await saveSettings({formatTitlePrefix:$('#formatTitlePrefix').value,formatTitleSuffix:$('#formatTitleSuffix').value,formatPromoCode:$('#formatPromoCode').value,formatLinkPrefix:$('#formatLinkPrefix').value,formatCouponTemplate:$('#formatCouponTemplate').value,formatFooterText:$('#formatFooterText').value},'Format enregistré ✓');fmtDirty=false;renderSettings();}
  catch(err){toast(err.message,'bad');}
 }));
 async function autoSave(patch){try{await saveSettings(patch,'Enregistré ✓');}catch(err){toast('Échec : '+err.message,'bad');await loadCore();}}
