@@ -291,6 +291,14 @@ function normalizeData(saved) {
 }
 
 let data = loadData();
+for (const [key, label] of [['channelPurgeJob', 'Purge'], ['publicationVaultBackupJob', 'Sauvegarde'], ['publicationVaultRestoreJob', 'Restauration']]) {
+  const job = data[key];
+  if (job && ['queued', 'checking', 'backing_up', 'scanning', 'deleting', 'running', 'verifying'].includes(job.status)) {
+    job.status = 'failed';
+    job.error = label + ' interrompue par un redémarrage du serveur. Vérifie les publications déjà traitées avant de relancer.';
+    job.completedAt = new Date().toISOString();
+  }
+}
 let saveTimer = null;
 
 function saveData() {
@@ -2632,7 +2640,7 @@ function publicationVaultKey() { return publicationVault.getKey(process.env.PUBL
 function vaultMediaName(message) {
   const document = message?.media?.document || message?.document;
   const original = document?.attributes?.find(attribute => attribute?.fileName)?.fileName;
-  if (original && !/[\\/\\0]/u.test(original)) return String(original).slice(0, 120);
+  if (original && !String(original).includes('/') && !String(original).includes('\\\\') && !String(original).includes(String.fromCharCode(0))) return String(original).slice(0, 120);
   if (message?.photo) return 'photo.jpg';
   const mime = String(document?.mimeType || '').toLowerCase();
   const extension = ({ 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'application/pdf': '.pdf', 'audio/mpeg': '.mp3' })[mime] || (mime.startsWith('video/') ? '.mp4' : mime.startsWith('image/') ? '.jpg' : '.bin');
@@ -2642,12 +2650,14 @@ async function capturePublicationVault(client, channel, channelId, channelTitle,
   const key = publicationVaultKey();
   const state = await publicationVault.beginArchive({ root: PUBLICATION_VAULT_ROOT, key });
   const records = [];
+  const messageIds = [];
   let batch = [];
   let scanned = 0;
   const captureBatch = async messages => {
     await Promise.all(messages.map(async message => {
       const id = Number(message?.id);
       if (!Number.isSafeInteger(id) || id <= 0) return;
+      messageIds.push(id);
       const text = String(message.message || '');
       const mediaClass = String(message.media?.className || message.media?._ || '');
       const media = Boolean(message.media && !['MessageMediaWebPage', 'MessageMediaEmpty'].includes(mediaClass));
@@ -2675,7 +2685,8 @@ async function capturePublicationVault(client, channel, channelId, channelTitle,
     records.sort((a, b) => a.messageId - b.messageId);
     const archive = await publicationVault.finalizeArchive(state, { channelId, channelTitle, records });
     await publicationVault.readArchive({ root: PUBLICATION_VAULT_ROOT, id: archive.id, key, verify: true });
-    return archive;
+    messageIds.sort((a, b) => a - b);
+    return { ...archive, messageIds };
   } catch (error) {
     await publicationVault.abortArchive(state);
     throw error;
@@ -2749,16 +2760,7 @@ async function executeChannelPurge(job) {
     job.status = 'scanning';
     job.scanned = 0;
     saveNow();
-    const ids = [];
-    for await (const message of client.iterMessages(channel)) {
-      if (Number.isSafeInteger(Number(message?.id)) && Number(message.id) > 0) ids.push(Number(message.id));
-      if (ids.length && ids.length % 1000 === 0) {
-        job.scanned = ids.length;
-        job.updatedAt = new Date().toISOString();
-        saveNow();
-      }
-    }
-
+    const ids = archive.messageIds;
     job.total = ids.length;
     job.scanned = ids.length;
     job.status = 'deleting';
