@@ -24,6 +24,7 @@ test('supprime les lignes strictement répétées sans fusionner les information
     'CODE PROMO :',
     '👉https://c.onlyaff.app/ebYkh9',
     '• Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
+    'ℹ️ • Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
     '👉https://c.onlyaff.app/ebYkh9',
     'CODE PROMO :',
     'Une autre information produit'
@@ -34,7 +35,6 @@ test('supprime les lignes strictement répétées sans fusionner les information
     'CODE PROMO :',
     '👉https://c.onlyaff.app/ebYkh9',
     '• Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
-    'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
     'Une autre information produit'
   ].join('\n'));
 });
