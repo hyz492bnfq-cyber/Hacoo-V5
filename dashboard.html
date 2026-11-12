@@ -1157,7 +1157,7 @@ async function loadPurgeChannels(){
  const backup=$('#vaultBackupBtn');if(backup)backup.disabled=!select.value;
  await loadPublicationVault();
 }
-$('#channelPurgeSelect').addEventListener('change',e=>{$('#channelPurgeBtn').disabled=!e.currentTarget.value;});
+$('#channelPurgeSelect').addEventListener('change',e=>{$('#channelPurgeBtn').disabled=!e.currentTarget.value;loadPublicationVault();});
 $('#refreshPurgeChannels').addEventListener('click',async e=>busy(e.currentTarget,'Actualisation…',loadPurgeChannels));
 $('#channelPurgeBtn').addEventListener('click',async()=>{
  const select=$('#channelPurgeSelect'),channelId=select.value,channelName=select.selectedOptions[0]?.textContent||'ce canal';
