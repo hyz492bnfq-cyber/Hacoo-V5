@@ -1506,7 +1506,8 @@ $('#addReplacement').addEventListener('click',()=>openSheet('Nouveau remplacemen
 }));
 function renderFormatPreview(){
  const g=id=>$('#'+id).value;const code=g('formatPromoCode')||'M2REPS';
-  const footer=$('#formatFooterEnabled').classList.contains('on')?g('formatFooterText').trim():'';
+  const footerToggle=$('.sw[data-setting="formatFooterEnabled"]');
+  const footer=footerToggle?.classList.contains('on')?g('formatFooterText').trim():'';
   $('#formatPreview').textContent=`${g('formatTitlePrefix')}Nom du produit${g('formatTitleSuffix')}\n${g('formatCouponTemplate').replace(/\{code\}/gi,code)}\n\n${g('formatLinkPrefix')}https://c.onlyaff.app/EXEMPLE${footer?'\n'+footer:''}`;
 }
 ['formatTitlePrefix','formatTitleSuffix','formatPromoCode','formatLinkPrefix','formatCouponTemplate','formatFooterText'].forEach(id=>$('#'+id).addEventListener('input',()=>{fmtDirty=true;renderFormatPreview();}));
