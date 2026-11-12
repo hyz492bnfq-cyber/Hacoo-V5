@@ -2654,7 +2654,7 @@ async function capturePublicationVault(client, channel, channelId, channelTitle,
   let batch = [];
   let scanned = 0;
   const captureBatch = async messages => {
-    await Promise.all(messages.map(async message => {
+    const results = await Promise.allSettled(messages.map(async message => {
       const id = Number(message?.id);
       if (!Number.isSafeInteger(id) || id <= 0) return;
       messageIds.push(id);
@@ -2673,6 +2673,8 @@ async function capturePublicationVault(client, channel, channelId, channelTitle,
       }
       if (text || record.mediaFileId) records.push(record);
     }));
+    const failed = results.find(result => result.status === 'rejected');
+    if (failed) throw failed.reason;
     scanned += messages.length;
     if (job) { job.scanned = scanned; job.updatedAt = new Date().toISOString(); saveNow(); }
   };
