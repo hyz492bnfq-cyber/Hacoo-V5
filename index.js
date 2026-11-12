@@ -3106,6 +3106,83 @@ app.use(auth);
 app.use(auth);
 
 
+app.get('/api/publication-vault/status', async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const key = publicationVaultKey();
+    const archives = await publicationVault.listArchives({ root: PUBLICATION_VAULT_ROOT, key });
+    res.json({ enabled: true, archives, backupJob: data.publicationVaultBackupJob || null, restoreJob: data.publicationVaultRestoreJob || null });
+  } catch (error) {
+    res.json({ enabled: false, error: String(error?.message || error).slice(0, 300), archives: [], backupJob: data.publicationVaultBackupJob || null, restoreJob: data.publicationVaultRestoreJob || null });
+  }
+});
+
+app.post('/api/publication-vault/backup', async (req, res) => {
+  if (vaultBackupRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultBackupJob?.status || '')) return res.status(409).json({ error: 'Une sauvegarde du coffre-fort est déjà en cours.' });
+  const channelId = String(req.body?.channelId || '').trim();
+  if (!/^-100\\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
+  let selected;
+  try {
+    publicationVaultKey();
+    const client = await activeResenderClient();
+    const chats = await listResenderChats(client);
+    selected = chats.find(item => item.type === 'canal' && String(item.id) === channelId);
+    if (!selected) return res.status(404).json({ error: 'Canal inaccessible depuis le compte Telegram connecté.' });
+    const channel = await client.getEntity(channelId);
+    if (!(channel?.creator || channel?.adminRights?.deleteMessages || channel?.adminRights?.postMessages)) return res.status(403).json({ error: 'Le compte Telegram ne peut pas accéder aux publications de ce canal.' });
+  } catch (error) { return res.status(409).json({ error: String(error?.message || error).slice(0, 300) }); }
+  const job = { id: `vault-backup-${Date.now()}`, channelId, channelTitle: selected.name, status: 'queued', scanned: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  data.publicationVaultBackupJob = job; saveNow();
+  setImmediate(async () => {
+    if (vaultBackupRunning) return;
+    vaultBackupRunning = true;
+    try {
+      job.status = 'running'; job.updatedAt = new Date().toISOString(); saveNow();
+      const client = await activeResenderClient();
+      const channel = await client.getEntity(channelId);
+      const archive = await capturePublicationVault(client, channel, channelId, selected.name, job);
+      job.status = 'completed'; job.archiveId = archive.id; job.messageCount = archive.manifest.messageCount; job.mediaCount = archive.manifest.mediaCount; job.totalBytes = archive.manifest.totalBytes; job.completedAt = new Date().toISOString(); job.updatedAt = job.completedAt; job.error = null;
+      appendAudit(__dirname, { type: 'publication_vault_backup_completed', message: 'Sauvegarde chiffrée du canal terminée.', details: { channelId, archiveId: archive.id, messages: job.messageCount, media: job.mediaCount } });
+    } catch (error) {
+      job.status = 'failed'; job.error = String(error?.message || error).slice(0, 400); job.completedAt = new Date().toISOString(); job.updatedAt = job.completedAt;
+    } finally { vaultBackupRunning = false; saveNow(); }
+  });
+  res.status(202).json({ ok: true, job: { id: job.id, status: job.status } });
+});
+
+app.post('/api/publication-vault/:id/restore', async (req, res) => {
+  if (String(req.body?.confirmText || '') !== 'RESTAURER LES PUBLICATIONS') return res.status(400).json({ error: 'Confirmation invalide.' });
+  if (vaultRestoreRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultRestoreJob?.status || '')) return res.status(409).json({ error: 'Une restauration est déjà en cours.' });
+  const archiveId = String(req.params.id || '');
+  const channelId = String(req.body?.channelId || '').trim();
+  if (!/^-100\\d+$/u.test(channelId)) return res.status(400).json({ error: 'Choisis un canal de destination valide.' });
+  let manifest;
+  try {
+    const key = publicationVaultKey();
+    manifest = await publicationVault.readArchive({ root: PUBLICATION_VAULT_ROOT, id: archiveId, key, verify: true });
+    const client = await activeResenderClient();
+    const channels = await listResenderChats(client);
+    if (!channels.some(item => item.type === 'canal' && String(item.id) === channelId)) return res.status(404).json({ error: 'Canal de destination inaccessible.' });
+    const destination = await client.getEntity(channelId);
+    if (!(destination?.creator || destination?.adminRights?.postMessages)) return res.status(403).json({ error: 'Le compte Telegram connecté ne possède pas le droit de publier dans ce canal.' });
+  } catch (error) { return res.status(409).json({ error: String(error?.message || error).slice(0, 300) }); }
+  const job = { id: `vault-restore-${Date.now()}`, archiveId, channelId, channelTitle: manifest.channelTitle, status: 'queued', restored: 0, total: manifest.messageCount, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  data.publicationVaultRestoreJob = job; saveNow();
+  setImmediate(async () => {
+    if (vaultRestoreRunning) return;
+    vaultRestoreRunning = true;
+    try {
+      job.status = 'running'; job.updatedAt = new Date().toISOString(); saveNow();
+      await restorePublicationVault(archiveId, channelId, job);
+      job.status = 'completed'; job.completedAt = new Date().toISOString(); job.updatedAt = job.completedAt; job.error = null;
+      appendAudit(__dirname, { type: 'publication_vault_restore_completed', message: 'Restauration depuis le coffre-fort terminée.', details: { archiveId, channelId, restored: job.restored } });
+    } catch (error) {
+      job.status = 'failed'; job.error = String(error?.message || error).slice(0, 400); job.completedAt = new Date().toISOString(); job.updatedAt = job.completedAt;
+    } finally { vaultRestoreRunning = false; saveNow(); }
+  });
+  res.status(202).json({ ok: true, job: { id: job.id, status: job.status } });
+});
+
 app.get('/api/channel/purge/channels', async (_req, res) => {
   try {
     const chats = await listResenderChats(await activeResenderClient());
