@@ -97,6 +97,7 @@ const DEFAULTS = {
   channelSyncConnections: [],
   channelSyncChats: [],
   channelSyncResenderSession: '',
+  channelPurgeJob: null,
   channelSyncImports: [],
   channelSyncImportSeen: [],
   channelSyncQueue: [],
@@ -2622,9 +2623,78 @@ async function publishManualPublication(item) {
 }
 
 // ---------- CHANNEL SYNC : Resender / compte personnel ----------
-let resenderRuntime = null; let resenderLogin = null; let resenderWatching = false;
+let resenderRuntime = null; let resenderLogin = null; let resenderWatching = false; let channelPurgeRunning = false;
 function resenderConfigured() { return Number.isSafeInteger(TELEGRAM_API_ID) && TELEGRAM_API_ID > 0 && /^[a-f0-9]{32}$/iu.test(TELEGRAM_API_HASH); }
 async function activeResenderClient() { if (!resenderConfigured() || !data.channelSyncResenderSession) throw new Error('Configure TELEGRAM_API_ID, TELEGRAM_API_HASH puis connecte ton compte personnel.'); if (!resenderRuntime) resenderRuntime = createResenderClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH, session: data.channelSyncResenderSession }); if (!resenderRuntime.client.connected) await resenderRuntime.client.connect(); if (!await resenderRuntime.client.checkAuthorization()) throw new Error('Session personnelle expirée : reconnecte-toi.'); if (!resenderWatching) { watchResenderConnections(resenderRuntime.client, channelSyncConnections, async (connection, messages) => { await republishResender(resenderRuntime.client, connection.destinationChatId, messages, transformPublicationText); }, error => console.error('Resender:', String(error?.message || error))); resenderWatching = true; } return resenderRuntime.client; }
+
+async function executeChannelPurge(job) {
+  if (channelPurgeRunning) return;
+  channelPurgeRunning = true;
+  try {
+    job.status = 'checking';
+    job.updatedAt = new Date().toISOString();
+    saveNow();
+
+    const client = await activeResenderClient();
+    const channel = await client.getEntity(CHANNEL_ID);
+    const canDelete = Boolean(channel?.creator || channel?.adminRights?.deleteMessages);
+    if (!canDelete) throw new Error('Le compte Telegram personnel connecté ne possède pas le droit « Supprimer des messages » sur le canal.');
+
+    // Snapshot every message ID before deleting: deleting while iterating can
+    // shift Telegram history pagination and silently skip older publications.
+    job.status = 'scanning';
+    const ids = [];
+    for await (const message of client.iterMessages(channel, { limit: 0 })) {
+      if (Number.isSafeInteger(Number(message?.id)) && Number(message.id) > 0) ids.push(Number(message.id));
+      if (ids.length && ids.length % 1000 === 0) {
+        job.scanned = ids.length;
+        job.updatedAt = new Date().toISOString();
+        saveNow();
+      }
+    }
+
+    job.total = ids.length;
+    job.scanned = ids.length;
+    job.status = 'deleting';
+    job.updatedAt = new Date().toISOString();
+    saveNow();
+
+    // Telegram accepts batches of up to 100 message IDs for channel deletion.
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const batch = ids.slice(offset, offset + 100);
+      await client.deleteMessages(channel, batch, { revoke: true });
+      job.deleted += batch.length;
+      job.updatedAt = new Date().toISOString();
+      saveNow();
+    }
+
+    job.status = 'completed';
+    job.completedAt = new Date().toISOString();
+    job.error = null;
+    // Leave the bot paused so scheduled/automatic publications do not refill
+    // the channel immediately after the destructive operation.
+    data.botPaused = true;
+    data.enabled = false;
+    saveNow();
+    appendAudit(__dirname, {
+      type: 'channel_purge_completed',
+      message: 'Purge complète du canal demandée depuis le tableau de bord.',
+      details: { channelId: CHANNEL_ID, total: job.total, deleted: job.deleted }
+    });
+  } catch (error) {
+    job.status = 'failed';
+    job.error = String(error?.errorMessage || error?.message || error).slice(0, 500);
+    job.completedAt = new Date().toISOString();
+    saveNow();
+    appendAudit(__dirname, {
+      type: 'channel_purge_failed',
+      message: 'Purge du canal interrompue ou refusée.',
+      details: { channelId: CHANNEL_ID, scanned: job.scanned || 0, total: job.total, deleted: job.deleted || 0, error: job.error }
+    });
+  } finally {
+    channelPurgeRunning = false;
+  }
+}
 function saveResenderSession(runtime) { data.channelSyncResenderSession = runtime.session.save(); saveNow(); }
 async function runChannelSyncImport(job) {
   if (!job || job.status !== 'queued') return;
@@ -2928,6 +2998,40 @@ app.get('/health', (_req, res) => {
 
 app.use(auth);
 app.use(auth);
+
+
+app.get('/api/channel/purge/status', (_req, res) => {
+  const job = data.channelPurgeJob;
+  res.set('Cache-Control', 'no-store');
+  res.json({ job: job ? {
+    id: job.id, status: job.status, scanned: job.scanned || 0,
+    total: job.total ?? null, deleted: job.deleted || 0,
+    error: job.error || null, updatedAt: job.updatedAt || null,
+    completedAt: job.completedAt || null
+  } : null });
+});
+
+app.post('/api/channel/purge', (req, res) => {
+  if (String(req.body?.confirmText || '') !== 'VIDER LE CANAL') {
+    return res.status(400).json({ error: 'Confirmation invalide. Saisis exactement VIDER LE CANAL.' });
+  }
+  if (!resenderConfigured() || !data.channelSyncResenderSession) {
+    return res.status(409).json({ error: 'Connecte d’abord ton compte Telegram personnel dans Paramètres > CHANNEL SYNC.' });
+  }
+  if (channelPurgeRunning || ['queued', 'checking', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '')) {
+    return res.status(409).json({ error: 'Une suppression du canal est déjà en cours.' });
+  }
+  const job = {
+    id: `purge-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+    channelId: CHANNEL_ID, status: 'queued', scanned: 0, total: null,
+    deleted: 0, error: null, createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  data.channelPurgeJob = job;
+  saveNow();
+  setImmediate(() => executeChannelPurge(job));
+  res.status(202).json({ ok: true, job: { id: job.id, status: job.status } });
+});
 
 // Jeton dédié au widget iPhone : lecture seule, distinct du mot de passe admin.
 app.get('/api/widget/token', (_req, res) => {
