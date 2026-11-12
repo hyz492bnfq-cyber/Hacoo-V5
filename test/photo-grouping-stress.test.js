@@ -20,7 +20,7 @@ const group = (anchor, photos = [], overrides = {}) => ({
 const accepts = (state, incoming, options = {}) => shouldAppendPhotoToGroup(
   state,
   incoming,
-  options.mode ?? 'automatic',
+  options.mode === undefined ? 'automatic' : options.mode,
   options.now ?? 10_001,
   options.windowMs ?? 90_000,
   readText
