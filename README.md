@@ -35,6 +35,17 @@ Obligatoires : `BOT_TOKEN`, `ADMIN_ID`, `CHANNEL_ID`, `DASHBOARD_PASSWORD`.
 
 Le système de transfert est intégré au bot Node et repose sur Resender/GramJS, connecté à ton compte Telegram personnel. Configure `TELEGRAM_API_ID` et `TELEGRAM_API_HASH`, puis connecte-toi depuis **CHANNEL SYNC** du dashboard. Tu peux sélectionner les canaux source et destination, activer une liaison automatique, ou recopier les derniers posts. Les textes, photos, vidéos, documents, légendes et albums sont récupérés puis republiés sans entête de transfert.
 
+### Coffre-fort des publications Telegram
+
+Configure obligatoirement `PUBLICATION_VAULT_KEY` dans les variables secrètes FadeHost avant d'utiliser les sauvegardes ou la purge d'un canal. La valeur doit être une clé aléatoire de **32 octets** encodée en 64 caractères hexadécimaux ou en Base64. Ne la mets jamais dans GitHub, `data.json`, le dashboard ou un fichier de sauvegarde.
+
+- Les médias sont téléchargés par lots de quatre, puis chiffrés individuellement en AES-256-GCM. Le manifeste contenant les légendes, dates, ordre et groupes d'albums est lui aussi chiffré.
+- Les fichiers sont écrits dans un répertoire privé avec permissions restrictives, hors des fichiers du dashboard. `PUBLICATION_VAULT_DIR` permet de définir explicitement le chemin du stockage; par défaut, le dossier `private-publication-vault` est créé à côté de `DATA_FILE`.
+- Avant une purge, le bot doit terminer la sauvegarde et vérifier l'intégrité de chaque média. En cas de clé absente, disque plein, téléchargement impossible ou archive invalide, la suppression ne démarre pas.
+- Le dashboard permet une sauvegarde manuelle et la restauration dans un canal où le compte personnel a le droit de publier. Telegram attribue de nouveaux identifiants et horodatages aux messages restaurés.
+- **Conserve la clé hors du serveur et dans un gestionnaire de mots de passe.** Si elle est perdue ou remplacée, les archives existantes ne pourront plus être déchiffrées.
+- Vérifie que le chemin de stockage choisi est persistant chez l'hébergeur et dispose de suffisamment d'espace. Le chiffrement protège les archives au repos, mais un administrateur de l'hébergement ayant accès au processus et à sa clé peut théoriquement les déchiffrer.
+
 IA optionnelles : `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`. Modèles configurables : `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GROQ_MODEL`, `OPENROUTER_MODEL`. Les noms et les modèles peuvent changer côté fournisseur; le test API ne garantit ni quotas ni disponibilité future.
 
 V6 : `V6_AUTONOMY_ENABLED`, `V6_AUTONOMY_INTERVAL_MINUTES`, `V6_AUTONOMY_MAX_RUNS_PER_DAY`, `V6_AUTONOMY_GENERATE_CANDIDATES`, `V6_SELF_DEVELOPMENT_ENABLED`, `V6_DAILY_REPORT_ENABLED`, `V6_DAILY_REPORT_HOUR`, `V6_MULTICHANNEL_ENABLED`, `V6_CHANNELS_JSON`, `V6_AUTO_DEPLOY_ENABLED`, `V6_DEPLOY_ADAPTER`, `V6_GITHUB_TOKEN`, `V6_GITHUB_OWNER`, `V6_GITHUB_REPO`, `V6_GITHUB_BRANCH`.
