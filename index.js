@@ -3162,6 +3162,10 @@ app.post('/api/publication-vault/:id/restore', async (req, res) => {
   if (vaultRestoreRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultRestoreJob?.status || '')) return res.status(409).json({ error: 'Une restauration est déjà en cours.' });
   const archiveId = String(req.params.id || '');
   const channelId = String(req.body?.channelId || '').trim();
+  const previousRestore = data.publicationVaultRestoreJob;
+  if (previousRestore?.archiveId === archiveId && String(previousRestore.channelId) === channelId && previousRestore.status === 'failed' && Number(previousRestore.restored || 0) > 0) {
+    return res.status(409).json({ error: `Une restauration précédente a déjà republié ${previousRestore.restored} message(s) avant son interruption. Vérifie le canal avant de relancer pour éviter les doublons.` });
+  }
   if (!/^-100\d+$/u.test(channelId)) return res.status(400).json({ error: 'Choisis un canal de destination valide.' });
   let manifest;
   try {
