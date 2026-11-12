@@ -555,7 +555,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
    <section class="tab" id="tab-affiliate" aria-label="Commandes Hacoo">
     <div class="row between wrap" style="gap:12px">
      <p class="note" id="affHistoryNote">Données de ton compte Hacoo Affiliate.</p>
-     <div class="row wrap"><span class="small muted" id="affSyncStatus">Non synchronisé</span><button class="btn primary" id="affiliateSync" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Synchroniser</button></div>
+     <div class="row wrap"><span class="small muted" id="affSyncStatus">Non synchronisé</span><button class="btn sm" id="affiliateAutoRefresh" type="button" aria-pressed="false">Activer auto · 5 min</button><button class="btn primary" id="affiliateSync" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Actualiser</button></div>
     </div>
     <div class="wallet" id="wallet" aria-label="Portefeuille de commissions Hacoo">
      <div class="wl-top">
@@ -2124,6 +2124,25 @@ $('#affOrders').addEventListener('click',e=>{
  const tr=e.target.closest('tr[data-order]');if(tr)openOrderDetail(tr.dataset.order);
 });
 $('#forecastGoalSave').addEventListener('click',()=>{const value=Math.max(0,Number($('#forecastGoal').value||0));store('m2.forecastGoal',value);renderAffiliateForecast();toast(value>0?'Objectif mensuel enregistré':'Objectif mensuel effacé','ok');});
+let affiliateAutoRefreshTimer=null;
+function setAffiliateAutoRefresh(enabled){
+ store('m2.affiliateAutoRefresh',!!enabled);
+ const button=$('#affiliateAutoRefresh');
+ if(button){
+  button.textContent=enabled?'Désactiver auto · 5 min':'Activer auto · 5 min';
+  button.classList.toggle('ok',enabled);
+  button.setAttribute('aria-pressed',String(!!enabled));
+ }
+ if(affiliateAutoRefreshTimer){clearInterval(affiliateAutoRefreshTimer);affiliateAutoRefreshTimer=null;}
+ if(enabled){
+  affiliateAutoRefreshTimer=setInterval(()=>{
+   if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadAffiliate();
+  },5*60*1000);
+ }
+}
+$('#affiliateAutoRefresh').addEventListener('click',()=>setAffiliateAutoRefresh(!store('m2.affiliateAutoRefresh')));
+setAffiliateAutoRefresh(!!store('m2.affiliateAutoRefresh'));
+
 $('#affiliateSync').addEventListener('click',async event=>{
  try{await busy(event.currentTarget,'Synchronisation…',async()=>{await post('/api/affiliate/sync',{});toast('Commandes Hacoo synchronisées','ok');await loadAffiliate();});}
  catch(error){toast(error.message,'bad');await loadAffiliate();}
@@ -2169,7 +2188,7 @@ function showTab(name){
  window.scrollTo({top:0});
  replayNums($('#tab-'+name));
  if(name==='publications')loadManual();
- if(name==='affiliate'||name==='forecast')loadAffiliate();
+ if((name==='affiliate'||name==='forecast')&&!affiliateLoaded)loadAffiliate();
  if(name==='settings')loadChannelSync();
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
@@ -2200,16 +2219,10 @@ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(moveInd);
  },{passive:true});
 })();
 
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadCore();loadAffiliate();}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCore();});
 setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadCore();},30000);
-// Recharge les commandes et commissions à intervalle aléatoire de 5 à 6 minutes.
-(function scheduleAffiliateDashboardRefresh(){
- const delay=5*60*1000+Math.floor(Math.random()*60*1000);
- setTimeout(()=>{
-  if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadAffiliate();
-  scheduleAffiliateDashboardRefresh();
- },delay);
-})();
+// Les commandes Hacoo restent en mode manuel. L'actualisation périodique
+// de 5 minutes est activée uniquement par le bouton dédié.
 const first=(location.hash||'').slice(1);
 if(TABS.includes(first)&&first!=='home')showTab(first);else{moveInd();}
 loadCore().then(()=>{if(S.tab==='publications')loadManual();if(S.tab==='settings')loadChannelSync();});
