@@ -3150,7 +3150,14 @@ app.get('/api/widget/lockscreen', (_req, res) => {
   // On les inclut donc dans les commissions liées aux commandes livrées.
   const deliveredCommission = valid
     .filter(order => ['Delivered', 'Signed'].includes(affiliateForecastStatus(order)))
-    .reduce((sum, order) => sum + commissionOf(order), 0);
+    .reduce((sum, order) => {
+      // Priorité au montant réellement validé par Hacoo (en centimes).
+      const signedActual = Number(order.signTotalCommissionAmount || 0) ||
+        (Number(order.signCommissionAmount || 0) + Number(order.signSubsidyAmount || 0));
+      const actual = Number(order.actualCommission || 0) +
+        Number(order.actualSubsidy || 0);
+      return sum + Math.max(0, signedActual || actual || commissionOf(order));
+    }, 0);
   res.json({
     ok: true,
     currency: 'USD',
