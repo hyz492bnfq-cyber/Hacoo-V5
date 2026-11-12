@@ -1677,8 +1677,21 @@ async function deleteMessageGroup(ctx, messages, reason) {
 async function processMessages(ctx, messages) {
   if (!messages.length) return;
 
+  // Garde-fou : plusieurs messages ne constituent un album que si Telegram
+  // leur a attribué exactement le même media_group_id non vide. Deux posts
+  // indépendants (notamment avec deux légendes) sont traités séparément,
+  // même s'ils ont été réunis par une ancienne tâche persistée.
   const first = messages[0];
   const groupId = first.media_group_id || null;
+  const isOneNativeAlbum = Boolean(groupId) &&
+    messages.every(message => String(message.media_group_id || '') === String(groupId));
+
+  if (messages.length > 1 && !isOneNativeAlbum) {
+    for (const message of messages.slice().sort((a, b) => Number(a.message_id) - Number(b.message_id))) {
+      await processMessages(ctx, [message]);
+    }
+    return;
+  }
 
   if (!data.enabled || data.botPaused) {
     // Important: a paused task is deferred, never marked completed by the queue worker.
