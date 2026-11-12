@@ -1980,50 +1980,38 @@ function schedulePhotoGroupFlush() {
 
 function flushPhotoGroup() {
   const group = photoGroup;
-
   photoGroup = null;
-
   if (!group) return;
-
   clearTimeout(group.timer);
 
-  if (!group.photos.length) {
+  // Sécurité anti-fusion : les messages sans media_group_id Telegram sont
+  // toujours des publications indépendantes. Même les anciennes files créées
+  // par l'ancien regroupement temporel sont désormais traitées séparément.
+  const messages = [group.anchor, ...(group.photos || [])]
+    .filter(Boolean)
+    .sort((a, b) => Number(a.message_id) - Number(b.message_id));
+
+  if (!messages.length) {
     clearPersistedPhotoGroup(group);
+    return;
+  }
+
+  const tasks = messages.map(message => {
     if (group.mode === 'manual') {
-      interceptManualPublication(group.ctx, [group.anchor]).catch(noteError);
-    } else {
-      enqueueProcessMessages(group.ctx, [group.anchor]);
+      return interceptManualPublication(group.ctx, [message]);
     }
-    return;
-  }
-
-  if (group.mode === 'manual') {
-    const messages = [group.anchor, ...group.photos].sort((a, b) => a.message_id - b.message_id);
-    interceptManualPublication(group.ctx, messages)
-      .then(() => clearPersistedPhotoGroup(group))
-      .catch(error => {
-        noteError(error);
-        // Les originaux restent présents si la première sauvegarde échoue.
-        // Conserver le groupe permet une reprise après redémarrage.
-        persistPhotoGroup(group);
-        notifyAdmin(`Regroupement manuel à vérifier : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
-      });
-    return;
-  }
-
-  regroupPhotos(group).catch(error => {
-    noteError(error);
-    group.attempts = Number(group.attempts || 0) + 1;
-    persistPhotoGroup(group);
-    // Reprendre automatiquement quelques fois; après 3 échecs, garder la sauvegarde et alerter.
-    if (group.attempts < 3) {
-      photoGroup = group;
-      group.timer = setTimeout(flushPhotoGroup, 10000);
-    }
-    notifyAdmin(
-      `Regroupement en album impossible (tentative ${group.attempts}/3) : ${String(error?.message || error).slice(0, 300)}\nLes publications d'origine ne sont pas supprimées tant que le nouvel album n'a pas été envoyé.`
-    );
+    return enqueueProcessMessages(group.ctx, [message]);
   });
+
+  Promise.all(tasks)
+    .then(() => clearPersistedPhotoGroup(group))
+    .catch(error => {
+      noteError(error);
+      // Garder l'enregistrement durable si une publication individuelle
+      // n'a pas pu être mise en file / sauvegardée.
+      persistPhotoGroup(group);
+      notifyAdmin(`Traitement individuel d'anciennes photos en attente : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
+    });
 }
 
 function observeEditedChannelPost(ctx) {
@@ -2040,67 +2028,11 @@ function observeEditedChannelPost(ctx) {
 }
 
 function observeForPhotoGroup(ctx, message, mode = 'automatic') {
-  if (!data.groupPhotos || !data.enabled || data.botPaused) {
-    if (photoGroup) flushPhotoGroup();
-    return false;
-  }
-
-  const isPhoto = Boolean(message.photo?.length);
-  const hasText = Boolean(msgText(message).trim());
-  const now = Date.now();
-
-  // Les photos sans légende peuvent précéder la photo qui porte la légende.
-  // Dès qu'une légende est reçue, toute photo indépendante suivante démarre
-  // un nouveau groupe : sans media_group_id, on ne peut pas prouver qu'elle
-  // appartient encore à la publication précédente. On préfère séparer plutôt
-  // que fusionner silencieusement deux publications distinctes.
-  if (isPhoto && !message.media_group_id) {
-    const canAppend = shouldAppendPhotoToGroup(
-      photoGroup, message, mode, now, GROUP_WINDOW_MS, msgText
-    );
-
-    if (canAppend) {
-      photoGroup.photos.push(message);
-      photoGroup.lastMessageAt = now;
-      persistPhotoGroup(photoGroup);
-      schedulePhotoGroupFlush();
-      return true;
-    }
-
-    flushPhotoGroup();
-    photoGroup = {
-      ctx,
-      anchor: message,
-      photos: [],
-      mode,
-      startedAt: now,
-      lastMessageAt: now,
-      timer: null
-    };
-    persistPhotoGroup(photoGroup);
-    schedulePhotoGroupFlush();
-    return true;
-  }
-
-  // Un message texte indépendant peut servir de légende/contexte aux photos
-  // qui suivent. Il clôt toujours le groupe précédent pour éviter les mélanges.
-  if (hasText && !message.media_group_id) {
-    flushPhotoGroup();
-    photoGroup = {
-      ctx,
-      anchor: message,
-      photos: [],
-      mode,
-      startedAt: now,
-      lastMessageAt: now,
-      timer: null
-    };
-    persistPhotoGroup(photoGroup);
-    schedulePhotoGroupFlush();
-    return true;
-  }
-
-  flushPhotoGroup();
+  // Aucun regroupement temporel de messages indépendants.
+  // Seul le media_group_id fourni par Telegram autorise la création d'un album.
+  // Si une ancienne file temporelle existe encore, on la vide en publications
+  // séparées avant de laisser le message courant suivre son traitement normal.
+  if (photoGroup) flushPhotoGroup();
   return false;
 }
 
