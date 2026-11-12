@@ -2636,7 +2636,7 @@ async function executeChannelPurge(job) {
     saveNow();
 
     const client = await activeResenderClient();
-    const channel = await client.getEntity(CHANNEL_ID);
+    const channel = await client.getEntity(String(job.channelId));
     const canDelete = Boolean(channel?.creator || channel?.adminRights?.deleteMessages);
     if (!canDelete) throw new Error('Le compte Telegram personnel connecté ne possède pas le droit « Supprimer des messages » sur le canal.');
 
@@ -2679,7 +2679,7 @@ async function executeChannelPurge(job) {
     appendAudit(__dirname, {
       type: 'channel_purge_completed',
       message: 'Purge complète du canal demandée depuis le tableau de bord.',
-      details: { channelId: CHANNEL_ID, total: job.total, deleted: job.deleted }
+      details: { channelId: job.channelId, channelTitle: job.channelTitle, total: job.total, deleted: job.deleted }
     });
   } catch (error) {
     job.status = 'failed';
@@ -2689,7 +2689,7 @@ async function executeChannelPurge(job) {
     appendAudit(__dirname, {
       type: 'channel_purge_failed',
       message: 'Purge du canal interrompue ou refusée.',
-      details: { channelId: CHANNEL_ID, scanned: job.scanned || 0, total: job.total, deleted: job.deleted || 0, error: job.error }
+      details: { channelId: job.channelId, channelTitle: job.channelTitle, scanned: job.scanned || 0, total: job.total, deleted: job.deleted || 0, error: job.error }
     });
   } finally {
     channelPurgeRunning = false;
@@ -3000,11 +3000,22 @@ app.use(auth);
 app.use(auth);
 
 
+app.get('/api/channel/purge/channels', async (_req, res) => {
+  try {
+    const chats = await listResenderChats(await activeResenderClient());
+    data.channelSyncChats = chats; saveNow();
+    res.set('Cache-Control', 'no-store');
+    res.json({ channels: chats.filter(item => item.type === 'canal') });
+  } catch (error) {
+    res.status(502).json({ error: `Chargement des canaux impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` });
+  }
+});
+
 app.get('/api/channel/purge/status', (_req, res) => {
   const job = data.channelPurgeJob;
   res.set('Cache-Control', 'no-store');
   res.json({ job: job ? {
-    id: job.id, status: job.status, scanned: job.scanned || 0,
+    id: job.id, channelId: job.channelId, channelTitle: job.channelTitle || null, status: job.status, scanned: job.scanned || 0,
     total: job.total ?? null, deleted: job.deleted || 0,
     error: job.error || null, updatedAt: job.updatedAt || null,
     completedAt: job.completedAt || null
@@ -3012,27 +3023,25 @@ app.get('/api/channel/purge/status', (_req, res) => {
 });
 
 app.post('/api/channel/purge', async (req, res) => {
-  if (String(req.body?.confirmText || '') !== 'VIDER LE CANAL') {
-    return res.status(400).json({ error: 'Confirmation invalide. Saisis exactement VIDER LE CANAL.' });
-  }
-  if (!resenderConfigured() || !data.channelSyncResenderSession) {
-    return res.status(409).json({ error: 'Connecte d’abord ton compte Telegram personnel dans Paramètres > CHANNEL SYNC.' });
-  }
-  if (channelPurgeRunning || ['queued', 'checking', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '')) {
-    return res.status(409).json({ error: 'Une suppression du canal est déjà en cours.' });
-  }
+  if (String(req.body?.confirmText || '') !== 'VIDER LE CANAL') return res.status(400).json({ error: 'Confirmation invalide. Saisis exactement VIDER LE CANAL.' });
+  const channelId = String(req.body?.channelId || '').trim();
+  if (!/^-100\\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
+  if (!resenderConfigured() || !data.channelSyncResenderSession) return res.status(409).json({ error: 'Connecte d’abord ton compte Telegram personnel dans Paramètres > CHANNEL SYNC.' });
+  if (channelPurgeRunning || ['queued', 'checking', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '')) return res.status(409).json({ error: 'Une suppression est déjà en cours.' });
+  let selectedChannel;
   try {
     const client = await activeResenderClient();
-    const channel = await client.getEntity(CHANNEL_ID);
-    if (!(channel?.creator || channel?.adminRights?.deleteMessages)) {
-      return res.status(403).json({ error: 'Le compte personnel connecté ne possède pas le droit de supprimer les messages de ce canal.' });
-    }
+    const channels = await listResenderChats(client);
+    selectedChannel = channels.find(item => item.type === 'canal' && String(item.id) === channelId);
+    if (!selectedChannel) return res.status(404).json({ error: 'Ce canal ne figure pas dans les canaux accessibles par le compte Telegram connecté. Actualise la liste.' });
+    const channel = await client.getEntity(channelId);
+    if (!(channel?.creator || channel?.adminRights?.deleteMessages)) return res.status(403).json({ error: 'Le compte personnel connecté ne possède pas le droit de supprimer les messages de ce canal.' });
   } catch (error) {
     return res.status(502).json({ error: `Vérification Telegram impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` });
   }
   const job = {
     id: `purge-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
-    channelId: CHANNEL_ID, status: 'queued', scanned: 0, total: null,
+    channelId, channelTitle: selectedChannel.name, status: 'queued', scanned: 0, total: null,
     deleted: 0, error: null, createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
