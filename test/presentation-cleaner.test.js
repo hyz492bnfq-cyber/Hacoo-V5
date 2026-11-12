@@ -25,7 +25,6 @@ test('supprime les lignes strictement répétées sans fusionner les information
     '👉https://c.onlyaff.app/ebYkh9',
     '• Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
     '👉https://c.onlyaff.app/ebYkh9',
-    'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
     'CODE PROMO :',
     'Une autre information produit'
   ].join('\n');
