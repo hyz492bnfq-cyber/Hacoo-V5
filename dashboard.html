@@ -2071,8 +2071,10 @@ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(moveInd);
  },{passive:true});
 })();
 
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadCore();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadCore();loadAffiliate();}});
 setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadCore();},30000);
+// Recharge les commandes et commissions toutes les 5 minutes lorsque le dashboard est ouvert.
+setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadAffiliate();},5*60*1000);
 const first=(location.hash||'').slice(1);
 if(TABS.includes(first)&&first!=='home')showTab(first);else{moveInd();}
 loadCore().then(()=>{if(S.tab==='publications')loadManual();if(S.tab==='settings')loadChannelSync();});
