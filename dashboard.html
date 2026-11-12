@@ -867,6 +867,14 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
     <div class="row between"><span class="small muted" id="channelPurgeChannelInfo">Compte Telegram personnel requis.</span><button class="btn sm" id="refreshPurgeChannels" type="button">Actualiser</button></div>
   </div>
   <p class="small muted">La liste provient des canaux accessibles par le compte Telegram personnel connecté dans CHANNEL SYNC. Il doit être propriétaire du canal ou disposer du droit de suppression des messages. Le bot et les publications programmées seront mis en pause avant la suppression, puis resteront en pause jusqu’à ta réactivation manuelle.</p>
+  <div class="card stack" id="publicationVaultCard" style="border:1px solid rgba(52,211,153,.28);background:rgba(16,185,129,.045)">
+   <div class="row between wrap"><div><h3>🔐 Coffre-fort des publications</h3><p class="small muted">Archives AES-256-GCM privées, vérifiées avant toute suppression.</p></div><span class="tag" id="vaultSecurityState">Vérification…</span></div>
+   <p class="small muted" id="vaultSetupNote">Clé de chiffrement à configurer dans FadeHost.</p>
+   <div class="btnrow"><button class="btn primary" id="vaultBackupBtn" type="button" disabled>🔒 Sauvegarder ce canal</button><button class="btn" id="vaultRefreshBtn" type="button">Actualiser les archives</button></div>
+   <div><label class="lb" for="vaultArchiveSelect">Archive à restaurer</label><select id="vaultArchiveSelect"><option value="">Aucune archive disponible</option></select></div>
+   <button class="btn ok block" id="vaultRestoreBtn" type="button" disabled>Restaurer dans le canal sélectionné</button>
+   <div class="small muted" id="vaultJobStatus" role="status">Aucune opération en cours.</div><div class="list" id="vaultArchiveInfo"></div>
+  </div>
   <button class="btn danger block" id="channelPurgeBtn" type="button" disabled>⚠️ ALERTE — SUPPRIMER LE CANAL SÉLECTIONNÉ</button>
   <div class="small muted" id="channelPurgeStatus" role="status">Aucune suppression lancée depuis ce tableau de bord.</div>
 </div>
@@ -1092,6 +1100,7 @@ $('#syncQueue').addEventListener('click',async e=>{const b=e.target.closest('[da
 function purgeStatusText(job){
  if(!job)return 'Aucune suppression lancée depuis ce tableau de bord.';
  if(job.status==='queued'||job.status==='checking')return 'Vérification du compte Telegram et des droits…';
+ if(job.status==='backing_up')return 'Sauvegarde chiffrée avant suppression : '+nf(job.scanned)+' message(s) parcourus…';
  if(job.status==='scanning')return `Inventaire de l’historique : ${nf(job.scanned)} message(s) repéré(s)…`;
  if(job.status==='deleting')return `Suppression en cours : ${nf(job.deleted)} / ${job.total==null?'…':nf(job.total)} message(s).`;
  if(job.status==='completed')return `Terminé : ${nf(job.deleted)} message(s) supprimé(s). Le bot est en pause.`;
@@ -1104,6 +1113,35 @@ async function refreshPurgeStatus(){
  if(el)el.textContent=purgeStatusText(r.job);
  return r.job;
 }
+async function loadPublicationVault(){
+ const state=$('#vaultSecurityState'),note=$('#vaultSetupNote'),backup=$('#vaultBackupBtn'),select=$('#vaultArchiveSelect'),restore=$('#vaultRestoreBtn'),status=$('#vaultJobStatus'),info=$('#vaultArchiveInfo');
+ try{
+  const r=await api('/api/publication-vault/status');
+  state.textContent=r.enabled?'Chiffrement actif':'Clé requise';state.className=r.enabled?'tag good':'tag bad';
+  note.textContent=r.enabled?'Archives privées : médias et manifeste chiffrés et authentifiés.':'Ajoute PUBLICATION_VAULT_KEY dans FadeHost (clé aléatoire de 32 octets en hexadécimal ou Base64). '+(r.error||'');
+  backup.disabled=!r.enabled||!$('#channelPurgeSelect')?.value||['queued','running','verifying'].includes(r.backupJob?.status||'');
+  const archives=r.archives||[],previous=select.value;
+  select.innerHTML='<option value="">Choisir une archive…</option>'+archives.map(a=>'<option value="'+esc(a.id)+'">'+esc(a.channelTitle||'Archive illisible')+' · '+esc(fdate(a.createdAt))+' · '+nf(a.messageCount||0)+' messages</option>').join('');
+  if(archives.some(a=>a.id===previous))select.value=previous;
+  restore.disabled=!r.enabled||!select.value||!$('#channelPurgeSelect')?.value||['queued','running','verifying'].includes(r.restoreJob?.status||'');
+  info.innerHTML=archives.length?archives.map(a=>'<div class="row between"><span class="small">'+esc(a.channelTitle||a.id)+' · '+nf(a.messageCount||0)+' messages · '+nf(a.mediaCount||0)+' médias</span><span class="tiny muted">'+(a.unreadable?'Archive illisible':(Number(a.totalBytes||0)/1048576).toFixed(1)+' Mo')+'</span></div>').join(''):'<div class="empty">Aucune archive pour le moment.</div>';
+  const b=r.backupJob,rr=r.restoreJob;
+  if(b&&['queued','running','verifying'].includes(b.status))status.textContent='Sauvegarde : '+nf(b.scanned||0)+' messages parcourus…';
+  else if(b?.status==='failed')status.textContent='Échec sauvegarde : '+(b.error||'Erreur inconnue');
+  else if(b?.status==='completed')status.textContent='Sauvegarde vérifiée : '+nf(b.messageCount||0)+' messages, '+nf(b.mediaCount||0)+' médias.';
+  if(rr&&['queued','running','verifying'].includes(rr.status))status.textContent='Restauration : '+nf(rr.restored||0)+' / '+nf(rr.total||0)+' messages…';
+  else if(rr?.status==='failed')status.textContent='Restauration interrompue : '+(rr.error||'Erreur inconnue');
+  else if(rr?.status==='completed')status.textContent='Restauration terminée : '+nf(rr.restored||0)+' messages.';
+ }catch(e){state.textContent='Indisponible';note.textContent=e.message;backup.disabled=true;restore.disabled=true;}
+}
+$('#vaultArchiveSelect').addEventListener('change',loadPublicationVault);
+$('#vaultRefreshBtn').addEventListener('click',async e=>busy(e.currentTarget,'Actualisation…',loadPublicationVault));
+$('#vaultBackupBtn').addEventListener('click',async e=>{const channelId=$('#channelPurgeSelect').value;if(!channelId)return toast('Choisis d’abord le canal.','bad');await busy(e.currentTarget,'Sauvegarde…',async()=>{try{await post('/api/publication-vault/backup',{channelId});toast('Sauvegarde chiffrée lancée.','ok');}catch(error){toast(error.message,'bad');}await loadPublicationVault();});});
+$('#vaultRestoreBtn').addEventListener('click',async()=>{
+ const archiveId=$('#vaultArchiveSelect').value,channelId=$('#channelPurgeSelect').value;if(!archiveId||!channelId)return toast('Choisis une archive et un canal de destination.','bad');
+ if(!await confirmSheet('Les publications archivées seront republiées dans le canal sélectionné. Telegram leur attribuera de nouveaux identifiants. Les publications déjà présentes ne seront pas supprimées.',{title:'Restaurer les publications',ok:'Continuer'}))return;
+ openSheet('Confirmation de restauration','<div class="stack"><p class="small muted">Saisis exactement :</p><b>RESTAURER LES PUBLICATIONS</b><input id="vaultRestoreConfirm" autocomplete="off" placeholder="Phrase de confirmation"><button class="btn primary block" id="vaultRestoreConfirmBtn" type="button" disabled>Restaurer les publications</button></div>',body=>{const input=$('#vaultRestoreConfirm',body),button=$('#vaultRestoreConfirmBtn',body);input.addEventListener('input',()=>button.disabled=input.value.trim()!=='RESTAURER LES PUBLICATIONS');button.addEventListener('click',async()=>{if(button.disabled)return;button.disabled=true;try{await post('/api/publication-vault/'+encodeURIComponent(archiveId)+'/restore',{channelId,confirmText:input.value.trim()});closeSheet();toast('Restauration lancée.','ok');await loadPublicationVault();}catch(error){button.disabled=false;toast(error.message,'bad');}});});
+});
 async function loadPurgeChannels(){
  const select=$('#channelPurgeSelect'),button=$('#channelPurgeBtn'),info=$('#channelPurgeChannelInfo');
  if(!select)return;
@@ -1116,6 +1154,8 @@ async function loadPurgeChannels(){
   else info.textContent=`${nf(channels.length)} canal(aux) accessible(s) par ton compte personnel.`;
  }catch(error){select.innerHTML='<option value="">Impossible de charger les canaux</option>';info.textContent=error.message;}
  button.disabled=!select.value;
+ const backup=$('#vaultBackupBtn');if(backup)backup.disabled=!select.value;
+ await loadPublicationVault();
 }
 $('#channelPurgeSelect').addEventListener('change',e=>{$('#channelPurgeBtn').disabled=!e.currentTarget.value;});
 $('#refreshPurgeChannels').addEventListener('click',async e=>busy(e.currentTarget,'Actualisation…',loadPurgeChannels));
