@@ -28,32 +28,34 @@ const accepts = (state, incoming, options = {}) => shouldAppendPhotoToGroup(
 
 test('stress: chaque position possible de la légende est acceptée, puis ferme le groupe', () => {
   let assertions = 0;
-  for (let count = 2; count <= 40; count++) {
-    for (let captionIndex = 0; captionIndex < count; captionIndex++) {
-      const messages = Array.from({ length: count }, (_, i) =>
-        photo(count * 100 + captionIndex * 50 + i, i === captionIndex ? 'Légende' : '')
-      );
-      const state = group(messages[0], []);
-      for (let i = 1; i < count; i++) {
-        const accepted = accepts(state, messages[i]);
-        assert.equal(accepted, i <= captionIndex,
-          `count=${count}, captionIndex=${captionIndex}, incomingIndex=${i}`);
-        assertions++;
-        if (accepted) state.photos.push(messages[i]);
-        else break;
+  for (let repetition = 0; repetition < 10; repetition++) {
+    for (let count = 2; count <= 40; count++) {
+      for (let captionIndex = 0; captionIndex < count; captionIndex++) {
+        const messages = Array.from({ length: count }, (_, i) =>
+          photo(repetition * 1_000_000 + count * 100 + captionIndex * 50 + i, i === captionIndex ? 'Légende' : '')
+        );
+        const state = group(messages[0], []);
+        for (let i = 1; i < count; i++) {
+          const accepted = accepts(state, messages[i]);
+          assert.equal(accepted, i <= captionIndex,
+            `repeat=${repetition}, count=${count}, captionIndex=${captionIndex}, incomingIndex=${i}`);
+          assertions++;
+          if (accepted) state.photos.push(messages[i]);
+          else break;
+        }
       }
     }
   }
-  assert.ok(assertions > 10_000, `seulement ${assertions} assertions exécutées`);
+  assert.ok(assertions > 100_000, `seulement ${assertions} assertions exécutées`);
 });
 
-test('stress: 5 000 rafales déterministes ne réouvrent jamais un groupe après légende', () => {
+test('stress: 50 000 rafales déterministes ne réouvrent jamais un groupe après légende', () => {
   let seed = 0x5eed1234;
   const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return seed / 0x1_0000_0000;
   };
-  for (let run = 0; run < 5_000; run++) {
+  for (let run = 0; run < 50_000; run++) {
     const captionAt = Math.floor(random() * 12);
     const state = group(photo(run * 20 + 1, captionAt === 0 ? 'A' : ''));
     let closed = captionAt === 0;
@@ -92,7 +94,7 @@ test('stress: aucune photo d’un autre mode ne rejoint le groupe', () => {
 });
 
 test('stress: les albums natifs Telegram sont toujours exclus du regroupement indépendant', () => {
-  for (let i = 0; i < 1_000; i++) {
+  for (let i = 0; i < 10_000; i++) {
     const incoming = { ...photo(i + 2), media_group_id: `native-${i}` };
     assert.equal(accepts(group(photo(i + 1)), incoming), false);
   }
@@ -127,5 +129,5 @@ test('stress: les callbacks de texte personnalisés contrôlent bien la frontiè
 
 test('stress: un groupe avec plusieurs photos conserve sa frontière même si les IDs sont éloignés', () => {
   const state = group(photo(100), [photo(10_000), photo(900_000, 'Produit A')]);
-  for (let i = 0; i < 100; i++) assert.equal(accepts(state, photo(1_000_000 + i)), false);
+  for (let i = 0; i < 1_000; i++) assert.equal(accepts(state, photo(1_000_000 + i)), false);
 });
