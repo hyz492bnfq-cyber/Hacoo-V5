@@ -805,17 +805,7 @@ function transformPublicationText(text, maxLength = 4096) {
     rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0
   );
   const replacedText = hasReplacements ? applyTextReplacements(cleanedText, data.textReplacements).text : cleanedText;
-  const formatted = formatPostText(replacedText, maxLength);
-  const footer = String(data.formatFooterText || '').replace(/\u0000/g, '').trim().slice(0, 250);
-  if (data.formatFooterEnabled && footer && !formatted.trimEnd().endsWith(footer)) return formatted.trimEnd() + '\n' + footer;
-  return formatted;
-}
-
-function publicationFooterEntities(text) {
-  const footer = String(data.formatFooterText || '').replace(/\u0000/g, '').trim().slice(0, 250);
-  const value = String(text || '');
-  if (!data.formatFooterEnabled || !footer || !value.endsWith(footer)) return [];
-  return [{ type: 'italic', offset: value.length - footer.length, length: footer.length }];
+  return formatPostText(replacedText, maxLength);
 }
 
 function stripFormattingMarkers(value) {
