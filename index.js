@@ -2764,6 +2764,10 @@ async function executeChannelPurge(job) {
     job.scanned = 0;
     saveNow();
     const ids = archive.messageIds;
+    const latestMessages = await client.getMessages(channel, { limit: 1 });
+    const latestId = Number(latestMessages?.[0]?.id || 0);
+    const archivedLatestId = ids.length ? ids[ids.length - 1] : 0;
+    if (latestId > archivedLatestId) throw new Error('De nouvelles publications sont arrivées pendant la sauvegarde. Aucune suppression n’a commencé : relance quand le canal est calme.');
     job.total = ids.length;
     job.scanned = ids.length;
     job.status = 'deleting';
