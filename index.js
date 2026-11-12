@@ -826,7 +826,6 @@ function stripFormattingMarkers(value) {
 
 function formatPostText(text, maxLength = 4096) {
  const original=String(text||'');
- if(!original.trim())return original;
  let formatted=original;
  if(data.formatEnabled){
   const lines=original.split('\n');
@@ -870,7 +869,7 @@ function formatPostText(text, maxLength = 4096) {
  if(data.formatFooterEnabled){
   const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,300);
   const base=formatted.trimEnd();
-  if(footer&&!base.endsWith(footer)&&base.length+1+footer.length<=maxLength)formatted=base+'\n'+footer;
+  if(footer&&!base.endsWith(footer)&&base.length+1+footer.length<=maxLength)formatted=base?base+'\n'+footer:footer;
  }
  return formatted;
 }
@@ -1915,7 +1914,7 @@ async function processMessages(ctx, messages) {
               changed,
               { entities: publicationFooterEntities(changed) }
             );
-          } else if (message.caption !== undefined) {
+          } else if (message.caption !== undefined || message.photo || message.video || message.document || message.animation || message.audio || message.voice) {
             await ctx.api.editMessageCaption(
               message.chat.id,
               message.message_id,
