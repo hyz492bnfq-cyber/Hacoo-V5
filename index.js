@@ -148,8 +148,6 @@ const DEFAULTS = {
   formatLinkPrefix: '👉🏼 ',
   formatFooterEnabled: true,
   formatFooterText: 'ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur.',
-  formatFooterEnabled: true,
-  formatFooterText: 'ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur.',
 
   bannedWords: [],
   blockedPhrases: [],
