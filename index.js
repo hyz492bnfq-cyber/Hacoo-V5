@@ -4485,6 +4485,12 @@ const httpServer = app.listen(PORT, () => {
         lastTelegramOk = new Date().toISOString();
         errorBurst = 0;
         console.log('M2 HACOO BOT connecté à Telegram.');
+        if (data.channelPurgeJob && ['queued', 'checking', 'scanning', 'deleting'].includes(data.channelPurgeJob.status)) {
+          data.channelPurgeJob.status = 'failed';
+          data.channelPurgeJob.error = 'Le processus a redémarré pendant la purge. Vérifie le canal : les messages déjà supprimés le restent. Relance la purge pour traiter les messages encore présents.';
+          data.channelPurgeJob.completedAt = new Date().toISOString();
+          saveNow();
+        }
         restorePersistentWork();
         restoreChannelSyncWork();
         if (data.channelSyncResenderSession) activeResenderClient().catch(error => console.error('Resender non démarré :', String(error?.message || error)));
