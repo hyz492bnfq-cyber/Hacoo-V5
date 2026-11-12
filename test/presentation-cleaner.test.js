@@ -28,7 +28,7 @@ test('supprime les lignes strictement répétées sans fusionner les information
     'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
     'CODE PROMO :',
     'Une autre information produit'
-  ].join('\\n');
+  ].join('\n');
 
   assert.equal(removeRepeatedPublicationLines(input), [
     '🛍️APPLE AIRPODS PRO 3⚡️‼️',
@@ -37,5 +37,5 @@ test('supprime les lignes strictement répétées sans fusionner les information
     '• Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
     'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
     'Une autre information produit'
-  ].join('\\n'));
+  ].join('\n'));
 });
