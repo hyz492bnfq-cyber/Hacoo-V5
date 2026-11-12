@@ -2644,7 +2644,7 @@ async function executeChannelPurge(job) {
     // shift Telegram history pagination and silently skip older publications.
     job.status = 'scanning';
     const ids = [];
-    for await (const message of client.iterMessages(channel, { limit: 0 })) {
+    for await (const message of client.iterMessages(channel)) {
       if (Number.isSafeInteger(Number(message?.id)) && Number(message.id) > 0) ids.push(Number(message.id));
       if (ids.length && ids.length % 1000 === 0) {
         job.scanned = ids.length;
