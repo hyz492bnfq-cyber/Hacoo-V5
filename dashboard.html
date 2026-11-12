@@ -1103,7 +1103,7 @@ function purgeStatusText(job){
  if(job.status==='backing_up')return 'Sauvegarde chiffrée avant suppression : '+nf(job.scanned)+' message(s) parcourus…';
  if(job.status==='scanning')return `Inventaire de l’historique : ${nf(job.scanned)} message(s) repéré(s)…`;
  if(job.status==='deleting')return `Suppression en cours : ${nf(job.deleted)} / ${job.total==null?'…':nf(job.total)} message(s).`;
- if(job.status==='completed')return `Terminé : ${nf(job.deleted)} message(s) supprimé(s). Le bot est en pause.`;
+ if(job.status==='completed')return `Terminé : ${nf(job.deleted)} message(s) supprimé(s). Archive vérifiée : ${nf(job.backupMessages||0)} messages et ${nf(job.backupMedia||0)} médias. Le bot est en pause.`;
  if(job.status==='failed')return `Arrêt / échec après ${nf(job.deleted)} suppression(s) : ${job.error||'Erreur inconnue'}. Tu peux relancer après vérification du canal.`;
  return `État : ${job.status}`;
 }
@@ -1125,6 +1125,7 @@ async function loadPublicationVault(){
   if(archives.some(a=>a.id===previous))select.value=previous;
   restore.disabled=!r.enabled||!select.value||!$('#channelPurgeSelect')?.value||['queued','running','verifying'].includes(r.restoreJob?.status||'');
   info.innerHTML=archives.length?archives.map(a=>'<div class="row between"><span class="small">'+esc(a.channelTitle||a.id)+' · '+nf(a.messageCount||0)+' messages · '+nf(a.mediaCount||0)+' médias</span><span class="tiny muted">'+(a.unreadable?'Archive illisible':(Number(a.totalBytes||0)/1048576).toFixed(1)+' Mo')+'</span></div>').join(''):'<div class="empty">Aucune archive pour le moment.</div>';
+  const purge=$('#channelPurgeBtn');if(purge)purge.disabled=!r.enabled||!$('#channelPurgeSelect')?.value;
   const b=r.backupJob,rr=r.restoreJob;
   if(b&&['queued','running','verifying'].includes(b.status))status.textContent='Sauvegarde : '+nf(b.scanned||0)+' messages parcourus…';
   else if(b?.status==='failed')status.textContent='Échec sauvegarde : '+(b.error||'Erreur inconnue');
@@ -1182,7 +1183,7 @@ $('#channelPurgeBtn').addEventListener('click',async()=>{
      closeSheet();
      toast('Suppression lancée. Le tableau de bord suivra la progression.','ok');
      let job;
-     do{await wait(1800);job=await refreshPurgeStatus();}while(job&&['queued','checking','scanning','deleting'].includes(job.status));
+     do{await wait(1800);job=await refreshPurgeStatus();}while(job&&['queued','checking','backing_up','scanning','deleting'].includes(job.status));
     }catch(error){final.disabled=false;final.textContent='Supprimer définitivement';toast(error.message,'bad');}
    });
   });
