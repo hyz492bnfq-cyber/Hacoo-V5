@@ -16,3 +16,26 @@ test('préserve un emoji informatif au milieu du texte', () => {
 test('le nettoyage de présentation ne retire jamais une URL', () => {
   assert.equal(cleanPresentationLine('🔥 https://example.test/produit ✨'), 'https://example.test/produit');
 });
+
+test('supprime les lignes strictement répétées sans fusionner les informations différentes', () => {
+  const { removeRepeatedPublicationLines } = require('../lib/presentation-cleaner');
+  const input = [
+    '🛍️APPLE AIRPODS PRO 3⚡️‼️',
+    'CODE PROMO :',
+    '👉https://c.onlyaff.app/ebYkh9',
+    '• Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
+    '👉https://c.onlyaff.app/ebYkh9',
+    'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
+    'CODE PROMO :',
+    'Une autre information produit'
+  ].join('\\n');
+
+  assert.equal(removeRepeatedPublicationLines(input), [
+    '🛍️APPLE AIRPODS PRO 3⚡️‼️',
+    'CODE PROMO :',
+    '👉https://c.onlyaff.app/ebYkh9',
+    '• Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
+    'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur',
+    'Une autre information produit'
+  ].join('\\n'));
+});
