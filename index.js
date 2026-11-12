@@ -3120,7 +3120,7 @@ app.get('/api/publication-vault/status', async (_req, res) => {
 app.post('/api/publication-vault/backup', async (req, res) => {
   if (vaultBackupRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultBackupJob?.status || '')) return res.status(409).json({ error: 'Une sauvegarde du coffre-fort est déjà en cours.' });
   const channelId = String(req.body?.channelId || '').trim();
-  if (!/^-100\\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
+  if (!/^-100\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
   let selected;
   try {
     publicationVaultKey();
@@ -3155,7 +3155,7 @@ app.post('/api/publication-vault/:id/restore', async (req, res) => {
   if (vaultRestoreRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultRestoreJob?.status || '')) return res.status(409).json({ error: 'Une restauration est déjà en cours.' });
   const archiveId = String(req.params.id || '');
   const channelId = String(req.body?.channelId || '').trim();
-  if (!/^-100\\d+$/u.test(channelId)) return res.status(400).json({ error: 'Choisis un canal de destination valide.' });
+  if (!/^-100\d+$/u.test(channelId)) return res.status(400).json({ error: 'Choisis un canal de destination valide.' });
   let manifest;
   try {
     const key = publicationVaultKey();
