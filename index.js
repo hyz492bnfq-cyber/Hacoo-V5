@@ -2640,7 +2640,7 @@ function publicationVaultKey() { return publicationVault.getKey(process.env.PUBL
 function vaultMediaName(message) {
   const document = message?.media?.document || message?.document;
   const original = document?.attributes?.find(attribute => attribute?.fileName)?.fileName;
-  if (original && !String(original).includes('/') && !String(original).includes('\\\\') && !String(original).includes(String.fromCharCode(0))) return String(original).slice(0, 120);
+  if (original && !String(original).includes('/') && !String(original).includes('\\') && !String(original).includes(String.fromCharCode(0))) return String(original).slice(0, 120);
   if (message?.photo) return 'photo.jpg';
   const mime = String(document?.mimeType || '').toLowerCase();
   const extension = ({ 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'application/pdf': '.pdf', 'audio/mpeg': '.mp3' })[mime] || (mime.startsWith('video/') ? '.mp4' : mime.startsWith('image/') ? '.jpg' : '.bin');
@@ -3131,7 +3131,7 @@ app.post('/api/publication-vault/backup', async (req, res) => {
     selected = chats.find(item => item.type === 'canal' && String(item.id) === channelId);
     if (!selected) return res.status(404).json({ error: 'Canal inaccessible depuis le compte Telegram connecté.' });
     const channel = await client.getEntity(channelId);
-    if (!(channel?.creator || channel?.adminRights?.deleteMessages || channel?.adminRights?.postMessages)) return res.status(403).json({ error: 'Le compte Telegram ne peut pas accéder aux publications de ce canal.' });
+    // La lecture de l'historique suffit pour une sauvegarde ; aucun droit de publication n'est requis.
   } catch (error) { return res.status(409).json({ error: String(error?.message || error).slice(0, 300) }); }
   const job = { id: `vault-backup-${Date.now()}`, channelId, channelTitle: selected.name, status: 'queued', scanned: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   data.publicationVaultBackupJob = job; saveNow();
