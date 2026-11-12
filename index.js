@@ -3122,6 +3122,7 @@ app.get('/api/publication-vault/status', async (_req, res) => {
 });
 
 app.post('/api/publication-vault/backup', async (req, res) => {
+  if (channelPurgeRunning || vaultRestoreRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultRestoreJob?.status || '')) return res.status(409).json({ error: 'Une purge ou restauration est déjà en cours.' });
   if (vaultBackupRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultBackupJob?.status || '')) return res.status(409).json({ error: 'Une sauvegarde du coffre-fort est déjà en cours.' });
   const channelId = String(req.body?.channelId || '').trim();
   if (!/^-100\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
@@ -3156,6 +3157,7 @@ app.post('/api/publication-vault/backup', async (req, res) => {
 
 app.post('/api/publication-vault/:id/restore', async (req, res) => {
   if (String(req.body?.confirmText || '') !== 'RESTAURER LES PUBLICATIONS') return res.status(400).json({ error: 'Confirmation invalide.' });
+  if (channelPurgeRunning || vaultBackupRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultBackupJob?.status || '')) return res.status(409).json({ error: 'Une purge ou sauvegarde est déjà en cours.' });
   if (vaultRestoreRunning || ['queued', 'running', 'verifying'].includes(data.publicationVaultRestoreJob?.status || '')) return res.status(409).json({ error: 'Une restauration est déjà en cours.' });
   const archiveId = String(req.params.id || '');
   const channelId = String(req.body?.channelId || '').trim();
@@ -3214,7 +3216,7 @@ app.post('/api/channel/purge', async (req, res) => {
   const channelId = String(req.body?.channelId || '').trim();
   if (!/^-100\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
   if (!resenderConfigured() || !data.channelSyncResenderSession) return res.status(409).json({ error: 'Connecte d’abord ton compte Telegram personnel dans Paramètres > CHANNEL SYNC.' });
-  if (channelPurgeRunning || ['queued', 'checking', 'backing_up', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '')) return res.status(409).json({ error: 'Une suppression est déjà en cours.' });
+  if (channelPurgeRunning || vaultBackupRunning || vaultRestoreRunning || ['queued', 'checking', 'backing_up', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '') || ['queued', 'running', 'verifying'].includes(data.publicationVaultBackupJob?.status || '') || ['queued', 'running', 'verifying'].includes(data.publicationVaultRestoreJob?.status || '')) return res.status(409).json({ error: 'Une suppression est déjà en cours.' });
   let selectedChannel;
   try {
     const client = await activeResenderClient();
