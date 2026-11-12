@@ -858,11 +858,16 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
 <div class="set-title">Zone de danger</div>
 <div class="card stack" id="channelPurgeCard" style="border:1px solid rgba(248,65,85,.55);background:linear-gradient(145deg,rgba(120,20,35,.16),rgba(20,20,30,.92))">
   <div class="row between wrap">
-    <div><h3 style="color:#ff6578">⚠️ Vider entièrement le canal</h3><p class="small muted">Supprime toutes les publications du canal configuré : textes, photos, vidéos, albums et anciens messages.</p></div>
+    <div><h3 style="color:#ff6578">⚠️ Vider entièrement un canal</h3><p class="small muted">Choisis précisément le canal Telegram à vider : textes, photos, vidéos, albums et anciens messages.</p></div>
     <span class="tag bad">Action irréversible</span>
   </div>
-  <p class="small muted">Utilise le compte Telegram personnel connecté dans CHANNEL SYNC. Il doit être propriétaire du canal ou disposer du droit de suppression des messages. Le bot et les publications programmées seront mis en pause avant la suppression, puis resteront en pause jusqu’à ta réactivation manuelle.</p>
-  <button class="btn danger block" id="channelPurgeBtn" type="button">⚠️ ALERTE — SUPPRIMER TOUT LE CANAL</button>
+  <div class="stack">
+    <label class="lb" for="channelPurgeSelect">Canal à supprimer</label>
+    <select id="channelPurgeSelect"><option value="">Chargement des canaux…</option></select>
+    <div class="row between"><span class="small muted" id="channelPurgeChannelInfo">Compte Telegram personnel requis.</span><button class="btn sm" id="refreshPurgeChannels" type="button">Actualiser</button></div>
+  </div>
+  <p class="small muted">La liste provient des canaux accessibles par le compte Telegram personnel connecté dans CHANNEL SYNC. Il doit être propriétaire du canal ou disposer du droit de suppression des messages. Le bot et les publications programmées seront mis en pause avant la suppression, puis resteront en pause jusqu’à ta réactivation manuelle.</p>
+  <button class="btn danger block" id="channelPurgeBtn" type="button" disabled>⚠️ ALERTE — SUPPRIMER LE CANAL SÉLECTIONNÉ</button>
   <div class="small muted" id="channelPurgeStatus" role="status">Aucune suppression lancée depuis ce tableau de bord.</div>
 </div>
 </div>
@@ -1071,7 +1076,7 @@ function renderChannelSync(){
  $('#syncResenderStatus').textContent=!resenderState.configured?'Ajoute TELEGRAM_API_ID et TELEGRAM_API_HASH dans FadeHost.':resenderState.connected?'Compte personnel connecté.':'Connexion Telegram personnelle requise.';
  $('#syncQueue').innerHTML=(syncState.queue||[]).length?syncState.queue.map(item=>`<article class="manual-card" data-sync-id="${esc(item.id)}"><div class="row between"><b>Publication source</b><span class="manual-status ${esc(item.status)}">${esc(item.status==='uncertain'?'À vérifier':'En attente')}</span></div><div class="manual-meta"><span>${esc(fdate(item.receivedAt))}</span><span>${nf(item.messageCount)} élément(s)</span></div><div class="manual-text">${esc(item.text||'Média sans texte')}</div>${item.lastError?`<div class="small" style="color:var(--danger)">${esc(item.lastError)}</div>`:''}<div class="manual-actions"><button class="btn sm" data-sync-action="edit">Modifier</button><button class="btn primary" data-sync-action="publish" ${item.status==='uncertain'?'disabled':''}>Publier</button></div></article>`).join(''):'<div class="empty">Aucune publication CHANNEL SYNC en attente.</div>';
 }
-async function loadChannelSync(){try{const [sync,r]=await Promise.all([api('/api/channel-sync'),api('/api/channel-sync/resender')]);syncState=sync;resenderState=r;renderChannelSync();}catch(e){$('#syncNote').textContent=e.message;}}
+async function loadChannelSync(){try{const [sync,r]=await Promise.all([api('/api/channel-sync'),api('/api/channel-sync/resender')]);syncState=sync;resenderState=r;renderChannelSync();if($('#channelPurgeSelect'))await loadPurgeChannels();}catch(e){$('#syncNote').textContent=e.message;}}
 $('#addSync').addEventListener('click',()=>{syncState.connections.push({id:'sync-'+Date.now(),enabled:true,sourceChatId:'',destinationChatId:'',mode:'automatic'});renderChannelSync();});
 $('#syncConnections').addEventListener('click',e=>{const card=e.target.closest('[data-sync-connection]');if(!card)return;if(e.target.closest('[data-sync-remove]')){syncState.connections=syncState.connections.filter(c=>c.id!==card.dataset.syncConnection);renderChannelSync();return;}const b=e.target.closest('[data-sync-enabled]');if(b){const on=b.getAttribute('aria-checked')!=='true';b.classList.toggle('on',on);b.setAttribute('aria-checked',String(on));}});
 $('#saveSync').addEventListener('click',async e=>busy(e.currentTarget,'Enregistrement…',async()=>{try{const connections=$$('[data-sync-connection]').map(card=>({id:card.dataset.syncConnection,sourceChatId:$('[data-sync-source]',card).value,destinationChatId:$('[data-sync-destination]',card).value,mode:$('[data-sync-mode]',card).value,enabled:$('[data-sync-enabled]',card).getAttribute('aria-checked')==='true'}));await api('/api/channel-sync',{method:'PUT',body:JSON.stringify({connections})});toast('CHANNEL SYNC enregistré.','ok');await loadChannelSync();}catch(err){toast(err.message,'bad');}}));
@@ -1099,8 +1104,25 @@ async function refreshPurgeStatus(){
  if(el)el.textContent=purgeStatusText(r.job);
  return r.job;
 }
+async function loadPurgeChannels(){
+ const select=$('#channelPurgeSelect'),button=$('#channelPurgeBtn'),info=$('#channelPurgeChannelInfo');
+ if(!select)return;
+ const previous=select.value;
+ try{
+  const r=await api('/api/channel/purge/channels'),channels=r.channels||[];
+  select.innerHTML='<option value="">Choisir un canal…</option>'+channels.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  if(channels.some(c=>String(c.id)===previous))select.value=previous;
+  if(!channels.length){select.innerHTML='<option value="">Aucun canal trouvé</option>';info.textContent='Vérifie que ton compte personnel est connecté et membre des canaux.';}
+  else info.textContent=`${nf(channels.length)} canal(aux) accessible(s) par ton compte personnel.`;
+ }catch(error){select.innerHTML='<option value="">Impossible de charger les canaux</option>';info.textContent=error.message;}
+ button.disabled=!select.value;
+}
+$('#channelPurgeSelect').addEventListener('change',e=>{$('#channelPurgeBtn').disabled=!e.currentTarget.value;});
+$('#refreshPurgeChannels').addEventListener('click',async e=>busy(e.currentTarget,'Actualisation…',loadPurgeChannels));
 $('#channelPurgeBtn').addEventListener('click',async()=>{
- if(!await confirmSheet('Cette action va supprimer toutes les publications du canal configuré, y compris les messages anciens, les albums, photos, vidéos et textes. Aucun retour arrière ne sera possible. Le bot sera mis en pause après la suppression.',{title:'⚠️ Zone de danger',ok:'Continuer',danger:true}))return;
+ const select=$('#channelPurgeSelect'),channelId=select.value,channelName=select.selectedOptions[0]?.textContent||'ce canal';
+ if(!channelId)return toast('Choisis d’abord le canal à vider.','bad');
+ if(!await confirmSheet(`Cette action va supprimer toutes les publications de « ${channelName} », y compris les messages anciens, albums, photos, vidéos et textes. Aucun retour arrière ne sera possible. Le bot sera mis en pause après la suppression.`,{title:'⚠️ Zone de danger',ok:'Continuer',danger:true}))return;
  openSheet('Confirmation finale — vider le canal',`
   <div class="stack">
    <div class="alert bad" role="alert">Dernière étape. Tous les messages du canal seront supprimés définitivement. Vérifie que tu as sélectionné le bon canal.</div>
@@ -1116,7 +1138,7 @@ $('#channelPurgeBtn').addEventListener('click',async()=>{
     if(final.disabled||input.value.trim()!=='VIDER LE CANAL')return;
     final.disabled=true;final.textContent='Lancement…';
     try{
-     await post('/api/channel/purge',{confirmText:input.value.trim()});
+     await post('/api/channel/purge',{confirmText:input.value.trim(),channelId});
      closeSheet();
      toast('Suppression lancée. Le tableau de bord suivra la progression.','ok');
      let job;
