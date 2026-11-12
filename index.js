@@ -15,6 +15,7 @@ const { readControl, updateControl, readAudit } = require('./lib/autonomy-contro
 const { supervisorStatus, runSupervisorCycle } = require('./lib/autonomous-supervisor');
 const { autonomousReleaseStatus, deployAutonomousCandidate } = require('./lib/autonomous-release');
 const { parseChannelRegistry } = require('./lib/multichannel');
+const publicationVault = require('./lib/publication-vault');
 const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
 const { cleanPresentationLine } = require('./lib/presentation-cleaner');
@@ -35,7 +36,7 @@ const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
 const { shouldAppendPhotoToGroup } = require('./lib/photo-grouping');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
-const { Api: ResenderApi, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
+const { Api: ResenderApi, CustomFile: ResenderCustomFile, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
 
 let sharp;
 try {
@@ -98,6 +99,8 @@ const DEFAULTS = {
   channelSyncChats: [],
   channelSyncResenderSession: '',
   channelPurgeJob: null,
+  publicationVaultBackupJob: null,
+  publicationVaultRestoreJob: null,
   channelSyncImports: [],
   channelSyncImportSeen: [],
   channelSyncQueue: [],
@@ -2623,7 +2626,100 @@ async function publishManualPublication(item) {
 }
 
 // ---------- CHANNEL SYNC : Resender / compte personnel ----------
-let resenderRuntime = null; let resenderLogin = null; let resenderWatching = false; let channelPurgeRunning = false;
+let resenderRuntime = null; let resenderLogin = null; let resenderWatching = false; let channelPurgeRunning = false; let vaultBackupRunning = false; let vaultRestoreRunning = false;
+const PUBLICATION_VAULT_ROOT = path.resolve(String(process.env.PUBLICATION_VAULT_DIR || path.join(path.dirname(DATA_FILE), 'private-publication-vault')));
+function publicationVaultKey() { return publicationVault.getKey(process.env.PUBLICATION_VAULT_KEY); }
+function vaultMediaName(message) {
+  const document = message?.media?.document || message?.document;
+  const original = document?.attributes?.find(attribute => attribute?.fileName)?.fileName;
+  if (original && !/[\\/\\0]/u.test(original)) return String(original).slice(0, 120);
+  if (message?.photo) return 'photo.jpg';
+  const mime = String(document?.mimeType || '').toLowerCase();
+  const extension = ({ 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'application/pdf': '.pdf', 'audio/mpeg': '.mp3' })[mime] || (mime.startsWith('video/') ? '.mp4' : mime.startsWith('image/') ? '.jpg' : '.bin');
+  return 'media' + extension;
+}
+async function capturePublicationVault(client, channel, channelId, channelTitle, job) {
+  const key = publicationVaultKey();
+  const state = await publicationVault.beginArchive({ root: PUBLICATION_VAULT_ROOT, key });
+  const records = [];
+  let batch = [];
+  let scanned = 0;
+  const captureBatch = async messages => {
+    await Promise.all(messages.map(async message => {
+      const id = Number(message?.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return;
+      const text = String(message.message || '');
+      const mediaClass = String(message.media?.className || message.media?._ || '');
+      const media = Boolean(message.media && !['MessageMediaWebPage', 'MessageMediaEmpty'].includes(mediaClass));
+      const record = { messageId: id, text, date: message.date ? new Date(Number(message.date) * 1000).toISOString() : null, groupedId: message.groupedId ? String(message.groupedId) : null, mediaFileId: null, fileName: null, mimeType: null };
+      if (media) {
+        const downloaded = await client.downloadMedia(message, {});
+        if (!downloaded || !Buffer.isBuffer(downloaded) || !downloaded.length) throw new Error('Téléchargement incomplet du média du message ' + id + ' : sauvegarde annulée.');
+        record.mediaFileId = String(id);
+        record.fileName = vaultMediaName(message);
+        record.mimeType = String(message.media?.document?.mimeType || (message.photo ? 'image/jpeg' : 'application/octet-stream')).slice(0, 100);
+        await publicationVault.addArchiveMedia(state, record.mediaFileId, downloaded);
+        downloaded.fill(0);
+      }
+      if (text || record.mediaFileId) records.push(record);
+    }));
+    scanned += messages.length;
+    if (job) { job.scanned = scanned; job.updatedAt = new Date().toISOString(); saveNow(); }
+  };
+  try {
+    for await (const message of client.iterMessages(channel)) {
+      batch.push(message);
+      if (batch.length >= 4) { await captureBatch(batch); batch = []; }
+    }
+    if (batch.length) await captureBatch(batch);
+    records.sort((a, b) => a.messageId - b.messageId);
+    const archive = await publicationVault.finalizeArchive(state, { channelId, channelTitle, records });
+    await publicationVault.readArchive({ root: PUBLICATION_VAULT_ROOT, id: archive.id, key, verify: true });
+    return archive;
+  } catch (error) {
+    await publicationVault.abortArchive(state);
+    throw error;
+  }
+}
+async function restorePublicationVault(archiveId, destinationId, job) {
+  const key = publicationVaultKey();
+  const manifest = await publicationVault.readArchive({ root: PUBLICATION_VAULT_ROOT, id: archiveId, key, verify: true });
+  const client = await activeResenderClient();
+  const destination = await client.getEntity(String(destinationId));
+  if (!(destination?.creator || destination?.adminRights?.postMessages)) throw new Error('Le compte Telegram connecté ne possède pas le droit de publier dans le canal de destination.');
+  const groups = [];
+  const albums = new Map();
+  for (const record of manifest.records.slice().sort((a, b) => a.messageId - b.messageId)) {
+    if (record.groupedId) {
+      const groupId = String(record.groupedId);
+      if (!albums.has(groupId)) { const group = []; albums.set(groupId, group); groups.push(group); }
+      albums.get(groupId).push(record);
+    } else groups.push([record]);
+  }
+  for (const group of groups) {
+    const mediaRecords = group.filter(item => item.mediaFileId);
+    if (mediaRecords.length) {
+      const files = [];
+      for (const record of mediaRecords) {
+        const bytes = await publicationVault.readMedia({ root: PUBLICATION_VAULT_ROOT, archiveId, fileId: record.mediaFileId, key });
+        files.push(new ResenderCustomFile(record.fileName || 'media.bin', bytes.length, '', bytes));
+      }
+      const captions = mediaRecords.map(item => item.text || '');
+      if (files.length === 1) await client.sendFile(destination, { file: files[0], caption: captions[0] });
+      else {
+        for (let offset = 0; offset < files.length; offset += 10) {
+          await client.sendFile(destination, { file: files.slice(offset, offset + 10), caption: captions.slice(offset, offset + 10) });
+        }
+      }
+    } else {
+      for (const record of group) if (record.text) await client.sendMessage(destination, { message: record.text, linkPreview: true });
+    }
+    job.restored = (job.restored || 0) + group.length;
+    job.updatedAt = new Date().toISOString();
+    saveNow();
+  }
+  return manifest;
+}
 function resenderConfigured() { return Number.isSafeInteger(TELEGRAM_API_ID) && TELEGRAM_API_ID > 0 && /^[a-f0-9]{32}$/iu.test(TELEGRAM_API_HASH); }
 async function activeResenderClient() { if (!resenderConfigured() || !data.channelSyncResenderSession) throw new Error('Configure TELEGRAM_API_ID, TELEGRAM_API_HASH puis connecte ton compte personnel.'); if (!resenderRuntime) resenderRuntime = createResenderClient({ apiId: TELEGRAM_API_ID, apiHash: TELEGRAM_API_HASH, session: data.channelSyncResenderSession }); if (!resenderRuntime.client.connected) await resenderRuntime.client.connect(); if (!await resenderRuntime.client.checkAuthorization()) throw new Error('Session personnelle expirée : reconnecte-toi.'); if (!resenderWatching) { watchResenderConnections(resenderRuntime.client, channelSyncConnections, async (connection, messages) => { await republishResender(resenderRuntime.client, connection.destinationChatId, messages, transformPublicationText); }, error => console.error('Resender:', String(error?.message || error))); resenderWatching = true; } return resenderRuntime.client; }
 
@@ -2642,7 +2738,17 @@ async function executeChannelPurge(job) {
 
     // Snapshot every message ID before deleting: deleting while iterating can
     // shift Telegram history pagination and silently skip older publications.
+    job.status = 'backing_up';
+    job.updatedAt = new Date().toISOString();
+    saveNow();
+    const archive = await capturePublicationVault(client, channel, job.channelId, job.channelTitle, job);
+    job.archiveId = archive.id;
+    job.backupMessages = archive.manifest.messageCount;
+    job.backupMedia = archive.manifest.mediaCount;
+    job.backupBytes = archive.manifest.totalBytes;
     job.status = 'scanning';
+    job.scanned = 0;
+    saveNow();
     const ids = [];
     for await (const message of client.iterMessages(channel)) {
       if (Number.isSafeInteger(Number(message?.id)) && Number(message.id) > 0) ids.push(Number(message.id));
@@ -2679,7 +2785,7 @@ async function executeChannelPurge(job) {
     appendAudit(__dirname, {
       type: 'channel_purge_completed',
       message: 'Purge complète du canal demandée depuis le tableau de bord.',
-      details: { channelId: job.channelId, channelTitle: job.channelTitle, total: job.total, deleted: job.deleted }
+      details: { channelId: job.channelId, channelTitle: job.channelTitle, total: job.total, deleted: job.deleted, archiveId: job.archiveId, backupMessages: job.backupMessages, backupMedia: job.backupMedia }
     });
   } catch (error) {
     job.status = 'failed';
@@ -3015,7 +3121,7 @@ app.get('/api/channel/purge/status', (_req, res) => {
   const job = data.channelPurgeJob;
   res.set('Cache-Control', 'no-store');
   res.json({ job: job ? {
-    id: job.id, channelId: job.channelId, channelTitle: job.channelTitle || null, status: job.status, scanned: job.scanned || 0,
+    id: job.id, channelId: job.channelId, channelTitle: job.channelTitle || null, status: job.status, scanned: job.scanned || 0, archiveId: job.archiveId || null, backupMessages: job.backupMessages || 0, backupMedia: job.backupMedia || 0, backupBytes: job.backupBytes || 0,
     total: job.total ?? null, deleted: job.deleted || 0,
     error: job.error || null, updatedAt: job.updatedAt || null,
     completedAt: job.completedAt || null
@@ -3027,7 +3133,7 @@ app.post('/api/channel/purge', async (req, res) => {
   const channelId = String(req.body?.channelId || '').trim();
   if (!/^-100\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
   if (!resenderConfigured() || !data.channelSyncResenderSession) return res.status(409).json({ error: 'Connecte d’abord ton compte Telegram personnel dans Paramètres > CHANNEL SYNC.' });
-  if (channelPurgeRunning || ['queued', 'checking', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '')) return res.status(409).json({ error: 'Une suppression est déjà en cours.' });
+  if (channelPurgeRunning || ['queued', 'checking', 'backing_up', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '')) return res.status(409).json({ error: 'Une suppression est déjà en cours.' });
   let selectedChannel;
   try {
     const client = await activeResenderClient();
@@ -3042,7 +3148,7 @@ app.post('/api/channel/purge', async (req, res) => {
   const job = {
     id: `purge-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
     channelId, channelTitle: selectedChannel.name, status: 'queued', scanned: 0, total: null,
-    deleted: 0, error: null, createdAt: new Date().toISOString(),
+    deleted: 0, error: null, archiveId: null, backupMessages: 0, backupMedia: 0, backupBytes: 0, createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
   data.channelPurgeJob = job;
