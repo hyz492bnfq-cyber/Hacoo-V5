@@ -1135,13 +1135,21 @@ async function loadPublicationVault(){
   else if(rr?.status==='completed')status.textContent='Restauration terminée : '+nf(rr.restored||0)+' messages.';
  }catch(e){state.textContent='Indisponible';note.textContent=e.message;backup.disabled=true;restore.disabled=true;}
 }
+async function pollVaultJob(kind){
+ for(let i=0;i<150;i++){
+  await wait(1200);await loadPublicationVault();
+  const state=await api('/api/publication-vault/status');
+  const job=kind==='backup'?state.backupJob:state.restoreJob;
+  if(!job||!['queued','running','verifying'].includes(job.status))break;
+ }
+}
 $('#vaultArchiveSelect').addEventListener('change',loadPublicationVault);
 $('#vaultRefreshBtn').addEventListener('click',async e=>busy(e.currentTarget,'Actualisation…',loadPublicationVault));
-$('#vaultBackupBtn').addEventListener('click',async e=>{const channelId=$('#channelPurgeSelect').value;if(!channelId)return toast('Choisis d’abord le canal.','bad');await busy(e.currentTarget,'Sauvegarde…',async()=>{try{await post('/api/publication-vault/backup',{channelId});toast('Sauvegarde chiffrée lancée.','ok');}catch(error){toast(error.message,'bad');}await loadPublicationVault();});});
+$('#vaultBackupBtn').addEventListener('click',async e=>{const channelId=$('#channelPurgeSelect').value;if(!channelId)return toast('Choisis d’abord le canal.','bad');await busy(e.currentTarget,'Sauvegarde…',async()=>{try{await post('/api/publication-vault/backup',{channelId});toast('Sauvegarde chiffrée lancée.','ok');await pollVaultJob('backup');}catch(error){toast(error.message,'bad');}await loadPublicationVault();});});
 $('#vaultRestoreBtn').addEventListener('click',async()=>{
  const archiveId=$('#vaultArchiveSelect').value,channelId=$('#channelPurgeSelect').value;if(!archiveId||!channelId)return toast('Choisis une archive et un canal de destination.','bad');
  if(!await confirmSheet('Les publications archivées seront republiées dans le canal sélectionné. Telegram leur attribuera de nouveaux identifiants. Les publications déjà présentes ne seront pas supprimées.',{title:'Restaurer les publications',ok:'Continuer'}))return;
- openSheet('Confirmation de restauration','<div class="stack"><p class="small muted">Saisis exactement :</p><b>RESTAURER LES PUBLICATIONS</b><input id="vaultRestoreConfirm" autocomplete="off" placeholder="Phrase de confirmation"><button class="btn primary block" id="vaultRestoreConfirmBtn" type="button" disabled>Restaurer les publications</button></div>',body=>{const input=$('#vaultRestoreConfirm',body),button=$('#vaultRestoreConfirmBtn',body);input.addEventListener('input',()=>button.disabled=input.value.trim()!=='RESTAURER LES PUBLICATIONS');button.addEventListener('click',async()=>{if(button.disabled)return;button.disabled=true;try{await post('/api/publication-vault/'+encodeURIComponent(archiveId)+'/restore',{channelId,confirmText:input.value.trim()});closeSheet();toast('Restauration lancée.','ok');await loadPublicationVault();}catch(error){button.disabled=false;toast(error.message,'bad');}});});
+ openSheet('Confirmation de restauration','<div class="stack"><p class="small muted">Saisis exactement :</p><b>RESTAURER LES PUBLICATIONS</b><input id="vaultRestoreConfirm" autocomplete="off" placeholder="Phrase de confirmation"><button class="btn primary block" id="vaultRestoreConfirmBtn" type="button" disabled>Restaurer les publications</button></div>',body=>{const input=$('#vaultRestoreConfirm',body),button=$('#vaultRestoreConfirmBtn',body);input.addEventListener('input',()=>button.disabled=input.value.trim()!=='RESTAURER LES PUBLICATIONS');button.addEventListener('click',async()=>{if(button.disabled)return;button.disabled=true;try{await post('/api/publication-vault/'+encodeURIComponent(archiveId)+'/restore',{channelId,confirmText:input.value.trim()});closeSheet();toast('Restauration lancée.','ok');await pollVaultJob('restore');}catch(error){button.disabled=false;toast(error.message,'bad');}});});
 });
 async function loadPurgeChannels(){
  const select=$('#channelPurgeSelect'),button=$('#channelPurgeBtn'),info=$('#channelPurgeChannelInfo');
@@ -1189,6 +1197,7 @@ $('#channelPurgeBtn').addEventListener('click',async()=>{
   });
 });
 refreshPurgeStatus().catch(()=>{});
+loadPublicationVault().catch(()=>{});
 
 /* ============ UI : toast, feuille, confirmation ============ */
 /* ============ UI : toast, feuille, confirmation ============ */
