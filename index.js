@@ -813,6 +813,13 @@ function transformPublicationText(text, maxLength = 4096) {
   return formatted;
 }
 
+function publicationFooterEntities(text) {
+  const footer = String(data.formatFooterText || '').replace(/\u0000/g, '').trim().slice(0, 250);
+  const value = String(text || '');
+  if (!data.formatFooterEnabled || !footer || !value.endsWith(footer)) return [];
+  return [{ type: 'italic', offset: value.length - footer.length, length: footer.length }];
+}
+
 function stripFormattingMarkers(value) {
   return cleanPresentationLine(value);
 }
@@ -1891,6 +1898,7 @@ async function processMessages(ctx, messages) {
     data.cleanEmptyLines ||
     data.cleanEmojis ||
     data.formatEnabled ||
+    data.formatFooterEnabled ||
     data.formatFooterEnabled ||
     (Array.isArray(data.textReplacements) && data.textReplacements.some(rule => rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0))
   ) {
