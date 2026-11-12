@@ -3011,7 +3011,7 @@ app.get('/api/channel/purge/status', (_req, res) => {
   } : null });
 });
 
-app.post('/api/channel/purge', (req, res) => {
+app.post('/api/channel/purge', async (req, res) => {
   if (String(req.body?.confirmText || '') !== 'VIDER LE CANAL') {
     return res.status(400).json({ error: 'Confirmation invalide. Saisis exactement VIDER LE CANAL.' });
   }
@@ -3021,6 +3021,15 @@ app.post('/api/channel/purge', (req, res) => {
   if (channelPurgeRunning || ['queued', 'checking', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '')) {
     return res.status(409).json({ error: 'Une suppression du canal est déjà en cours.' });
   }
+  try {
+    const client = await activeResenderClient();
+    const channel = await client.getEntity(CHANNEL_ID);
+    if (!(channel?.creator || channel?.adminRights?.deleteMessages)) {
+      return res.status(403).json({ error: 'Le compte personnel connecté ne possède pas le droit de supprimer les messages de ce canal.' });
+    }
+  } catch (error) {
+    return res.status(502).json({ error: `Vérification Telegram impossible : ${String(error?.errorMessage || error?.message || error).slice(0, 250)}` });
+  }
   const job = {
     id: `purge-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
     channelId: CHANNEL_ID, status: 'queued', scanned: 0, total: null,
@@ -3028,6 +3037,9 @@ app.post('/api/channel/purge', (req, res) => {
     updatedAt: new Date().toISOString()
   };
   data.channelPurgeJob = job;
+  // Freeze moderation and scheduled publications before taking the history snapshot.
+  data.botPaused = true;
+  data.enabled = false;
   saveNow();
   setImmediate(() => executeChannelPurge(job));
   res.status(202).json({ ok: true, job: { id: job.id, status: job.status } });
