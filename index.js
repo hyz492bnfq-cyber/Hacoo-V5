@@ -147,7 +147,7 @@ const DEFAULTS = {
   formatPromoCode: 'M2REPS',
   formatLinkPrefix: '👉🏼 ',
   formatFooterEnabled: true,
-  formatFooterText: 'ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur.',
+  formatFooterText: 'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur.',
 
   bannedWords: [],
   blockedPhrases: [],
