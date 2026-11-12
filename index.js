@@ -35,6 +35,7 @@ const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNext
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
 const { shouldAppendPhotoToGroup } = require('./lib/photo-grouping');
+const { splitPublicationBatches } = require('./lib/publication-batch');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 const { Api: ResenderApi, CustomFile: ResenderCustomFile, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
 
@@ -1681,17 +1682,14 @@ async function processMessages(ctx, messages) {
   // leur a attribué exactement le même media_group_id non vide. Deux posts
   // indépendants (notamment avec deux légendes) sont traités séparément,
   // même s'ils ont été réunis par une ancienne tâche persistée.
-  const first = messages[0];
-  const groupId = first.media_group_id || null;
-  const isOneNativeAlbum = Boolean(groupId) &&
-    messages.every(message => String(message.media_group_id || '') === String(groupId));
-
-  if (messages.length > 1 && !isOneNativeAlbum) {
-    for (const message of messages.slice().sort((a, b) => Number(a.message_id) - Number(b.message_id))) {
-      await processMessages(ctx, [message]);
-    }
+  const batches = splitPublicationBatches(messages);
+  if (batches.length > 1) {
+    for (const batch of batches) await processMessages(ctx, batch);
     return;
   }
+
+  const first = messages[0];
+  const groupId = first.media_group_id || null;
 
   if (!data.enabled || data.botPaused) {
     // Important: a paused task is deferred, never marked completed by the queue worker.
