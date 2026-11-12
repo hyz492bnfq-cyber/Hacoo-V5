@@ -89,6 +89,7 @@ const DEFAULTS = {
   manualPublicationHistory: [],
   manualPublicationTrash: [],
   affiliateOrders: [],
+  widgetAccessToken: '',
   affiliateOrderEvents: [],
   affiliateForecastSnapshots: [],
   affiliateSync: { lastSyncAt: null, lastError: null, total: 0 },
@@ -2820,6 +2821,14 @@ bot.catch(error => {
 });
 
 function auth(req, res, next) {
+  if (req.path === '/api/widget/lockscreen') {
+    const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const expected = String(data.widgetAccessToken || '');
+    const a = Buffer.from(supplied);
+    const b = Buffer.from(expected);
+    if (expected && a.length === b.length && crypto.timingSafeEqual(a, b)) return next();
+    return res.status(401).json({ error: 'Jeton du widget invalide.' });
+  }
   const header = req.headers.authorization || '';
 
   if (header.startsWith('Basic ')) {
@@ -2919,6 +2928,16 @@ app.get('/health', (_req, res) => {
 
 app.use(auth);
 app.use(auth);
+
+// Jeton dédié au widget iPhone : lecture seule, distinct du mot de passe admin.
+app.get('/api/widget/token', (_req, res) => {
+  if (!data.widgetAccessToken) {
+    data.widgetAccessToken = crypto.randomBytes(32).toString('hex');
+    saveNow();
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({ token: data.widgetAccessToken, endpoint: '/api/widget/lockscreen' });
+});
 
 // Commandes Hacoo Affiliate : stockage indépendant de la file Telegram.
 function affiliatePublicOrder(order) {
@@ -3113,6 +3132,27 @@ app.get('/api/affiliate/exchange-rate', async (_req, res) => {
   return res.status(503).json({
     error: 'Aucune source de taux USD → EUR ne répond.',
     details: errors
+  });
+});
+
+app.get('/api/widget/lockscreen', (_req, res) => {
+  const orders = Array.isArray(data.affiliateOrders) ? data.affiliateOrders : [];
+  const valid = orders.filter(order => affiliateForecastStatus(order) !== 'Canceled');
+  const latest = [...valid].sort((a, b) => Number(b.createTime || 0) - Number(a.createTime || 0))[0] || null;
+  const commissionOf = order => Math.max(0, Number(
+    order.totalCommissionAmount ??
+    (Number(order.commissionAmount || 0) + Number(order.subsidyAmount || 0))
+  ));
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    currency: 'USD',
+    unit: 'cents',
+    latestCommission: latest ? commissionOf(latest) : 0,
+    totalCommission: valid.reduce((sum, order) => sum + commissionOf(order), 0),
+    latestOrderAt: latest?.createTime || null,
+    lastSyncAt: data.affiliateSync?.lastSyncAt || null,
+    ordersCount: valid.length
   });
 });
 
