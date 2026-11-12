@@ -1117,7 +1117,7 @@ async function loadPublicationVault(){
  const state=$('#vaultSecurityState'),note=$('#vaultSetupNote'),backup=$('#vaultBackupBtn'),select=$('#vaultArchiveSelect'),restore=$('#vaultRestoreBtn'),status=$('#vaultJobStatus'),info=$('#vaultArchiveInfo');
  try{
   const r=await api('/api/publication-vault/status');
-  state.textContent=r.enabled?'Chiffrement actif':'Clé requise';state.className=r.enabled?'tag good':'tag bad';
+  state.textContent=r.enabled?'Chiffrement actif':'Clé requise';state.className=r.enabled?'tag ok':'tag bad';
   note.textContent=r.enabled?'Archives privées : médias et manifeste chiffrés et authentifiés.':'Ajoute PUBLICATION_VAULT_KEY dans FadeHost (clé aléatoire de 32 octets en hexadécimal ou Base64). '+(r.error||'');
   backup.disabled=!r.enabled||!$('#channelPurgeSelect')?.value||['queued','running','verifying'].includes(r.backupJob?.status||'');
   const archives=r.archives||[],previous=select.value;
