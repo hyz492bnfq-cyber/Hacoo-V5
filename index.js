@@ -2978,13 +2978,15 @@ function affiliatePublicOrder(order) {
 }
 
 function affiliateForecastStatus(order) {
-  const status = String(order?.orderStatus || order?.status || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+  const status = String(order?.orderStatus || order?.status || '')
+    .trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s_-]+/g, '');
   if (/cancel|annul|refund|return/.test(status)) return 'Canceled';
-  // Le statut de commande est la seule preuve de l'étape : les montants Actual/Sign
-  // ne signifient ni livraison, ni signature, ni paiement reçu.
-  if (/^(signed|sign|complete|completed|finished|settled|validated|valide|validé)$/.test(status)) return 'Signed';
-  if (/^(delivered|received|arrived|livre|livré)$/.test(status)) return 'Delivered';
-  if (status === 'pending') return 'Pending';
+  // Les libellés Hacoo peuvent varier selon la langue et le niveau de validation.
+  if (/deliver|received|receipt|arriv|livr|recu|reception|distribue|signedfor|已收货|已签收/.test(status)) return 'Delivered';
+  if (/^(signed|sign|complete|completed|finished|settled|validated|valide)$/.test(status)) return 'Signed';
+  if (status === 'pending' || status === '待处理') return 'Pending';
   return 'Other';
 }
 
@@ -3144,12 +3146,25 @@ app.get('/api/widget/lockscreen', (_req, res) => {
     (Number(order.commissionAmount || 0) + Number(order.subsidyAmount || 0))
   ));
   res.set('Cache-Control', 'no-store');
+  // Les commandes Signed sont déjà arrivées à l'étape de validation après livraison.
+  // On les inclut donc dans les commissions liées aux commandes livrées.
+  const deliveredCommission = valid
+    .filter(order => ['Delivered', 'Signed'].includes(affiliateForecastStatus(order)))
+    .reduce((sum, order) => {
+      // Priorité au montant réellement validé par Hacoo (en centimes).
+      const signedActual = Number(order.signTotalCommissionAmount || 0) ||
+        (Number(order.signCommissionAmount || 0) + Number(order.signSubsidyAmount || 0));
+      const actual = Number(order.actualCommission || 0) +
+        Number(order.actualSubsidy || 0);
+      return sum + Math.max(0, signedActual || actual || commissionOf(order));
+    }, 0);
   res.json({
     ok: true,
     currency: 'USD',
     unit: 'cents',
     latestCommission: latest ? commissionOf(latest) : 0,
     totalCommission: valid.reduce((sum, order) => sum + commissionOf(order), 0),
+    deliveredCommission,
     latestOrderAt: latest?.createTime || null,
     lastSyncAt: data.affiliateSync?.lastSyncAt || null,
     ordersCount: valid.length
