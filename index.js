@@ -2665,7 +2665,7 @@ async function capturePublicationVault(client, channel, channelId, channelTitle,
       if (media) {
         const downloaded = await client.downloadMedia(message, {});
         if (!downloaded || !Buffer.isBuffer(downloaded) || !downloaded.length) throw new Error('Téléchargement incomplet du média du message ' + id + ' : sauvegarde annulée.');
-        record.mediaFileId = String(id);
+        record.mediaFileId = crypto.randomBytes(12).toString('hex');
         record.fileName = vaultMediaName(message);
         record.mimeType = String(message.media?.document?.mimeType || (message.photo ? 'image/jpeg' : 'application/octet-stream')).slice(0, 100);
         await publicationVault.addArchiveMedia(state, record.mediaFileId, downloaded);
@@ -2691,6 +2691,7 @@ async function capturePublicationVault(client, channel, channelId, channelTitle,
     return { ...archive, messageIds };
   } catch (error) {
     await publicationVault.abortArchive(state);
+    await fs.promises.rm(state.finalDir, { recursive: true, force: true }).catch(() => {});
     throw error;
   }
 }
