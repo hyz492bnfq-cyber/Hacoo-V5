@@ -797,7 +797,7 @@ function cleanText(text) {
 // Toutes les transformations appliquées aux publications automatiques doivent
 // aussi être enregistrées dans la file manuelle. Garder ce chemin unique évite
 // qu'un réglage actif (nettoyage, remplacement ou format) soit oublié.
-function transformPublicationText(text) {
+function transformPublicationText(text, maxLength = 4096) {
   const original = String(text || '');
   const hasCleaning = data.cleanHashtags || data.cleanLinks || data.cleanMentions || data.cleanEmptyLines || data.cleanEmojis;
   const cleanedText = hasCleaning ? cleanText(original) : original;
@@ -805,14 +805,14 @@ function transformPublicationText(text) {
     rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0
   );
   const replacedText = hasReplacements ? applyTextReplacements(cleanedText, data.textReplacements).text : cleanedText;
-  return formatPostText(replacedText);
+  return formatPostText(replacedText, maxLength);
 }
 
 function stripFormattingMarkers(value) {
   return cleanPresentationLine(value);
 }
 
-function formatPostText(text) {
+function formatPostText(text, maxLength = 4096) {
  const original=String(text||'');
  if(!original.trim())return original;
  let formatted=original;
@@ -858,7 +858,7 @@ function formatPostText(text) {
  if(data.formatFooterEnabled){
   const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,300);
   const base=formatted.trimEnd();
-  if(footer&&!base.endsWith(footer))formatted=base+'\n'+footer;
+  if(footer&&!base.endsWith(footer)&&base.length+1+footer.length<=maxLength)formatted=base+'\n'+footer;
  }
  return formatted;
 }
@@ -1891,7 +1891,7 @@ async function processMessages(ctx, messages) {
   ) {
     for (const message of messages) {
       const original = msgText(message);
-      const changed = transformPublicationText(original);
+      const changed = transformPublicationText(original, message.caption !== undefined ? 1024 : 4096);
 
       if (changed !== original) {
         try {
@@ -2091,7 +2091,7 @@ async function regroupPhotos(group) {
   let finalCaption = caption;
   let entities = captionMessage.caption_entities || captionMessage.entities;
 
-  finalCaption = transformPublicationText(caption);
+  finalCaption = transformPublicationText(caption, 1024);
   entities = publicationFooterEntities(finalCaption);
   if (!entities.length && finalCaption === caption) entities = captionMessage.caption_entities || captionMessage.entities;
 
@@ -2407,7 +2407,7 @@ async function captureManualPublication(ctx, messages) {
   // et options de formatage, pas seulement le format visuel.
   for (const message of savedMessages) {
     const original = msgText(message);
-    const transformed = transformPublicationText(original);
+    const transformed = transformPublicationText(original, message.caption !== undefined || message.photo || message.video || message.document || message.animation || message.audio || message.voice ? 1024 : 4096);
     if (transformed === original) continue;
     if (message.text !== undefined || (!message.caption && !message.photo && !message.video && !message.document)) message.text = transformed;
     else message.caption = transformed;
@@ -2479,7 +2479,8 @@ async function publishManualPublication(item) {
   if (item.status === 'uncertain') throw new Error('Résultat incertain : vérifie d’abord le canal Telegram pour éviter un doublon.');
   // Couvre aussi les publications qui étaient déjà dans la file avant
   // l'ajout du formatage au moment de la capture.
-  const finalText = formatPostText(item.text || '');
+  const isMediaPublication = (item.messages || []).some(message => message.photo || message.video || message.document || message.animation || message.audio || message.voice);
+  const finalText = formatPostText(item.text || '', isMediaPublication ? 1024 : 4096);
   if (finalText !== (item.text || '')) {
     item.text = finalText;
     item.formattedAt = new Date().toISOString();
