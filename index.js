@@ -3220,6 +3220,7 @@ app.post('/api/channel/purge', async (req, res) => {
   if (String(req.body?.confirmText || '') !== 'VIDER LE CANAL') return res.status(400).json({ error: 'Confirmation invalide. Saisis exactement VIDER LE CANAL.' });
   const channelId = String(req.body?.channelId || '').trim();
   if (!/^-100\d+$/u.test(channelId)) return res.status(400).json({ error: 'Sélectionne un canal Telegram valide.' });
+  try { publicationVaultKey(); } catch (error) { return res.status(409).json({ error: String(error?.message || error).slice(0, 300) }); }
   if (!resenderConfigured() || !data.channelSyncResenderSession) return res.status(409).json({ error: 'Connecte d’abord ton compte Telegram personnel dans Paramètres > CHANNEL SYNC.' });
   if (channelPurgeRunning || vaultBackupRunning || vaultRestoreRunning || ['queued', 'checking', 'backing_up', 'scanning', 'deleting'].includes(data.channelPurgeJob?.status || '') || ['queued', 'running', 'verifying'].includes(data.publicationVaultBackupJob?.status || '') || ['queued', 'running', 'verifying'].includes(data.publicationVaultRestoreJob?.status || '')) return res.status(409).json({ error: 'Une suppression est déjà en cours.' });
   let selectedChannel;
