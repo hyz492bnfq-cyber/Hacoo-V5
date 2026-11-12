@@ -1886,7 +1886,6 @@ async function processMessages(ctx, messages) {
     data.cleanEmojis ||
     data.formatEnabled ||
     data.formatFooterEnabled ||
-    data.formatFooterEnabled ||
     (Array.isArray(data.textReplacements) && data.textReplacements.some(rule => rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0))
   ) {
     for (const message of messages) {
