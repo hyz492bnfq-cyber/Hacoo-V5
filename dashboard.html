@@ -763,7 +763,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
           <div><label class="lb" for="formatCouponTemplate">Ligne du coupon ({code} = code promo)</label><input id="formatCouponTemplate" type="text" maxlength="160" placeholder="-15% coupon : {code} 🎁"></div>
           <div><label class="lb" for="formatLinkPrefix">Début de la ligne du lien</label><input id="formatLinkPrefix" type="text" maxlength="160" placeholder="👉🏼 "></div>
           <div class="set"><div class="tx"><b>Ajouter une mention à la fin</b><span>Ajoutée automatiquement en italique à chaque publication.</span></div><button class="sw" data-setting="formatFooterEnabled" role="switch" aria-label="Mention automatique en fin de publication" type="button"></button></div>
-          <div><label class="lb" for="formatFooterText">Texte de la mention finale</label><input id="formatFooterText" type="text" maxlength="300" placeholder="ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur."></div>
+          <div><label class="lb" for="formatFooterText">Texte de la mention finale</label><input id="formatFooterText" type="text" maxlength="300" placeholder="ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur."></div>
           <div><div class="lb">Aperçu</div><pre class="preview" id="formatPreview"></pre></div>
           <div class="btnrow"><button class="btn primary" id="saveFormat" type="button">Enregistrer le format</button><button class="btn" id="openFormatAssistant" type="button">✧ Assistant IA</button></div>
         </div>
@@ -1468,7 +1468,7 @@ function renderSettings(){
  if(!fmtDirty){
   $('#formatTitlePrefix').value=String(s.formatTitlePrefix??'🛍️ ');$('#formatTitleSuffix').value=String(s.formatTitleSuffix??' 🤩‼️');
   $('#formatPromoCode').value=String(s.formatPromoCode??'M2REPS');$('#formatLinkPrefix').value=String(s.formatLinkPrefix??'👉🏼 ');
-  $('#formatCouponTemplate').value=String(s.formatCouponTemplate??'-15% coupon : {code} 🎁');$('#formatFooterText').value=String(s.formatFooterText??'ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur.');
+  $('#formatCouponTemplate').value=String(s.formatCouponTemplate??'-15% coupon : {code} 🎁');$('#formatFooterText').value=String(s.formatFooterText??'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur.');
  }
  renderFormatPreview();
  const gem=r.geminiConfigured;
