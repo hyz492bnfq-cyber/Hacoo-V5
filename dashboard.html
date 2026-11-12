@@ -2073,8 +2073,14 @@ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(moveInd);
 
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadCore();loadAffiliate();}});
 setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadCore();},30000);
-// Recharge les commandes et commissions toutes les 5 minutes lorsque le dashboard est ouvert.
-setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadAffiliate();},5*60*1000);
+// Recharge les commandes et commissions à intervalle aléatoire de 5 à 6 minutes.
+(function scheduleAffiliateDashboardRefresh(){
+ const delay=5*60*1000+Math.floor(Math.random()*60*1000);
+ setTimeout(()=>{
+  if(!document.hidden&&!$('#backdrop').classList.contains('open'))loadAffiliate();
+  scheduleAffiliateDashboardRefresh();
+ },delay);
+})();
 const first=(location.hash||'').slice(1);
 if(TABS.includes(first)&&first!=='home')showTab(first);else{moveInd();}
 loadCore().then(()=>{if(S.tab==='publications')loadManual();if(S.tab==='settings')loadChannelSync();});
