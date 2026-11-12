@@ -859,7 +859,7 @@ function formatPostText(text, maxLength = 4096) {
   const base=formatted.trimEnd();
   if(footer&&!base.endsWith(footer)&&base.length+1+footer.length<=maxLength)formatted=base?base+'\n'+footer:footer;
  }
- return formatted;
+ return removeRepeatedPublicationLines(formatted);
 }
 
 function publicationFooterEntities(text){
