@@ -146,6 +146,8 @@ const DEFAULTS = {
   formatCouponTemplate: '-15% coupon : {code} 🎁',
   formatPromoCode: 'M2REPS',
   formatLinkPrefix: '👉🏼 ',
+  formatFooterEnabled: true,
+  formatFooterText: 'ℹ️ Lien affilié · Authenticité et caractéristiques à vérifier auprès du vendeur.',
 
   bannedWords: [],
   blockedPhrases: [],
@@ -811,73 +813,61 @@ function stripFormattingMarkers(value) {
 }
 
 function formatPostText(text) {
-  if (!data.formatEnabled) return String(text || '');
-  const original = String(text || '');
-  if (!original.trim()) return original;
-
-  const lines = original.split('\n');
-  const titleIndex = lines.findIndex(line => line.trim());
-  if (titleIndex < 0) return original;
-
-  const prefix = String(data.formatTitlePrefix || '');
-  const suffix = String(data.formatTitleSuffix || '');
-  const code = String(data.formatPromoCode || '').trim();
-  const couponTemplate = String(data.formatCouponTemplate || '').trim();
-  const couponLine = couponTemplate ? couponTemplate.replace(/\{code\}/gi, code) : '';
-  const linkPrefix = String(data.formatLinkPrefix || '');
-
-  // Enlève les anciens marqueurs connus et les marqueurs configurés en bordure,
-  // puis applique une seule fois le format choisi.
-  let cleanTitle = lines[titleIndex].trim();
-  const decorations = [prefix, suffix, '🛍️', '🛍', '🤩', '‼️', '‼', '🔥', '🎟️', '🎟', '🎁', '🔗', '👉🏼', '👉', '🚨', '⭐️', '⭐'];
-  for (const marker of decorations.filter(Boolean)) {
-    const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    cleanTitle = cleanTitle.replace(new RegExp(`^(?:${escaped})+\\s*`, 'u'), '');
-    cleanTitle = cleanTitle.replace(new RegExp(`\\s*(?:${escaped})+$`, 'u'), '');
+ const original=String(text||'');
+ if(!original.trim())return original;
+ let formatted=original;
+ if(data.formatEnabled){
+  const lines=original.split('\n');
+  const titleIndex=lines.findIndex(line=>line.trim());
+  if(titleIndex>=0){
+   const prefix=String(data.formatTitlePrefix||''),suffix=String(data.formatTitleSuffix||'');
+   const code=String(data.formatPromoCode||'').trim();
+   const couponTemplate=String(data.formatCouponTemplate||'').trim();
+   const couponLine=couponTemplate?couponTemplate.replace(/\{code\}/gi,code):'';
+   const linkPrefix=String(data.formatLinkPrefix||'');
+   let cleanTitle=lines[titleIndex].trim();
+   const decorations=[prefix,suffix,'🛍️','🛍','🤩','‼️','‼','🔥','🎟️','🎟','🎁','🔗','👉🏼','👉','🚨','⭐️','⭐'];
+   for(const marker of decorations.filter(Boolean)){
+    const escaped=marker.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&');
+    cleanTitle=cleanTitle.replace(new RegExp('^(?:'+escaped+')+\\s*','u'),'');
+    cleanTitle=cleanTitle.replace(new RegExp('\\s*(?:'+escaped+')+$','u'),'');
+   }
+   cleanTitle=cleanPresentationLine(cleanTitle);
+   lines[titleIndex]=prefix+cleanTitle+suffix;
+   let couponInserted=hasExistingPromoLine(lines,titleIndex);
+   const output=[];
+   for(let i=0;i<lines.length;i++){
+    const line=lines[i],trimmed=line.trim();
+    if(isExistingPromoLine(trimmed)){
+     const preservedCoupon=cleanPresentationLine(line,{edgesOnly:true});
+     if(preservedCoupon)output.push(preservedCoupon);
+     couponInserted=true;continue;
+    }
+    if(i===titleIndex){
+     output.push(lines[titleIndex]);
+     if(couponLine&&!couponInserted){output.push(couponLine);couponInserted=true;}
+     continue;
+    }
+    const cleanLinkLine=cleanPresentationLine(trimmed);
+    if(/^(?:https?:\/\/|www\.)\S+/iu.test(cleanLinkLine)&&linkPrefix)output.push(linkPrefix+cleanLinkLine);
+    else {const cleanBodyLine=cleanPresentationLine(line,{edgesOnly:true});if(cleanBodyLine)output.push(cleanBodyLine);}
+   }
+   formatted=output.join('\n').replace(/\n{3,}/g,'\n\n').trim();
   }
-  // Retire aussi les anciens emojis décoratifs inconnus en bordure du titre
-  // (ex. 😍 ou ✨), sans toucher aux emojis situés au milieu du nom.
-  cleanTitle = cleanPresentationLine(cleanTitle);
-  lines[titleIndex] = `${prefix}${cleanTitle}${suffix}`;
+ }
+ if(data.formatFooterEnabled){
+  const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,300);
+  const base=formatted.trimEnd();
+  if(footer&&!base.endsWith(footer))formatted=base+'\n'+footer;
+ }
+ return formatted;
+}
 
-  // Scanner le texte complet AVANT d'ajouter le coupon configuré : le code
-  // reçu est souvent situé après le titre et doit rester l'unique code affiché.
-  let couponInserted = hasExistingPromoLine(lines, titleIndex);
-  const output = [];
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // Conserver le code promo reçu : le format ne doit pas remplacer une offre
-    // existante par le code configuré. On nettoie seulement ses décorations.
-    if (isExistingPromoLine(trimmed)) {
-      const preservedCoupon = cleanPresentationLine(line, { edgesOnly: true });
-      if (preservedCoupon) output.push(preservedCoupon);
-      couponInserted = true;
-      continue;
-    }
-
-    if (i === titleIndex) {
-      output.push(lines[titleIndex]);
-      if (couponLine && !couponInserted) {
-        output.push(couponLine);
-        couponInserted = true;
-      }
-      continue;
-    }
-
-    // Un lien est toujours conservé par le formateur : seul son préfixe
-    // décoratif est remplacé. Son retrait relève uniquement du réglage séparé
-    // « Supprimer les liens ».
-    const cleanLinkLine = cleanPresentationLine(trimmed);
-    if (/^(?:https?:\/\/|www\.)\S+/iu.test(cleanLinkLine) && linkPrefix) {
-      output.push(linkPrefix + cleanLinkLine);
-    } else {
-      const cleanBodyLine = cleanPresentationLine(line, { edgesOnly: true });
-      if (cleanBodyLine) output.push(cleanBodyLine);
-    }
-  }
-  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+function publicationFooterEntities(text){
+ const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,300);
+ const value=String(text||'');
+ if(!data.formatFooterEnabled||!footer||!value.endsWith(footer))return [];
+ return [{type:'italic',offset:value.length-footer.length,length:footer.length}];
 }
 
 function makeCaptionPayload(message) {
@@ -1896,6 +1886,7 @@ async function processMessages(ctx, messages) {
     data.cleanEmptyLines ||
     data.cleanEmojis ||
     data.formatEnabled ||
+    data.formatFooterEnabled ||
     (Array.isArray(data.textReplacements) && data.textReplacements.some(rule => rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0))
   ) {
     for (const message of messages) {
@@ -1908,13 +1899,14 @@ async function processMessages(ctx, messages) {
             await ctx.api.editMessageText(
               message.chat.id,
               message.message_id,
-              changed
+              changed,
+              { entities: publicationFooterEntities(changed) }
             );
           } else if (message.caption !== undefined) {
             await ctx.api.editMessageCaption(
               message.chat.id,
               message.message_id,
-              { caption: changed }
+              { caption: changed, caption_entities: publicationFooterEntities(changed) }
             );
           }
 
@@ -2099,11 +2091,9 @@ async function regroupPhotos(group) {
   let finalCaption = caption;
   let entities = captionMessage.caption_entities || captionMessage.entities;
 
-  if (anyCleaningEnabled()) {
-    finalCaption = cleanText(caption);
-
-    if (finalCaption !== caption) entities = undefined;
-  }
+  finalCaption = transformPublicationText(caption);
+  entities = publicationFooterEntities(finalCaption);
+  if (!entities.length && finalCaption === caption) entities = captionMessage.caption_entities || captionMessage.entities;
 
   const media = items.map(message => ({
     type: 'photo',
@@ -2509,9 +2499,8 @@ async function publishManualPublication(item) {
     const sentIds = [];
     const contextMedia = manualPhotoContextMedia(messages);
     const captionSource = messages.find(message => msgText(message).trim()) || messages[0];
-    const captionEntities = captionSource && item.text === msgText(captionSource)
-      ? (captionSource.caption_entities || captionSource.entities)
-      : undefined;
+    const footerEntities = publicationFooterEntities(item.text || '');
+    const captionEntities = footerEntities.length ? footerEntities : (captionSource && item.text === msgText(captionSource) ? (captionSource.caption_entities || captionSource.entities) : undefined);
     if (supportsTelegramMediaGroup(messages) || (contextMedia && contextMedia.length >= 2)) {
       const albumMessages = contextMedia || messages;
       const media = albumMessages.map((m, index) => {
@@ -2539,14 +2528,15 @@ async function publishManualPublication(item) {
         const m = sendMessages[index];
         const caption = index === 0 ? (item.text || '') : (m.caption || '');
         let sent;
-        if (m.photo) sent = await bot.api.sendPhoto(CHANNEL_ID, m.photo.at(-1).file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
-        else if (m.video) sent = await bot.api.sendVideo(CHANNEL_ID, m.video.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
-        else if (m.document) sent = await bot.api.sendDocument(CHANNEL_ID, m.document.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
-        else if (m.animation) sent = await bot.api.sendAnimation(CHANNEL_ID, m.animation.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
-        else if (m.audio) sent = await bot.api.sendAudio(CHANNEL_ID, m.audio.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
-        else if (m.voice) sent = await bot.api.sendVoice(CHANNEL_ID, m.voice.file_id, { caption: caption || undefined, caption_entities: m.caption_entities || undefined });
+        const captionEntitiesForSend = index === 0 && publicationFooterEntities(caption).length ? publicationFooterEntities(caption) : (m.caption_entities || undefined);
+        if (m.photo) sent = await bot.api.sendPhoto(CHANNEL_ID, m.photo.at(-1).file_id, { caption: caption || undefined, caption_entities: captionEntitiesForSend });
+        else if (m.video) sent = await bot.api.sendVideo(CHANNEL_ID, m.video.file_id, { caption: caption || undefined, caption_entities: captionEntitiesForSend });
+        else if (m.document) sent = await bot.api.sendDocument(CHANNEL_ID, m.document.file_id, { caption: caption || undefined, caption_entities: captionEntitiesForSend });
+        else if (m.animation) sent = await bot.api.sendAnimation(CHANNEL_ID, m.animation.file_id, { caption: caption || undefined, caption_entities: captionEntitiesForSend });
+        else if (m.audio) sent = await bot.api.sendAudio(CHANNEL_ID, m.audio.file_id, { caption: caption || undefined, caption_entities: captionEntitiesForSend });
+        else if (m.voice) sent = await bot.api.sendVoice(CHANNEL_ID, m.voice.file_id, { caption: caption || undefined, caption_entities: captionEntitiesForSend });
         else if (m.sticker) sent = await bot.api.sendSticker(CHANNEL_ID, m.sticker.file_id);
-        else if (index === 0) sent = await bot.api.sendMessage(CHANNEL_ID, item.text || '', { entities: m.entities || undefined, link_preview_options: { is_disabled: false } });
+        else if (index === 0) sent = await bot.api.sendMessage(CHANNEL_ID, item.text || '', { entities: publicationFooterEntities(item.text || '').length ? publicationFooterEntities(item.text || '') : (m.entities || undefined), link_preview_options: { is_disabled: false } });
         if (sent?.message_id) { sentIds.push(sent.message_id); rememberOwnMessageId(sent.message_id); }
       }
     }
@@ -4286,8 +4276,9 @@ app.post('/api/settings', (req, res) => {
   }
 
   if (typeof req.body.formatEnabled === 'boolean') data.formatEnabled = req.body.formatEnabled;
-  for (const key of ['formatTitlePrefix', 'formatTitleSuffix', 'formatCouponTemplate', 'formatPromoCode', 'formatLinkPrefix']) {
-    if (typeof req.body[key] === 'string') data[key] = req.body[key].replace(/\u0000/g, '').slice(0, 160);
+  if (typeof req.body.formatFooterEnabled === 'boolean') data.formatFooterEnabled = req.body.formatFooterEnabled;
+  for (const key of ['formatTitlePrefix', 'formatTitleSuffix', 'formatCouponTemplate', 'formatPromoCode', 'formatLinkPrefix', 'formatFooterText']) {
+    if (typeof req.body[key] === 'string') data[key] = req.body[key].replace(/\u0000/g, '').slice(0, key === 'formatFooterText' ? 300 : 160);
   }
 
   trimHistory();
