@@ -854,7 +854,20 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
           <button class="btn danger block" id="clearHistoryBtn" type="button">Effacer l’historique</button>
         </div>
       </div></details>
+
+<div class="set-title">Zone de danger</div>
+<div class="card stack" id="channelPurgeCard" style="border:1px solid rgba(248,65,85,.55);background:linear-gradient(145deg,rgba(120,20,35,.16),rgba(20,20,30,.92))">
+  <div class="row between wrap">
+    <div><h3 style="color:#ff6578">⚠️ Vider entièrement le canal</h3><p class="small muted">Supprime toutes les publications du canal configuré : textes, photos, vidéos, albums et anciens messages.</p></div>
+    <span class="tag bad">Action irréversible</span>
+  </div>
+  <p class="small muted">Utilise le compte Telegram personnel connecté dans CHANNEL SYNC. Il doit être propriétaire du canal ou disposer du droit de suppression des messages. Le bot sera mis en pause après l’opération.</p>
+  <button class="btn danger block" id="channelPurgeBtn" type="button">⚠️ ALERTE — SUPPRIMER TOUT LE CANAL</button>
+  <div class="small muted" id="channelPurgeStatus" role="status">Aucune suppression lancée depuis ce tableau de bord.</div>
 </div>
+</div>
+</section>
+  </main></div>
 </section>
   </main>
  </div>
@@ -1071,6 +1084,52 @@ $('#copyRecentSync').addEventListener('click',()=>{const label=id=>{const chat=(
 $('#syncQueue').addEventListener('click',async e=>{const b=e.target.closest('[data-sync-action]');if(!b)return;const card=b.closest('[data-sync-id]'),id=card?.dataset.syncId,item=(syncState.queue||[]).find(x=>x.id===id);if(!item)return;if(b.dataset.syncAction==='publish'){if(!confirm('Copier cette publication vers le canal destination ?'))return;await busy(b,'Copie…',async()=>{try{await post('/api/channel-sync/'+encodeURIComponent(id)+'/publish');toast('Publication copiée.','ok');await loadChannelSync();}catch(err){toast(err.message,'bad');await loadChannelSync();}});return;}openSheet('Modifier la publication CHANNEL SYNC',`<div class="fgrid"><p class="small muted">Le premier texte ou la première légende sera modifié après copie. Les médias restent identiques.</p><textarea id="syncEditText" rows="9" maxlength="4000">${esc(item.text||'')}</textarea><button class="btn primary" id="syncEditSave" type="button">Enregistrer</button></div>`,body=>{$('#syncEditSave',body).addEventListener('click',async()=>{try{await api('/api/channel-sync/'+encodeURIComponent(id),{method:'PUT',body:JSON.stringify({text:$('#syncEditText',body).value})});closeSheet();toast('Modification enregistrée.','ok');await loadChannelSync();}catch(err){toast(err.message,'bad');}});});
 });
 
+
+/* ============ Zone de danger : purge complète du canal ============ */
+function purgeStatusText(job){
+ if(!job)return 'Aucune suppression lancée depuis ce tableau de bord.';
+ if(job.status==='queued'||job.status==='checking')return 'Vérification du compte Telegram et des droits…';
+ if(job.status==='scanning')return `Inventaire de l’historique : ${nf(job.scanned)} message(s) repéré(s)…`;
+ if(job.status==='deleting')return `Suppression en cours : ${nf(job.deleted)} / ${job.total==null?'…':nf(job.total)} message(s).`;
+ if(job.status==='completed')return `Terminé : ${nf(job.deleted)} message(s) supprimé(s). Le bot est en pause.`;
+ if(job.status==='failed')return `Arrêt / échec après ${nf(job.deleted)} suppression(s) : ${job.error||'Erreur inconnue'}. Tu peux relancer après vérification du canal.`;
+ return `État : ${job.status}`;
+}
+async function refreshPurgeStatus(){
+ const r=await api('/api/channel/purge/status');
+ const el=$('#channelPurgeStatus');
+ if(el)el.textContent=purgeStatusText(r.job);
+ return r.job;
+}
+$('#channelPurgeBtn').addEventListener('click',async()=>{
+ if(!await confirmSheet('Cette action va supprimer toutes les publications du canal configuré, y compris les messages anciens, les albums, photos, vidéos et textes. Aucun retour arrière ne sera possible. Le bot sera mis en pause après la suppression.',{title:'⚠️ Zone de danger',ok:'Continuer',danger:true}))return;
+ openSheet('Confirmation finale — vider le canal',`
+  <div class="stack">
+   <div class="alert bad" role="alert">Dernière étape. Tous les messages du canal seront supprimés définitivement. Vérifie que tu as sélectionné le bon canal.</div>
+   <p class="small muted">Pour déverrouiller le bouton, saisis exactement :</p>
+   <p style="font-weight:800;letter-spacing:.08em;color:#ff6578">VIDER LE CANAL</p>
+   <input id="purgeConfirmInput" type="text" autocomplete="off" autocapitalize="characters" placeholder="Saisir VIDER LE CANAL">
+   <div class="btnrow"><button class="btn" id="purgeCancel" type="button">Annuler</button><button class="btn danger" id="purgeConfirmFinal" type="button" disabled>Supprimer définitivement</button></div>
+  </div>`,body=>{
+   const input=$('#purgeConfirmInput',body),final=$('#purgeConfirmFinal',body);
+   input.addEventListener('input',()=>{final.disabled=input.value.trim()!=='VIDER LE CANAL';});
+   $('#purgeCancel',body).addEventListener('click',closeSheet);
+   final.addEventListener('click',async()=>{
+    if(final.disabled||input.value.trim()!=='VIDER LE CANAL')return;
+    final.disabled=true;final.textContent='Lancement…';
+    try{
+     await post('/api/channel/purge',{confirmText:input.value.trim()});
+     closeSheet();
+     toast('Suppression lancée. Le tableau de bord suivra la progression.','ok');
+     let job;
+     do{await wait(1800);job=await refreshPurgeStatus();}while(job&&['queued','checking','scanning','deleting'].includes(job.status));
+    }catch(error){final.disabled=false;final.textContent='Supprimer définitivement';toast(error.message,'bad');}
+   });
+  });
+});
+refreshPurgeStatus().catch(()=>{});
+
+/* ============ UI : toast, feuille, confirmation ============ */
 /* ============ UI : toast, feuille, confirmation ============ */
 let toastTimer;
 function toast(msg,kind=''){const el=$('#toast');el.textContent=msg;el.className='toast '+kind;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add('hidden'),kind==='bad'?6000:3200);}
