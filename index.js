@@ -3144,12 +3144,16 @@ app.get('/api/widget/lockscreen', (_req, res) => {
     (Number(order.commissionAmount || 0) + Number(order.subsidyAmount || 0))
   ));
   res.set('Cache-Control', 'no-store');
+  const deliveredCommission = valid
+    .filter(order => affiliateForecastStatus(order) === 'Delivered')
+    .reduce((sum, order) => sum + commissionOf(order), 0);
   res.json({
     ok: true,
     currency: 'USD',
     unit: 'cents',
     latestCommission: latest ? commissionOf(latest) : 0,
     totalCommission: valid.reduce((sum, order) => sum + commissionOf(order), 0),
+    deliveredCommission,
     latestOrderAt: latest?.createTime || null,
     lastSyncAt: data.affiliateSync?.lastSyncAt || null,
     ordersCount: valid.length
