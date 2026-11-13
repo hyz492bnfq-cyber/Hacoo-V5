@@ -64,8 +64,8 @@ const TELEGRAM_API_HASH = String(process.env.TELEGRAM_API_HASH || '').trim();
 const MAX_HISTORY = 3000;
 // Telegram livre normalement les morceaux d'un album ensemble, mais un délai
 // réseau peut les espacer. On attend la fin réelle de l'arrivée avant action.
-const ALBUM_QUIET_MS = 5000;
-const ALBUM_MAX_WAIT_MS = 60000;
+const ALBUM_QUIET_MS = 12000;
+const ALBUM_MAX_WAIT_MS = 120000;
 const WINDOW_OPTIONS = [1, 5, 15, 30, 60, 180, 360];
 const RETENTION_OPTIONS = [7, 30, 90];
 const GROUP_WINDOW_MS = 90000; // contexte texte conservé au plus 90 s pour les images seules
@@ -2359,8 +2359,10 @@ function restorePersistentWork() {
       groupId: record.groupId,
       ctx: { api: bot.api },
       messages: record.messages,
-      startedAt: Number(record.startedAt) || Date.now(),
-      lastMessageAt: Number(record.lastMessageAt) || Date.now(),
+      // Après redémarrage, laisser une nouvelle fenêtre de collecte complète :
+      // les updates Telegram déjà en attente peuvent encore arriver.
+      startedAt: Date.now(),
+      lastMessageAt: Date.now(),
       mode: record.mode || 'automatic',
       timer: null
     };
