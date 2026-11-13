@@ -762,8 +762,11 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
           <div><label class="lb" for="formatPromoCode">Code promo</label><input id="formatPromoCode" type="text" maxlength="60" placeholder="M2REPS"></div>
           <div><label class="lb" for="formatCouponTemplate">Ligne du coupon ({code} = code promo)</label><input id="formatCouponTemplate" type="text" maxlength="160" placeholder="-15% coupon : {code} 🎁"></div>
           <div><label class="lb" for="formatLinkPrefix">Début de la ligne du lien</label><input id="formatLinkPrefix" type="text" maxlength="160" placeholder="👉🏼 "></div>
-          <div class="set"><div class="tx"><b>Ajouter une mention à la fin</b><span>Ajoutée automatiquement en italique à chaque publication.</span></div><button class="sw" data-setting="formatFooterEnabled" role="switch" aria-label="Mention automatique en fin de publication" type="button"></button></div>
-          <div><label class="lb" for="formatFooterText">Texte de la mention finale</label><input id="formatFooterText" type="text" maxlength="300" placeholder="ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur."></div>
+          <div><label class="lb" for="formatCouponLinkSpacing">Lignes vides entre le coupon et le lien</label><select id="formatCouponLinkSpacing"><option value="0">0 · Collé</option><option value="1">1 ligne</option><option value="2">2 lignes</option><option value="3">3 lignes</option></select></div>
+          <div class="set"><div class="tx"><b>Ajouter un pied de page / avertissement</b><span>Ajouté automatiquement à la fin de chaque publication.</span></div><button class="sw" data-setting="formatFooterEnabled" role="switch" aria-label="Pied de page automatique" type="button"></button></div>
+          <div><label class="lb" for="formatFooterText">Texte du pied de page (retours à la ligne acceptés)</label><textarea id="formatFooterText" maxlength="600" rows="3" placeholder="ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur."></textarea></div>
+          <div><label class="lb" for="formatFooterSpacing">Lignes vides avant le pied de page</label><select id="formatFooterSpacing"><option value="0">0 · Collé</option><option value="1">1 ligne</option><option value="2">2 lignes</option><option value="3">3 lignes</option></select></div>
+          <div class="set"><div class="tx"><b>Mettre le pied de page en italique</b><span>Désactive cette option pour conserver le texte normal.</span></div><button class="sw" data-setting="formatFooterItalic" role="switch" aria-label="Pied de page en italique" type="button"></button></div>
           <div><div class="lb">Aperçu</div><pre class="preview" id="formatPreview"></pre></div>
           <div class="btnrow"><button class="btn primary" id="saveFormat" type="button">Enregistrer le format</button><button class="btn" id="openFormatAssistant" type="button">✧ Assistant IA</button></div>
         </div>
@@ -1469,6 +1472,7 @@ function renderSettings(){
   $('#formatTitlePrefix').value=String(s.formatTitlePrefix??'🛍️ ');$('#formatTitleSuffix').value=String(s.formatTitleSuffix??' 🤩‼️');
   $('#formatPromoCode').value=String(s.formatPromoCode??'M2REPS');$('#formatLinkPrefix').value=String(s.formatLinkPrefix??'👉🏼 ');
   $('#formatCouponTemplate').value=String(s.formatCouponTemplate??'-15% coupon : {code} 🎁');$('#formatFooterText').value=String(s.formatFooterText??'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur.');
+  $('#formatCouponLinkSpacing').value=String(s.formatCouponLinkSpacing??0);$('#formatFooterSpacing').value=String(s.formatFooterSpacing??1);
  }
  renderFormatPreview();
  const gem=r.geminiConfigured;
@@ -1508,11 +1512,15 @@ function renderFormatPreview(){
  const g=id=>$('#'+id).value;const code=g('formatPromoCode')||'M2REPS';
   const footerToggle=$('.sw[data-setting="formatFooterEnabled"]');
   const footer=footerToggle?.classList.contains('on')?g('formatFooterText').trim():'';
-  $('#formatPreview').textContent=`${g('formatTitlePrefix')}Nom du produit${g('formatTitleSuffix')}\n${g('formatCouponTemplate').replace(/\{code\}/gi,code)}\n\n${g('formatLinkPrefix')}https://c.onlyaff.app/EXEMPLE${footer?'\n'+footer:''}`;
+  const coupon=g('formatCouponTemplate').replace(/\{code\}/gi,code);
+  const couponLinkGap='\n'.repeat(Number(g('formatCouponLinkSpacing'))+1);
+  const footerGap='\n'.repeat(Number(g('formatFooterSpacing'))+1);
+  $('#formatPreview').textContent=`${g('formatTitlePrefix')}Nom du produit${g('formatTitleSuffix')}\n${coupon}${couponLinkGap}${g('formatLinkPrefix')}https://c.onlyaff.app/EXEMPLE${footer?footerGap+footer:''}`;
 }
 ['formatTitlePrefix','formatTitleSuffix','formatPromoCode','formatLinkPrefix','formatCouponTemplate','formatFooterText'].forEach(id=>$('#'+id).addEventListener('input',()=>{fmtDirty=true;renderFormatPreview();}));
+['formatCouponLinkSpacing','formatFooterSpacing'].forEach(id=>$('#'+id).addEventListener('change',()=>{fmtDirty=true;renderFormatPreview();}));
 $('#saveFormat').addEventListener('click',e=>busy(e.currentTarget,'Enregistrement…',async()=>{
- try{await saveSettings({formatTitlePrefix:$('#formatTitlePrefix').value,formatTitleSuffix:$('#formatTitleSuffix').value,formatPromoCode:$('#formatPromoCode').value,formatLinkPrefix:$('#formatLinkPrefix').value,formatCouponTemplate:$('#formatCouponTemplate').value,formatFooterText:$('#formatFooterText').value},'Format enregistré ✓');fmtDirty=false;renderSettings();}
+ try{await saveSettings({formatTitlePrefix:$('#formatTitlePrefix').value,formatTitleSuffix:$('#formatTitleSuffix').value,formatPromoCode:$('#formatPromoCode').value,formatLinkPrefix:$('#formatLinkPrefix').value,formatCouponTemplate:$('#formatCouponTemplate').value,formatFooterText:$('#formatFooterText').value,formatCouponLinkSpacing:Number($('#formatCouponLinkSpacing').value),formatFooterSpacing:Number($('#formatFooterSpacing').value)},'Format enregistré ✓');fmtDirty=false;renderSettings();}
  catch(err){toast(err.message,'bad');}
 }));
 async function autoSave(patch){try{await saveSettings(patch,'Enregistré ✓');}catch(err){toast('Échec : '+err.message,'bad');await loadCore();}}
