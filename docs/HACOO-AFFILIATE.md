@@ -1,6 +1,6 @@
 # Hacoo Affiliate dashboard integration
 
-The dashboard adds a separate **Commandes Hacoo** tab. It stores fetched orders in the existing persistent data store, deduplicates by order number, supports search and status filtering, and syncs every 10 minutes when credentials are configured.
+The dashboard adds a separate **Commandes Hacoo** tab. It stores fetched orders in the existing persistent data store, deduplicates by order number, supports search and status filtering, and synchronizes only when the user clicks **Actualiser**; no automatic polling is performed.
 
 ## FadeHost environment variables
 
