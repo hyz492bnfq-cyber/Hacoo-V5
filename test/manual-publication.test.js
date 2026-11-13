@@ -20,10 +20,25 @@ test('un texte suivi de photos seules devient un album manuel avec légende', ()
   assert.equal(manualPhotoContextMedia([{ message_id: 10, photo: [{}] }, { message_id: 11, photo: [{}] }]), null);
 });
 
-test('un album attend le silence après le dernier média, même après une reprise', () => {
-  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 4000, now: 4000 }), 5000);
-  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 4000, now: 7000 }), 2000);
-  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 4000, now: 61000 }), 0);
+test('un album attend 12 secondes de silence après le dernier média', () => {
+  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 4000, now: 4000, quietMs: 12000, maxWaitMs: 120000 }), 12000);
+  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 4000, now: 14000, quietMs: 12000, maxWaitMs: 120000 }), 2000);
+  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 14000, now: 15000, quietMs: 12000, maxWaitMs: 120000 }), 11000);
+  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 4000, now: 121000, quietMs: 12000, maxWaitMs: 120000 }), 0);
+});
+
+test('un album interrompu reprend avec une nouvelle fenêtre de collecte après redémarrage', () => {
+  const saved = { startedAt: 1000, lastMessageAt: 4000, messages: [{ message_id: 1 }] };
+  const resumedAt = 20000;
+  const remaining = nextAlbumWaitMs({
+    startedAt: resumedAt,
+    lastMessageAt: resumedAt,
+    now: resumedAt,
+    quietMs: 12000,
+    maxWaitMs: 120000
+  });
+  assert.equal(remaining, 12000);
+  assert.equal(saved.messages.length, 1);
 });
 
 test('une publication interrompue reste à vérifier après redémarrage', () => {
