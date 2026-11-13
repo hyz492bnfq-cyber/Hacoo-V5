@@ -35,6 +35,7 @@ const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNext
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions } = require('./lib/manual-publication');
 const { shouldAppendPhotoToGroup } = require('./lib/photo-grouping');
+const { splitPublicationBatches } = require('./lib/publication-batch');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 const { Api: ResenderApi, CustomFile: ResenderCustomFile, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
 
