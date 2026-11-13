@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions } = require('../lib/manual-publication');
+const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions, remainingAlbumMessages } = require('../lib/manual-publication');
 
 test('albums Telegram : photos/vidéos ensemble et documents homogènes seulement', () => {
   assert.equal(supportsTelegramMediaGroup([{ photo: {} }, { video: {} }]), true);
@@ -110,4 +110,11 @@ test('un texte séparé suivi de photos devient la légende de la première phot
 
 test('une seule légende sur la deuxième photo conserve sa position', () => {
   assert.deepEqual(manualAlbumCaptions([{}, { caption: 'Légende photo 2' }, {}]), ['', 'Légende photo 2', '']);
+});
+
+
+test('les photos arrivées après finalisation sont isolées du contenu déjà publié', () => {
+  const messages = [{ message_id: 1 }, { message_id: 2 }, { message_id: 3 }];
+  assert.deepEqual(remainingAlbumMessages(messages, [1, 2]), [{ message_id: 3 }]);
+  assert.deepEqual(remainingAlbumMessages(messages, [1, 2, 3]), []);
 });
