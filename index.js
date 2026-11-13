@@ -2329,13 +2329,16 @@ function schedulePendingAlbum(groupId, album) {
     if (pendingAlbums.get(groupId) !== album) return;
     pendingAlbums.delete(groupId);
     const messages = album.messages.sort((a, b) => a.message_id - b.message_id);
+    // Même en mode manuel, séparer les publications si plusieurs légendes
+    // ont été reçues : le mode manuel ne doit pas contourner la règle anti-fusion.
+    const batches = splitPublicationBatches(messages);
     if (data.manualPublicationMode) {
-      interceptManualPublication(album.ctx, messages).catch(error => {
+      Promise.all(batches.map(batch => interceptManualPublication(album.ctx, batch))).catch(error => {
         noteError(error);
         notifyAdmin(`Interception de l'album à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
       }).finally(() => removePersistedAlbum(groupId));
     } else {
-      enqueueProcessMessages(album.ctx, messages);
+      for (const batch of batches) enqueueProcessMessages(album.ctx, batch);
       removePersistedAlbum(groupId);
     }
   }, wait);
@@ -2792,8 +2795,8 @@ function queueChannelPost(ctx) {
   if (ownMessageIds.has(message.message_id) || (data.ownMessageIds || []).includes(message.message_id)) return;
   if ((data.processedMessageIds || []).includes(message.message_id)) return;
 
-  const groupId = message.media_group_id;
-  if (!groupId) {
+  const telegramGroupId = message.media_group_id;
+  if (!telegramGroupId) {
     const mode = data.manualPublicationMode ? 'manual' : 'automatic';
     if (observeForPhotoGroup(ctx, message, mode)) return;
     if (mode === 'manual') {
@@ -2806,6 +2809,8 @@ function queueChannelPost(ctx) {
   }
 
   flushPhotoGroup();
+  // Clé composée : un media_group_id n'est jamais partagé entre conversations.
+  const groupId = `${message.chat.id}:${telegramGroupId}`;
   if (!pendingAlbums.has(groupId)) {
     pendingAlbums.set(groupId, {
       groupId,
