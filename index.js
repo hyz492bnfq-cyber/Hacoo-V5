@@ -148,6 +148,9 @@ const DEFAULTS = {
   formatLinkPrefix: '👉🏼 ',
   formatFooterEnabled: true,
   formatFooterText: 'ℹ️ Lien affilié · Commission possible · Authenticité à vérifier auprès du vendeur.',
+  formatCouponLinkSpacing: 0,
+  formatFooterSpacing: 1,
+  formatFooterItalic: true,
 
   bannedWords: [],
   blockedPhrases: [],
@@ -852,20 +855,30 @@ function formatPostText(text, maxLength = 4096) {
     else {const cleanBodyLine=cleanPresentationLine(line,{edgesOnly:true});if(cleanBodyLine)output.push(cleanBodyLine);}
    }
    formatted=output.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+   let linkIndex=formatted.split('\n').findIndex(line=>/(?:https?:\/\/|www\.)\S+/iu.test(line));
+   const linkSpacing=Math.max(0,Math.min(3,Number(data.formatCouponLinkSpacing)||0));
+   if(linkIndex>0&&linkSpacing){
+    const formattedLines=formatted.split('\n');
+    while(linkIndex>0&&formattedLines[linkIndex-1].trim()===''){formattedLines.splice(linkIndex-1,1);linkIndex--;}
+    formattedLines.splice(linkIndex,0,...Array(linkSpacing).fill(''));
+    formatted=formattedLines.join('\n');
+   }
   }
  }
  if(data.formatFooterEnabled){
-  const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,300);
+  const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,600);
   const base=formatted.trimEnd();
-  if(footer&&!base.endsWith(footer)&&base.length+1+footer.length<=maxLength)formatted=base?base+'\n'+footer:footer;
+  const footerSpacing=Math.max(0,Math.min(3,Number(data.formatFooterSpacing)||0));
+  const footerSeparator='\n'.repeat(footerSpacing+1);
+  if(footer&&!base.endsWith(footer)&&base.length+footerSeparator.length+footer.length<=maxLength)formatted=base?base+footerSeparator+footer:footer;
  }
  return removeRepeatedPublicationLines(formatted);
 }
 
 function publicationFooterEntities(text){
- const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,300);
+ const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,600);
  const value=String(text||'');
- if(!data.formatFooterEnabled||!footer||!value.endsWith(footer))return [];
+ if(!data.formatFooterEnabled||data.formatFooterItalic===false||!footer||!value.endsWith(footer))return [];
  return [{type:'italic',offset:value.length-footer.length,length:footer.length}];
 }
 
@@ -4277,8 +4290,12 @@ app.post('/api/settings', (req, res) => {
 
   if (typeof req.body.formatEnabled === 'boolean') data.formatEnabled = req.body.formatEnabled;
   if (typeof req.body.formatFooterEnabled === 'boolean') data.formatFooterEnabled = req.body.formatFooterEnabled;
+  if (typeof req.body.formatFooterItalic === 'boolean') data.formatFooterItalic = req.body.formatFooterItalic;
+  for (const key of ['formatCouponLinkSpacing', 'formatFooterSpacing']) {
+    if (Number.isInteger(Number(req.body[key]))) data[key] = Math.max(0, Math.min(3, Number(req.body[key])));
+  }
   for (const key of ['formatTitlePrefix', 'formatTitleSuffix', 'formatCouponTemplate', 'formatPromoCode', 'formatLinkPrefix', 'formatFooterText']) {
-    if (typeof req.body[key] === 'string') data[key] = req.body[key].replace(/\u0000/g, '').slice(0, key === 'formatFooterText' ? 300 : 160);
+    if (typeof req.body[key] === 'string') data[key] = req.body[key].replace(/\u0000/g, '').slice(0, key === 'formatFooterText' ? 600 : 160);
   }
 
   trimHistory();
