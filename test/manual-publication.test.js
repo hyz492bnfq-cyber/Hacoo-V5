@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('../lib/manual-publication');
+const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions } = require('../lib/manual-publication');
 
 test('albums Telegram : photos/vidéos ensemble et documents homogènes seulement', () => {
   assert.equal(supportsTelegramMediaGroup([{ photo: {} }, { video: {} }]), true);
@@ -60,4 +60,54 @@ test('un échec de finalisation conserve la publication capturée', () => {
 test('un message supprimé par le contrôle anti-doublon ne doit pas entrer dans la file manuelle', () => {
   assert.equal(interceptedMessagesWereRemoved([{ message_id: 10 }], new Set([10])), true);
   assert.equal(interceptedMessagesWereRemoved([{ message_id: 11 }], new Set([10])), false);
+});
+
+
+test('un album persistant conserve son mode manuel et tous ses messages', () => {
+  const album = {
+    groupId: '-1001:album-7',
+    messages: [{ message_id: 1, media_group_id: 'album-7' }, { message_id: 2, media_group_id: 'album-7' }],
+    startedAt: 100,
+    lastMessageAt: 200,
+    mode: 'manual',
+    attempts: 2,
+    state: 'retry_wait',
+    lastError: 'erreur réseau'
+  };
+  const record = pendingAlbumRecord(album);
+  assert.equal(record.mode, 'manual');
+  assert.equal(record.state, 'retry_wait');
+  assert.equal(record.attempts, 2);
+  assert.equal(record.messages.length, 2);
+  assert.equal(record.lastError, 'erreur réseau');
+  assert.notEqual(record.messages, album.messages);
+});
+
+test('les délais de reprise augmentent sans supprimer la tâche', () => {
+  assert.equal(pendingAlbumRetryDelay(1), 15000);
+  assert.equal(pendingAlbumRetryDelay(2), 30000);
+  assert.equal(pendingAlbumRetryDelay(3), 60000);
+  assert.equal(pendingAlbumRetryDelay(20), 240000);
+});
+
+test('le délai d’attente par défaut laisse une fenêtre de collecte de 12 secondes', () => {
+  assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 1000, now: 1000 }), 12000);
+});
+
+test('un album avec plusieurs légendes conserve chaque légende sur sa photo', () => {
+  const messages = [{ caption: 'Légende A' }, {}, { caption: 'Légende C' }];
+  assert.deepEqual(manualAlbumCaptions(messages), ['Légende A', '', 'Légende C']);
+});
+
+test('une édition manuelle place le texte édité sur la première photo sans dupliquer les anciennes légendes', () => {
+  const messages = [{ caption: 'Ancienne A' }, { caption: 'Ancienne B' }];
+  assert.deepEqual(manualAlbumCaptions(messages, { text: 'Texte modifié', edited: true }), ['Texte modifié', '']);
+});
+
+test('un texte séparé suivi de photos devient la légende de la première photo seulement', () => {
+  assert.deepEqual(manualAlbumCaptions([{}, {}], { text: 'Texte du post', contextMedia: true }), ['Texte du post', '']);
+});
+
+test('une seule légende sur la deuxième photo conserve sa position', () => {
+  assert.deepEqual(manualAlbumCaptions([{}, { caption: 'Légende photo 2' }, {}]), ['', 'Légende photo 2', '']);
 });
