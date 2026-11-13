@@ -4655,28 +4655,6 @@ const httpServer = app.listen(PORT, () => {
   }
 })();
 
-// V6 : cycle autonome périodique. Le moteur applique lui-même l’intervalle et le plafond journalier.
-// Hacoo Affiliate : synchronisation automatique à intervalle aléatoire de 5 à 6 minutes.
-let affiliateAutoSyncTimerRunning = false;
-function scheduleAffiliateAutoSync() {
-  const delay = 5 * 60 * 1000 + Math.floor(Math.random() * 60 * 1000);
-  setTimeout(async () => {
-    if (!affiliateAutoSyncTimerRunning && !affiliateSyncRunning && !shuttingDown && hacooAffiliate.isConfigured()) {
-      affiliateAutoSyncTimerRunning = true;
-      try {
-        const result = await syncHacooAffiliate();
-        if (result?.ok) console.log(`Synchronisation Hacoo automatique : ${result.fetched} commande(s) récupérée(s), ${result.pages} page(s).`);
-      } catch (error) {
-        console.error('Synchronisation Hacoo automatique échouée :', String(error?.message || error).slice(0, 300));
-      } finally {
-        affiliateAutoSyncTimerRunning = false;
-      }
-    }
-    scheduleAffiliateAutoSync();
-  }, delay).unref();
-}
-scheduleAffiliateAutoSync();
-
 let autonomyLoopRunning = false;
 setInterval(async () => {
   if (autonomyLoopRunning || shuttingDown) return;
