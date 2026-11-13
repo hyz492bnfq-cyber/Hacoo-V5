@@ -3856,15 +3856,20 @@ app.post('/api/assistant/chat', async (req, res) => {
     formatTitleSuffix: data.formatTitleSuffix,
     formatCouponTemplate: data.formatCouponTemplate,
     formatPromoCode: data.formatPromoCode,
-    formatLinkPrefix: data.formatLinkPrefix
+    formatLinkPrefix: data.formatLinkPrefix,
+    formatFooterEnabled: Boolean(data.formatFooterEnabled),
+    formatFooterText: data.formatFooterText,
+    formatFooterItalic: data.formatFooterItalic !== false,
+    formatCouponLinkSpacing: Number(data.formatCouponLinkSpacing)||0,
+    formatFooterSpacing: Number(data.formatFooterSpacing ?? 1)
   };
   const prompt = [
     'Tu es l’assistant de configuration du bot Telegram M2 HACOO BOT. Réponds en français, clairement et brièvement.',
     'Ta tâche principale est de comprendre les demandes de mise en forme des publications et de proposer des réglages.',
-    'Sécurité : tu ne peux proposer que ces champs exacts : formatEnabled (booléen), formatTitlePrefix, formatTitleSuffix, formatCouponTemplate, formatPromoCode, formatLinkPrefix (chaînes). Ne propose jamais d’autre clé.',
+    'Sécurité : tu peux proposer uniquement formatEnabled, formatFooterEnabled, formatFooterItalic (booléens), formatCouponLinkSpacing et formatFooterSpacing (entiers de 0 à 3), ainsi que formatTitlePrefix, formatTitleSuffix, formatCouponTemplate, formatPromoCode, formatLinkPrefix et formatFooterText (chaînes). Ne propose jamais d’autre clé.',
     'Ne change pas les réglages sans rapport avec la mise en forme. N’invente jamais de lien produit. Les liens, couleurs, tailles, références et informations spécifiques doivent être préservés par le bot.',
     'Si l’utilisateur demande une modification de format, remplis settingsPatch uniquement avec les champs à modifier et explique ce que tu proposes. Si c’est une question ou s’il manque une précision, settingsPatch doit être null et pose une question utile.',
-    'formatCouponTemplate peut contenir {code}, remplacé par le code promo. Le code promo actuel peut être conservé si l’utilisateur ne demande pas de le changer.',
+    'formatCouponTemplate peut contenir {code}, remplacé par le code promo. Les espacements sont des lignes vides entre les éléments (0 à 3). Le pied de page peut être sur plusieurs lignes.',
     'Réponds UNIQUEMENT en JSON valide : {"reply":"explication en français","settingsPatch":null ou {"champs autorisés": "valeurs"}}.',
     `Réglages actuels : ${JSON.stringify(current)}`,
     `Conversation récente : ${JSON.stringify(messages)}`
@@ -3875,13 +3880,14 @@ app.post('/api/assistant/chat', async (req, res) => {
     const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
     if (start < 0 || end <= start) throw new Error('Réponse IA non structurée. Réessaie en reformulant.');
     const parsed = JSON.parse(raw.slice(start, end + 1));
-    const allowed = ['formatEnabled','formatTitlePrefix','formatTitleSuffix','formatCouponTemplate','formatPromoCode','formatLinkPrefix'];
+    const allowed = ['formatEnabled','formatFooterEnabled','formatFooterItalic','formatCouponLinkSpacing','formatFooterSpacing','formatTitlePrefix','formatTitleSuffix','formatCouponTemplate','formatPromoCode','formatLinkPrefix','formatFooterText'];
     const patch = {};
     if (parsed.settingsPatch && typeof parsed.settingsPatch === 'object' && !Array.isArray(parsed.settingsPatch)) {
       for (const key of allowed) {
         const value = parsed.settingsPatch[key];
-        if (key === 'formatEnabled' && typeof value === 'boolean') patch[key] = value;
-        else if (key !== 'formatEnabled' && typeof value === 'string') patch[key] = value.slice(0, 160);
+        if (['formatEnabled','formatFooterEnabled','formatFooterItalic'].includes(key) && typeof value === 'boolean') patch[key] = value;
+        else if (['formatCouponLinkSpacing','formatFooterSpacing'].includes(key) && Number.isInteger(Number(value))) patch[key] = Math.max(0, Math.min(3, Number(value)));
+        else if (typeof value === 'string') patch[key] = value.slice(0, key === 'formatFooterText' ? 600 : 160);
       }
     }
     aiEvent('assistant_config', `Assistant de configuration utilisé avec ${model}`, { model });
@@ -3904,17 +3910,20 @@ app.post('/api/assistant/chat', async (req, res) => {
 app.post('/api/assistant/apply', (req, res) => {
   const patch = req.body?.settingsPatch;
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return res.status(400).json({ error: 'Proposition de réglages manquante.' });
-  const allowed = ['formatEnabled','formatTitlePrefix','formatTitleSuffix','formatCouponTemplate','formatPromoCode','formatLinkPrefix'];
+  const allowed = ['formatEnabled','formatFooterEnabled','formatFooterItalic','formatCouponLinkSpacing','formatFooterSpacing','formatTitlePrefix','formatTitleSuffix','formatCouponTemplate','formatPromoCode','formatLinkPrefix','formatFooterText'];
   const keys = Object.keys(patch);
   if (!keys.length || keys.some(key => !allowed.includes(key))) return res.status(400).json({ error: 'La proposition contient un réglage non autorisé.' });
   for (const key of keys) {
     const value = patch[key];
-    if (key === 'formatEnabled') {
-      if (typeof value !== 'boolean') return res.status(400).json({ error: 'Valeur invalide pour l’activation du format.' });
+    if (['formatEnabled','formatFooterEnabled','formatFooterItalic'].includes(key)) {
+      if (typeof value !== 'boolean') return res.status(400).json({ error: 'Valeur invalide pour ' + key });
+      data[key] = value;
+    } else if (['formatCouponLinkSpacing','formatFooterSpacing'].includes(key)) {
+      if (!Number.isInteger(value) || value < 0 || value > 3) return res.status(400).json({ error: 'Espacement invalide pour ' + key });
       data[key] = value;
     } else {
       if (typeof value !== 'string') return res.status(400).json({ error: 'Valeur invalide pour ' + key });
-      data[key] = value.replace(/\u0000/g, '').slice(0, 160);
+      data[key] = value.replace(/\u0000/g, '').slice(0, key === 'formatFooterText' ? 600 : 160);
     }
   }
   saveData();
