@@ -4,8 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { splitPublicationBatches } = require('../lib/publication-batch');
 
-const photo = (id, caption = '', groupId = undefined) => ({
+const photo = (id, caption = '', groupId = undefined, chatId = -1001) => ({
   message_id: id,
+  chat: { id: chatId },
   photo: [{ file_id: 'photo-' + id }],
   ...(caption ? { caption } : {}),
   ...(groupId === undefined ? {} : { media_group_id: groupId })
@@ -36,6 +37,24 @@ test('un album natif Telegram partageant le même ID reste groupé', () => {
   ]);
   assert.equal(result.length, 1);
   assert.deepEqual(result[0].map(message => message.message_id), [1, 2, 3]);
+});
+
+test('un album natif reste groupé même si plusieurs photos ont une légende', () => {
+  const result = splitPublicationBatches([
+    photo(1, 'Légende photo 1', 'album-captions'),
+    photo(2, 'Légende photo 2', 'album-captions'),
+    photo(3, '', 'album-captions')
+  ]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].length, 3);
+});
+
+test('un album natif provenant de deux chats différents est séparé', () => {
+  const result = splitPublicationBatches([
+    photo(1, 'A', 'same-id', -1001),
+    photo(2, 'B', 'same-id', -1002)
+  ]);
+  assert.deepEqual(result.map(batch => batch.map(message => message.message_id)), [[1], [2]]);
 });
 
 test('deux media_group_id différents ne sont jamais fusionnés', () => {
