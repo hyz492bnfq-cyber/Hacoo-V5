@@ -33,9 +33,8 @@ const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
-const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved } = require('./lib/manual-publication');
+const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions } = require('./lib/manual-publication');
 const { shouldAppendPhotoToGroup } = require('./lib/photo-grouping');
-const { splitPublicationBatches } = require('./lib/publication-batch');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 const { Api: ResenderApi, CustomFile: ResenderCustomFile, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
 
@@ -2299,16 +2298,11 @@ function resumeDeferredJobs() {
 }
 
 function persistPendingAlbum(album) {
-  const record = {
-    groupId: album.groupId,
-    messages: clone(album.messages),
-    startedAt: album.startedAt,
-    lastMessageAt: album.lastMessageAt
-  };
+  const record = pendingAlbumRecord(album);
   const index = data.pendingAlbums.findIndex(item => item.groupId === album.groupId);
   if (index >= 0) data.pendingAlbums[index] = record;
   else data.pendingAlbums.push(record);
-  data.pendingAlbums = data.pendingAlbums.slice(-500);
+  // Ne jamais tronquer les albums actifs : cela supprimerait silencieusement des photos.
   saveNow();
 }
 
@@ -2325,23 +2319,37 @@ function schedulePendingAlbum(groupId, album) {
     quietMs: ALBUM_QUIET_MS,
     maxWaitMs: ALBUM_MAX_WAIT_MS
   });
-  album.timer = setTimeout(() => {
-    if (pendingAlbums.get(groupId) !== album) return;
-    pendingAlbums.delete(groupId);
-    const messages = album.messages.sort((a, b) => a.message_id - b.message_id);
-    // Même en mode manuel, séparer les publications si plusieurs légendes
-    // ont été reçues : le mode manuel ne doit pas contourner la règle anti-fusion.
-    const batches = splitPublicationBatches(messages);
-    if (data.manualPublicationMode) {
-      Promise.all(batches.map(batch => interceptManualPublication(album.ctx, batch))).catch(error => {
-        noteError(error);
-        notifyAdmin(`Interception de l'album à vérifier : la publication est conservée dans la file si la première sauvegarde a abouti. Vérifie le canal avant toute nouvelle action. ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
-      }).finally(() => removePersistedAlbum(groupId));
-    } else {
-      for (const batch of batches) enqueueProcessMessages(album.ctx, batch);
+  album.timer = setTimeout(() => finalizePendingAlbum(groupId, album), wait);
+}
+
+async function finalizePendingAlbum(groupId, album) {
+  if (pendingAlbums.get(groupId) !== album) return;
+  pendingAlbums.delete(groupId);
+  album.state = 'transferring';
+  const messages = [...album.messages].sort((a, b) => a.message_id - b.message_id);
+  try {
+    if (album.mode === 'manual') {
+      const result = await interceptManualPublication(album.ctx, messages);
+      if (result?.reason === 'deferred') throw new Error('Interception différée : le bot est en pause ou désactivé.');
       removePersistedAlbum(groupId);
+      return;
     }
-  }, wait);
+    // La tâche est sauvegardée durablement avant de retirer l'album collecté.
+    const task = enqueueProcessMessages(album.ctx, messages);
+    removePersistedAlbum(groupId);
+    await task;
+  } catch (error) {
+    album.attempts = Number(album.attempts || 0) + 1;
+    album.state = 'retry_wait';
+    album.lastError = String(error?.message || error).slice(0, 300);
+    album.startedAt = Date.now();
+    album.lastMessageAt = Date.now();
+    try { persistPendingAlbum(album); } catch (saveError) { noteError(saveError); }
+    pendingAlbums.set(groupId, album);
+    album.timer = setTimeout(() => finalizePendingAlbum(groupId, album), pendingAlbumRetryDelay(album.attempts));
+    noteError(error);
+    notifyAdmin(`Album conservé en attente après une erreur. Il sera réessayé automatiquement. ID : ${groupId}. ${album.lastError}`).catch(() => {});
+  }
 }
 
 function restorePersistentWork() {
@@ -2363,7 +2371,10 @@ function restorePersistentWork() {
       // les updates Telegram déjà en attente peuvent encore arriver.
       startedAt: Date.now(),
       lastMessageAt: Date.now(),
-      mode: record.mode || 'automatic',
+      mode: record.mode === 'manual' || (!record.mode && data.manualPublicationMode) ? 'manual' : 'automatic',
+      attempts: Number(record.attempts || 0),
+      state: record.state || 'collecting',
+      lastError: record.lastError || null,
       timer: null
     };
     pendingAlbums.set(record.groupId, album);
@@ -2477,6 +2488,11 @@ async function captureManualPublication(ctx, messages) {
 }
 async function interceptManualPublication(ctx, messages) {
   const ordered = [...messages].sort((a, b) => a.message_id - b.message_id);
+  const publicationId = `${CHANNEL_ID}:${ordered.map(message => message.message_id).join('-')}`;
+  if (data.manualPublications.some(item => item.id === publicationId) ||
+      data.manualPublicationHistory.some(item => item.id === publicationId)) {
+    return { queued: true, alreadyCaptured: true };
+  }
   // Le mode manuel passe par exactement les mêmes règles que le mode
   // automatique : types autorisés, mots/domaines, modération, doublons,
   // nettoyages, remplacements et formatage.
@@ -2497,7 +2513,12 @@ async function publishManualPublication(item) {
   // Couvre aussi les publications qui étaient déjà dans la file avant
   // l'ajout du formatage au moment de la capture.
   const isMediaPublication = (item.messages || []).some(message => message.photo || message.video || message.document || message.animation || message.audio || message.voice);
-  const finalText = formatPostText(item.text || '', isMediaPublication ? 1024 : 4096);
+  const preserveNativeAlbumCaptions = !item.edited &&
+    supportsTelegramMediaGroup(item.messages || []) &&
+    (item.messages || []).some(message => String(message.caption || '').trim());
+  const finalText = preserveNativeAlbumCaptions
+    ? String(item.text || '')
+    : formatPostText(item.text || '', isMediaPublication ? 1024 : 4096);
   if (finalText !== (item.text || '')) {
     item.text = finalText;
     item.formattedAt = new Date().toISOString();
@@ -2521,16 +2542,22 @@ async function publishManualPublication(item) {
     const captionEntities = footerEntities.length ? footerEntities : (captionSource && item.text === msgText(captionSource) ? (captionSource.caption_entities || captionSource.entities) : undefined);
     if (supportsTelegramMediaGroup(messages) || (contextMedia && contextMedia.length >= 2)) {
       const albumMessages = contextMedia || messages;
+      const captions = manualAlbumCaptions(albumMessages, {
+        text: item.text || '',
+        edited: Boolean(item.edited),
+        contextMedia: Boolean(contextMedia)
+      });
       const media = albumMessages.map((m, index) => {
         const entry = m.photo ? { type: 'photo', media: m.photo.at(-1).file_id }
           : m.video ? { type: 'video', media: m.video.file_id }
           : { type: 'document', media: m.document.file_id };
-        if (index === 0) {
-          entry.caption = item.text || '';
-          if (captionEntities?.length) entry.caption_entities = captionEntities;
-        } else if (m.caption) {
-          entry.caption = m.caption;
-          if (m.caption_entities?.length) entry.caption_entities = m.caption_entities;
+        const caption = captions[index];
+        if (caption) {
+          entry.caption = caption;
+          const sourceEntities = contextMedia || item.edited
+            ? (index === 0 ? captionEntities : undefined)
+            : (m.caption_entities || undefined);
+          if (sourceEntities?.length) entry.caption_entities = sourceEntities;
         }
         return entry;
       });
@@ -2820,7 +2847,10 @@ function queueChannelPost(ctx) {
       messages: [],
       timer: null,
       startedAt: Date.now(),
-      lastMessageAt: Date.now()
+      lastMessageAt: Date.now(),
+      mode: data.manualPublicationMode ? 'manual' : 'automatic',
+      attempts: 0,
+      state: 'collecting'
     });
   }
   const album = pendingAlbums.get(groupId);
