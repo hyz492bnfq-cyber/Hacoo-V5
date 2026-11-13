@@ -33,7 +33,7 @@ const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
-const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions } = require('./lib/manual-publication');
+const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions, remainingAlbumMessages } = require('./lib/manual-publication');
 const { shouldAppendPhotoToGroup } = require('./lib/photo-grouping');
 const { splitPublicationBatches } = require('./lib/publication-batch');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
@@ -171,6 +171,7 @@ const DEFAULTS = {
   albumSeen: [],
   pendingJobs: [],
   pendingAlbums: [],
+  completedAlbums: [],
   pendingPhotoGroup: null,
   processedMessageIds: [],
   ownMessageIds: [],
@@ -241,7 +242,7 @@ function normalizeData(saved) {
   for (const key of [
     'bannedWords', 'blockedPhrases', 'blockedDomains', 'allowedDomains', 'textReplacements',
     'history', 'duplicateHistory', 'deletions',
-    'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums',
+    'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums', 'completedAlbums',
     'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
     'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports', 'channelSyncImportSeen', 'affiliateOrders', 'affiliateOrderEvents', 'affiliateForecastSnapshots'
   ]) {
@@ -2301,14 +2302,34 @@ function resumeDeferredJobs() {
 function persistPendingAlbum(album) {
   const record = pendingAlbumRecord(album);
   const index = data.pendingAlbums.findIndex(item => item.groupId === album.groupId);
+  if (index >= 0) {
+    const existing = data.pendingAlbums[index];
+    const merged = new Map([...(existing.messages || []), ...(record.messages || [])].map(message => [message.message_id, message]));
+    record.messages = [...merged.values()].sort((a, b) => a.message_id - b.message_id);
+    record.mode = existing.mode || record.mode;
+    record.startedAt = Math.min(Number(existing.startedAt) || record.startedAt, record.startedAt);
+  }
   if (index >= 0) data.pendingAlbums[index] = record;
   else data.pendingAlbums.push(record);
   // Ne jamais tronquer les albums actifs : cela supprimerait silencieusement des photos.
   saveNow();
 }
 
-function removePersistedAlbum(groupId) {
-  data.pendingAlbums = data.pendingAlbums.filter(item => item.groupId !== groupId);
+function markAlbumMessagesCompleted(groupId, messages) {
+  const existing = data.completedAlbums.find(item => item.groupId === groupId);
+  const ids = [...new Set([...(existing?.messageIds || []), ...(messages || []).map(message => Number(message.message_id)).filter(Number.isFinite)])];
+  const record = { groupId, messageIds: ids, completedAt: new Date().toISOString() };
+  data.completedAlbums = [...data.completedAlbums.filter(item => item.groupId !== groupId), record].slice(-2000);
+  saveNow();
+}
+
+function removePersistedAlbum(groupId, completedMessages) {
+  const completedIds = new Set((completedMessages || []).map(message => Number(message.message_id)));
+  data.pendingAlbums = data.pendingAlbums.flatMap(item => {
+    if (item.groupId !== groupId) return [item];
+    const remaining = (item.messages || []).filter(message => !completedIds.has(Number(message.message_id)));
+    return remaining.length ? [{ ...item, messages: remaining, startedAt: Date.now(), lastMessageAt: Date.now(), mode: 'manual', state: 'collecting' }] : [];
+  });
   saveNow();
 }
 
@@ -2327,17 +2348,30 @@ async function finalizePendingAlbum(groupId, album) {
   if (pendingAlbums.get(groupId) !== album) return;
   pendingAlbums.delete(groupId);
   album.state = 'transferring';
-  const messages = [...album.messages].sort((a, b) => a.message_id - b.message_id);
+  let messages = [...album.messages].sort((a, b) => a.message_id - b.message_id);
   try {
+    const completed = data.completedAlbums.find(item => item.groupId === groupId);
+    if (completed) {
+      messages = remainingAlbumMessages(messages, completed.messageIds);
+      if (!messages.length) {
+        removePersistedAlbum(groupId, album.messages);
+        return;
+      }
+      // Les morceaux tardifs ne doivent jamais être publiés seuls automatiquement.
+      album.mode = 'manual';
+    }
+
     if (album.mode === 'manual') {
       const result = await interceptManualPublication(album.ctx, messages);
       if (result?.reason === 'deferred') throw new Error('Interception différée : le bot est en pause ou désactivé.');
-      removePersistedAlbum(groupId);
+      markAlbumMessagesCompleted(groupId, messages);
+      removePersistedAlbum(groupId, messages);
+      if (completed) notifyAdmin(`Des photos tardives de l'album ${groupId} ont été mises dans le Centre de publications pour vérification manuelle.`).catch(() => {});
       return;
     }
-    // La tâche est sauvegardée durablement avant de retirer l'album collecté.
     const task = enqueueProcessMessages(album.ctx, messages);
-    removePersistedAlbum(groupId);
+    markAlbumMessagesCompleted(groupId, messages);
+    removePersistedAlbum(groupId, messages);
     await task;
   } catch (error) {
     album.attempts = Number(album.attempts || 0) + 1;
