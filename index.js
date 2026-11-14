@@ -31,6 +31,7 @@ const { forecastIncidents } = require('./lib/incident-forecaster');
 const { proposeAdaptivePolicy } = require('./lib/adaptive-policy');
 const { planSafeCommand } = require('./lib/command-planner');
 const { generateText } = require('./lib/provider-manager');
+const { normalizeConfig: normalizeGroupModerationConfig, moderateGroupMessage } = require('./lib/group-moderation');
 const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNextQueuedEngineeringTask, cancelEngineeringTask, engineeringAgentStatus } = require('./lib/autonomous-agent');
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions, remainingAlbumMessages } = require('./lib/manual-publication');
@@ -156,6 +157,7 @@ const DEFAULTS = {
   blockedPhrases: [],
   blockedDomains: [],
   allowedDomains: [],
+  groupModeration: { enabled: false, chatIds: [], blockedWords: [], blockedPhrases: [], blockedDomains: [], allowedWords: [], allowedPhrases: [], allowedDomains: [], aiEnabled: true, autoDeleteRules: true, floodLimit: 6, floodWindowSeconds: 10, aiThreshold: 0.9, warningLimit: 3, warningRestrictionMinutes: 10, events: [], pending: [], warnings: {} },
 
   textReplacements: [],
 
@@ -236,6 +238,9 @@ function loadData() {
 
 function normalizeData(saved) {
   const out = { ...clone(DEFAULTS), ...saved };
+  const savedGroupModeration = saved.groupModeration && typeof saved.groupModeration === 'object' && !Array.isArray(saved.groupModeration) ? saved.groupModeration : {};
+  out.groupModeration = { ...clone(DEFAULTS.groupModeration), ...savedGroupModeration };
+  out.groupModeration = { ...normalizeGroupModerationConfig(out.groupModeration), events: Array.isArray(savedGroupModeration.events) ? savedGroupModeration.events.slice(-500) : [], pending: Array.isArray(savedGroupModeration.pending) ? savedGroupModeration.pending.slice(-150) : [], warnings: savedGroupModeration.warnings && typeof savedGroupModeration.warnings === 'object' && !Array.isArray(savedGroupModeration.warnings) ? savedGroupModeration.warnings : {} };
   // Drop the obsolete legacy setting when loading old data or restoring old backups.
   delete out['test' + 'Mode'];
 
@@ -3011,10 +3016,20 @@ bot.command('history', async ctx => {
 });
 
 bot.on('channel_post', queueChannelPost);
-bot.on('message', ctx => {
+bot.on('message', async (ctx, next) => {
   const message = ctx.message;
   if (!message) return;
   rememberChannelSyncChat(message.chat);
+  try {
+    await moderateGroupMessage(ctx, { data, adminId: ADMIN_ID, generateText, saveData });
+  } catch (error) {
+    noteError(error);
+  }
+  await next();
+});
+bot.command('groupid', async ctx => {
+  if (ctx.from?.id !== ADMIN_ID || !['group', 'supergroup'].includes(ctx.chat?.type)) return;
+  await ctx.reply('Identifiant de ce groupe : ' + ctx.chat.id + '\nAjoute cet identifiant dans Paramètres > Modération du groupe.');
 });
 bot.on('my_chat_member', ctx => rememberChannelSyncChat(ctx.myChatMember?.chat));
 bot.on('edited_channel_post', observeEditedChannelPost);
@@ -3132,6 +3147,50 @@ app.get('/health', (_req, res) => {
 app.use(auth);
 app.use(auth);
 
+
+app.get('/api/group-moderation', (_req, res) => {
+  const { events, pending, warnings, ...config } = data.groupModeration;
+  res.set('Cache-Control', 'no-store');
+  res.json({ config, pending: (pending || []).slice(-100).reverse(), events: (events || []).slice(-100).reverse() });
+});
+
+app.post('/api/group-moderation', (req, res) => {
+  const previous = data.groupModeration;
+  const normalized = normalizeGroupModerationConfig({ ...previous, ...(req.body || {}) });
+  data.groupModeration = {
+    ...normalized,
+    events: Array.isArray(previous.events) ? previous.events.slice(-500) : [],
+    pending: Array.isArray(previous.pending) ? previous.pending.slice(-150) : [],
+    warnings: previous.warnings && typeof previous.warnings === 'object' ? previous.warnings : {}
+  };
+  saveData();
+  res.json({ ok: true, config: normalized });
+});
+
+app.post('/api/group-moderation/review', async (req, res) => {
+  const id = String(req.body?.id || '').slice(0, 180);
+  const action = String(req.body?.action || '');
+  if (!id || !['delete', 'ignore'].includes(action)) return res.status(400).json({ error: 'Décision invalide.' });
+  const pending = data.groupModeration.pending || [];
+  const index = pending.findIndex(item => item.id === id);
+  if (index < 0) return res.status(404).json({ error: 'Ce dossier n’est plus en attente.' });
+  const item = pending[index];
+  if (action === 'delete') {
+    try {
+      await bot.api.deleteMessage(Number(item.chatId), Number(item.messageId));
+      item.action = 'deleted_after_review';
+    } catch (error) {
+      return res.status(502).json({ error: 'Suppression non confirmée : ' + String(error?.description || error?.message || error).slice(0, 180) });
+    }
+  } else {
+    item.action = 'ignored_after_review';
+  }
+  item.status = 'reviewed_by_admin';
+  item.reviewedAt = new Date().toISOString();
+  data.groupModeration.pending.splice(index, 1);
+  saveData();
+  res.json({ ok: true });
+});
 
 app.get('/api/publication-vault/status', async (_req, res) => {
   res.set('Cache-Control', 'no-store');
