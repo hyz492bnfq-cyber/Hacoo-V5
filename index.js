@@ -3029,7 +3029,7 @@ bot.on('message', async (ctx, next) => {
 });
 bot.command('groupid', async ctx => {
   if (ctx.from?.id !== ADMIN_ID || !['group', 'supergroup'].includes(ctx.chat?.type)) return;
-  await ctx.reply('Identifiant de ce groupe : ' + ctx.chat.id + '\\nAjoute cet identifiant dans Paramètres > Modération du groupe.');
+  await ctx.reply('Identifiant de ce groupe : ' + ctx.chat.id + '\nAjoute cet identifiant dans Paramètres > Modération du groupe.');
 });
 bot.on('my_chat_member', ctx => rememberChannelSyncChat(ctx.myChatMember?.chat));
 bot.on('edited_channel_post', observeEditedChannelPost);
