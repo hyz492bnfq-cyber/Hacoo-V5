@@ -789,6 +789,35 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
         <div class="set"><div class="tx"><b>Mentions interdites</b><span>Bloque les @comptes.</span></div><button class="sw" data-setting="blockMentions" role="switch" aria-label="Mentions interdites" type="button"></button></div>
         <div class="set"><div class="tx"><b>Messages transférés interdits</b><span>Bloque les transferts détectés.</span></div><button class="sw" data-setting="blockForwarded" role="switch" aria-label="Transferts interdits" type="button"></button></div>
       </div></details>
+ <details class="group" id="g-group-mod"><summary><span class="gi"><svg class="ic"><use href="#i-shield"/></svg></span><div><b>Modération du groupe Telegram</b><span class="s" id="s-group-mod">Configuration compacte · indépendante du canal</span></div></summary>
+  <div class="gbody">
+   <p class="small muted" style="padding:8px 0 12px">Ces règles s'appliquent uniquement au groupe Telegram dont l'identifiant est renseigné ici. Elles ne modifient jamais la modération des publications du canal. Ton compte ADMIN_ID est exempté avant toute règle et toute analyse IA.</p>
+   <div class="set"><div class="tx"><b>Activer la modération du groupe</b><span>Désactivée par défaut jusqu'à la configuration du groupe.</span></div><input id="groupModEnabled" type="checkbox"></div>
+   <div class="subsec">
+    <label class="lb" for="groupModChatIds">Identifiant(s) du groupe Telegram</label><textarea id="groupModChatIds" rows="2" maxlength="500" placeholder="-1001234567890"></textarea>
+    <p class="tiny muted">Dans le groupe, envoie /groupid au bot en tant qu'administrateur pour obtenir cet identifiant. Un groupe par ligne.</p>
+    <div class="grid12">
+     <div class="c6"><label class="lb" for="groupModBlockedWords">Mots interdits</label><textarea id="groupModBlockedWords" rows="3"></textarea></div>
+     <div class="c6"><label class="lb" for="groupModBlockedPhrases">Expressions interdites</label><textarea id="groupModBlockedPhrases" rows="3"></textarea></div>
+     <div class="c6"><label class="lb" for="groupModBlockedDomains">Domaines interdits</label><textarea id="groupModBlockedDomains" rows="3"></textarea></div>
+     <div class="c6"><label class="lb" for="groupModAllowedWords">Mots autorisés / exceptions</label><textarea id="groupModAllowedWords" rows="3"></textarea></div>
+     <div class="c6"><label class="lb" for="groupModAllowedPhrases">Expressions autorisées</label><textarea id="groupModAllowedPhrases" rows="3"></textarea></div>
+     <div class="c6"><label class="lb" for="groupModAllowedDomains">Domaines autorisés</label><textarea id="groupModAllowedDomains" rows="3"></textarea></div>
+    </div>
+   </div>
+   <div class="set"><div class="tx"><b>Suppression automatique des infractions certaines</b><span>Applique les règles explicites et l'anti-flood.</span></div><input id="groupModAutoDelete" type="checkbox" checked></div>
+   <div class="set"><div class="tx"><b>Analyse IA des cas suspects</b><span>Utilise la chaîne de fournisseurs NVIDIA / Gemini. Les cas détectés restent à valider par toi.</span></div><input id="groupModAiEnabled" type="checkbox" checked></div>
+   <div class="subsec"><div class="grid12">
+    <div class="c6"><label class="lb" for="groupModFloodLimit">Messages avant détection de flood</label><input id="groupModFloodLimit" type="number" min="3" max="20" value="6"></div>
+    <div class="c6"><label class="lb" for="groupModFloodWindow">Fenêtre (secondes)</label><input id="groupModFloodWindow" type="number" min="5" max="60" value="10"></div>
+    <div class="c6"><label class="lb" for="groupModAiThreshold">Confiance minimale IA (0,75 à 0,99)</label><input id="groupModAiThreshold" type="number" min="0.75" max="0.99" step="0.01" value="0.90"></div>
+    <div class="c6"><label class="lb" for="groupModWarningLimit">Avertissements avant restriction</label><input id="groupModWarningLimit" type="number" min="2" max="10" value="3"></div>
+    <div class="c6"><label class="lb" for="groupModRestrictionMinutes">Restriction (minutes)</label><input id="groupModRestrictionMinutes" type="number" min="1" max="1440" value="10"></div>
+   </div></div>
+   <div class="row between wrap"><span class="small muted" id="groupModStatus">Paramètres non chargés.</span><button class="btn primary" id="groupModSave" type="button">Enregistrer la modération</button></div>
+   <div class="set-title">Cas IA à vérifier <span class="pcount" id="groupModPendingCount">0</span></div><div class="list" id="groupModPendingList"><div class="empty">Aucun cas en attente.</div></div>
+  </div>
+ </details>
 <details class="group" id="g-clean"><summary><span class="gi"><svg class="ic"><use href="#i-sparkle"/></svg></span><div><b>Nettoyage automatique</b><span class="s" id="s-clean"></span></div></summary>
       <div class="gbody">
         <div class="small muted" style="padding:12px 0">Nettoie le texte ou la légende sans supprimer la publication.</div>
@@ -2151,6 +2180,41 @@ new MutationObserver(()=>document.body.classList.toggle('drawer-open',!$('#manua
 document.addEventListener('click',e=>{if(e.target===document.body&&document.body.classList.contains('drawer-open'))cancelManualEditor();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('drawer-open')&&!$('#backdrop').classList.contains('open'))cancelManualEditor();});
 
+/* ============ Modération du groupe Telegram ============ */
+function gmLines(value){return String(value||'').split(/[\\n,;]+/u).map(x=>x.trim()).filter(Boolean).slice(0,100);}
+function gmSetList(id,values){$('#'+id).value=(Array.isArray(values)?values:[]).join('\\n');}
+function renderGroupModerationPending(items){
+ const root=$('#groupModPendingList');if(!root)return;
+ $('#groupModPendingCount').textContent=String(items.length);
+ root.innerHTML=items.length?items.map(item=>'<div class="item"><div class="row between"><b>'+esc(item.displayName||item.username||('Membre '+item.userId))+'</b><span class="tag warn">'+esc(Math.round(Number(item.confidence||0)*100)+' %')+'</span></div><div class="small muted">'+esc(item.chatTitle||item.chatId)+' · '+esc(item.category||'à vérifier')+'</div><div class="small break">'+esc(item.preview||'')+'</div><div class="row wrap"><button class="btn sm danger" type="button" data-gm-review="delete" data-gm-id="'+esc(item.id)+'">Confirmer la suppression</button><button class="btn sm" type="button" data-gm-review="ignore" data-gm-id="'+esc(item.id)+'">Ignorer</button></div></div>').join(''):'<div class="empty">Aucun cas en attente.</div>';
+}
+async function loadGroupModeration(){
+ try{
+  const result=await api('/api/group-moderation'),g=result.config||{};
+  $('#groupModEnabled').checked=Boolean(g.enabled);$('#groupModAutoDelete').checked=g.autoDeleteRules!==false;$('#groupModAiEnabled').checked=g.aiEnabled!==false;
+  gmSetList('groupModChatIds',g.chatIds);gmSetList('groupModBlockedWords',g.blockedWords);gmSetList('groupModBlockedPhrases',g.blockedPhrases);gmSetList('groupModBlockedDomains',g.blockedDomains);
+  gmSetList('groupModAllowedWords',g.allowedWords);gmSetList('groupModAllowedPhrases',g.allowedPhrases);gmSetList('groupModAllowedDomains',g.allowedDomains);
+  $('#groupModFloodLimit').value=String(g.floodLimit||6);$('#groupModFloodWindow').value=String(g.floodWindowSeconds||10);$('#groupModAiThreshold').value=String(g.aiThreshold||.9);
+  $('#groupModWarningLimit').value=String(g.warningLimit||3);$('#groupModRestrictionMinutes').value=String(g.warningRestrictionMinutes||10);
+  $('#groupModStatus').textContent=g.enabled?'Modération activée · '+(g.chatIds||[]).length+' groupe(s) configuré(s)':'Désactivée · aucun message ne sera modéré';
+  $('#s-group-mod').textContent=g.enabled?'Activée · '+(g.chatIds||[]).length+' groupe(s)':'Désactivée';
+  renderGroupModerationPending(result.pending||[]);
+ }catch(error){$('#groupModStatus').textContent='Chargement impossible : '+error.message;}
+}
+$('#groupModSave').addEventListener('click',async()=>{
+ const payload={enabled:$('#groupModEnabled').checked,chatIds:gmLines($('#groupModChatIds').value),
+ blockedWords:gmLines($('#groupModBlockedWords').value),blockedPhrases:gmLines($('#groupModBlockedPhrases').value),blockedDomains:gmLines($('#groupModBlockedDomains').value),
+ allowedWords:gmLines($('#groupModAllowedWords').value),allowedPhrases:gmLines($('#groupModAllowedPhrases').value),allowedDomains:gmLines($('#groupModAllowedDomains').value),
+ autoDeleteRules:$('#groupModAutoDelete').checked,aiEnabled:$('#groupModAiEnabled').checked,
+ floodLimit:Number($('#groupModFloodLimit').value),floodWindowSeconds:Number($('#groupModFloodWindow').value),aiThreshold:Number($('#groupModAiThreshold').value),
+ warningLimit:Number($('#groupModWarningLimit').value),warningRestrictionMinutes:Number($('#groupModRestrictionMinutes').value)};
+ try{await post('/api/group-moderation',payload);toast('Modération du groupe enregistrée','ok');await loadGroupModeration();}catch(error){toast(error.message,'bad');}
+});
+$('#groupModPendingList').addEventListener('click',async event=>{
+ const button=event.target.closest('[data-gm-review]');if(!button)return;
+ try{await post('/api/group-moderation/review',{id:button.dataset.gmId,action:button.dataset.gmReview});toast(button.dataset.gmReview==='delete'?'Suppression confirmée':'Cas ignoré','ok');await loadGroupModeration();}catch(error){toast(error.message,'bad');}
+});
+
 /* ============ Navigation et démarrage ============ */
 const TABS=['home','affiliate','forecast','activity','publications','settings'];
 const TAB_META={
@@ -2182,7 +2246,7 @@ function showTab(name){
  replayNums($('#tab-'+name));
  if(name==='publications')loadManual();
  if((name==='affiliate'||name==='forecast')&&!affiliateLoaded)loadAffiliate();
- if(name==='settings')loadChannelSync();
+ if(name==='settings'){loadChannelSync();loadGroupModeration();}
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
 $('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.tab==='affiliate'||S.tab==='forecast')loadAffiliate();});
