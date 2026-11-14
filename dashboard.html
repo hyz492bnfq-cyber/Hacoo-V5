@@ -795,7 +795,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
    <div class="set"><div class="tx"><b>Activer la modération du groupe</b><span>Désactivée par défaut jusqu'à la configuration du groupe.</span></div><input id="groupModEnabled" type="checkbox"></div>
    <div class="subsec">
     <label class="lb" for="groupModChatIds">Identifiant(s) du groupe Telegram</label><textarea id="groupModChatIds" rows="2" maxlength="500" placeholder="-1001234567890"></textarea>
-    <p class="tiny muted">Dans le groupe, envoie /groupid au bot en tant qu'administrateur pour obtenir cet identifiant. Un groupe par ligne.</p>
+    <p class="tiny muted">Dans le groupe, envoie /groupid au bot avec ton compte administrateur. Le bot doit être admin avec les droits de suppression et de restriction. Un groupe par ligne.</p>
     <div class="grid12">
      <div class="c6"><label class="lb" for="groupModBlockedWords">Mots interdits</label><textarea id="groupModBlockedWords" rows="3"></textarea></div>
      <div class="c6"><label class="lb" for="groupModBlockedPhrases">Expressions interdites</label><textarea id="groupModBlockedPhrases" rows="3"></textarea></div>
@@ -811,7 +811,7 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
     <div class="c6"><label class="lb" for="groupModFloodLimit">Messages avant détection de flood</label><input id="groupModFloodLimit" type="number" min="3" max="20" value="6"></div>
     <div class="c6"><label class="lb" for="groupModFloodWindow">Fenêtre (secondes)</label><input id="groupModFloodWindow" type="number" min="5" max="60" value="10"></div>
     <div class="c6"><label class="lb" for="groupModAiThreshold">Confiance minimale IA (0,75 à 0,99)</label><input id="groupModAiThreshold" type="number" min="0.75" max="0.99" step="0.01" value="0.90"></div>
-    <div class="c6"><label class="lb" for="groupModWarningLimit">Avertissements avant restriction</label><input id="groupModWarningLimit" type="number" min="2" max="10" value="3"></div>
+    <div class="c6"><label class="lb" for="groupModWarningLimit">Infractions supprimées avant restriction</label><input id="groupModWarningLimit" type="number" min="2" max="10" value="3"></div>
     <div class="c6"><label class="lb" for="groupModRestrictionMinutes">Restriction (minutes)</label><input id="groupModRestrictionMinutes" type="number" min="1" max="1440" value="10"></div>
    </div></div>
    <div class="row between wrap"><span class="small muted" id="groupModStatus">Paramètres non chargés.</span><button class="btn primary" id="groupModSave" type="button">Enregistrer la modération</button></div>
