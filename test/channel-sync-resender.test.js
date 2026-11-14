@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { copyRecent, republish, messageId } = require('../lib/channel-sync-resender');
+const { copyRecent, republish, messageId, listChats } = require('../lib/channel-sync-resender');
 
 test('Resender récupère les dernières publications et traite un album comme une publication', async () => {
   const sent = [];
@@ -59,4 +59,16 @@ test('Resender ne publie jamais un album incomplet si le téléchargement d’un
     /Téléchargement Resender impossible/
   );
   assert.equal(sendCalls, 0);
+});
+test('Resender distingue les groupes, supergroupes et canaux de diffusion', async () => {
+  const chats = await listChats({ async getDialogs() { return [
+    { id: 11, isGroup: true, title: 'Groupe classique' },
+    { id: 22, isChannel: true, entity: { id: 22, megagroup: true }, title: 'Supergroupe' },
+    { id: 33, isChannel: true, entity: { id: 33, megagroup: false }, title: 'Canal de diffusion' }
+  ]; } });
+  assert.deepEqual(chats, [
+    { id: '-11', name: 'Groupe classique', type: 'groupe' },
+    { id: '-10022', name: 'Supergroupe', type: 'groupe' },
+    { id: '-10033', name: 'Canal de diffusion', type: 'canal' }
+  ]);
 });
