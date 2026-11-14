@@ -794,8 +794,10 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
    <p class="small muted" style="padding:8px 0 12px">Ces règles s'appliquent uniquement au groupe Telegram dont l'identifiant est renseigné ici. Elles ne modifient jamais la modération des publications du canal. Ton compte ADMIN_ID est exempté avant toute règle et toute analyse IA.</p>
    <div class="set"><div class="tx"><b>Activer la modération du groupe</b><span>Désactivée par défaut jusqu'à la configuration du groupe.</span></div><input id="groupModEnabled" type="checkbox"></div>
    <div class="subsec">
-    <label class="lb" for="groupModChatIds">Identifiant(s) du groupe Telegram</label><textarea id="groupModChatIds" rows="2" maxlength="500" placeholder="-1001234567890"></textarea>
-    <p class="tiny muted">Dans le groupe, envoie /groupid au bot avec ton compte administrateur. Le bot doit être admin avec les droits de suppression et de restriction. Un groupe par ligne.</p>
+    <label class="lb" for="groupModChatSelect">Groupes à modérer</label>
+    <select id="groupModChatSelect" multiple size="5" aria-label="Sélectionner les groupes Telegram à modérer"><option disabled>Actualise la liste Telegram pour choisir tes groupes…</option></select>
+    <div class="row wrap" style="padding-top:8px"><button class="btn sm" id="groupModRefreshChats" type="button">Actualiser depuis Telegram</button><span class="tiny muted" id="groupModChatNote">Sélection multiple.</span></div>
+    <p class="tiny muted">La liste vient de la connexion personnelle déjà utilisée par CHANNEL SYNC. Seuls les groupes et supergroupes sont proposés : les canaux de diffusion ne permettent pas de modérer les messages des membres. Le bot lui-même doit être présent dans chaque groupe et disposer des droits de suppression et de restriction. /groupid reste disponible en dépannage.</p>
     <div class="grid12">
      <div class="c6"><label class="lb" for="groupModBlockedWords">Mots interdits</label><textarea id="groupModBlockedWords" rows="3"></textarea></div>
      <div class="c6"><label class="lb" for="groupModBlockedPhrases">Expressions interdites</label><textarea id="groupModBlockedPhrases" rows="3"></textarea></div>
@@ -2183,6 +2185,16 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.class
 /* ============ Modération du groupe Telegram ============ */
 function gmLines(value){return String(value||'').split(/[\n,;]+/u).map(x=>x.trim()).filter(Boolean).slice(0,100);}
 function gmSetList(id,values){$('#'+id).value=(Array.isArray(values)?values:[]).join('\n');}
+function gmSetChats(chats,selected){
+ const select=$('#groupModChatSelect'),ids=new Set((selected||[]).map(String));
+ const groups=(chats||[]).filter(chat=>chat.type==='groupe'||chat.type==='group'||chat.type==='supergroup');
+ const known=new Set(groups.map(chat=>String(chat.id)));
+ const retained=[...ids].filter(id=>!known.has(id)).map(id=>({id,name:'Groupe déjà enregistré ('+id+')',type:'groupe'}));
+ const options=[...groups,...retained];
+ select.innerHTML=options.length?options.map(chat=>'<option value="'+esc(chat.id)+'">'+esc(chat.name)+' · Groupe</option>').join(''):'<option disabled value="">Aucun groupe trouvé — actualise la liste Telegram.</option>';
+ [...select.options].forEach(option=>{option.selected=ids.has(option.value);});
+ $('#groupModChatNote').textContent=options.length+' groupe(s) disponible(s) · sélection multiple';
+}
 function renderGroupModerationPending(items){
  const root=$('#groupModPendingList');if(!root)return;
  $('#groupModPendingCount').textContent=String(items.length);
@@ -2190,9 +2202,10 @@ function renderGroupModerationPending(items){
 }
 async function loadGroupModeration(){
  try{
-  const result=await api('/api/group-moderation'),g=result.config||{};
+  const [result,sync]=await Promise.all([api('/api/group-moderation'),api('/api/channel-sync')]),g=result.config||{};
+  syncState=sync;gmSetChats(sync.chats,g.chatIds);
   $('#groupModEnabled').checked=Boolean(g.enabled);$('#groupModAutoDelete').checked=g.autoDeleteRules!==false;$('#groupModAiEnabled').checked=g.aiEnabled!==false;
-  gmSetList('groupModChatIds',g.chatIds);gmSetList('groupModBlockedWords',g.blockedWords);gmSetList('groupModBlockedPhrases',g.blockedPhrases);gmSetList('groupModBlockedDomains',g.blockedDomains);
+  gmSetList('groupModBlockedWords',g.blockedWords);gmSetList('groupModBlockedPhrases',g.blockedPhrases);gmSetList('groupModBlockedDomains',g.blockedDomains);
   gmSetList('groupModAllowedWords',g.allowedWords);gmSetList('groupModAllowedPhrases',g.allowedPhrases);gmSetList('groupModAllowedDomains',g.allowedDomains);
   $('#groupModFloodLimit').value=String(g.floodLimit||6);$('#groupModFloodWindow').value=String(g.floodWindowSeconds||10);$('#groupModAiThreshold').value=String(g.aiThreshold||.9);
   $('#groupModWarningLimit').value=String(g.warningLimit||3);$('#groupModRestrictionMinutes').value=String(g.warningRestrictionMinutes||10);
@@ -2201,8 +2214,14 @@ async function loadGroupModeration(){
   renderGroupModerationPending(result.pending||[]);
  }catch(error){$('#groupModStatus').textContent='Chargement impossible : '+error.message;}
 }
+$('#groupModRefreshChats').addEventListener('click',async event=>{
+ const button=event.currentTarget;button.disabled=true;button.textContent='Actualisation…';
+ try{const selected=[...$('#groupModChatSelect').selectedOptions].map(option=>option.value).filter(Boolean);await post('/api/channel-sync/resender/chats',{});const sync=await api('/api/channel-sync');syncState=sync;gmSetChats(sync.chats,selected);toast('Liste des groupes Telegram actualisée.','ok');}
+ catch(error){toast(error.message,'bad');$('#groupModChatNote').textContent='Connexion Telegram indisponible : '+error.message;}
+ finally{button.disabled=false;button.textContent='Actualiser depuis Telegram';}
+});
 $('#groupModSave').addEventListener('click',async()=>{
- const payload={enabled:$('#groupModEnabled').checked,chatIds:gmLines($('#groupModChatIds').value),
+ const payload={enabled:$('#groupModEnabled').checked,chatIds:[...$('#groupModChatSelect').selectedOptions].map(option=>option.value).filter(Boolean),
  blockedWords:gmLines($('#groupModBlockedWords').value),blockedPhrases:gmLines($('#groupModBlockedPhrases').value),blockedDomains:gmLines($('#groupModBlockedDomains').value),
  allowedWords:gmLines($('#groupModAllowedWords').value),allowedPhrases:gmLines($('#groupModAllowedPhrases').value),allowedDomains:gmLines($('#groupModAllowedDomains').value),
  autoDeleteRules:$('#groupModAutoDelete').checked,aiEnabled:$('#groupModAiEnabled').checked,
