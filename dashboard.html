@@ -2181,8 +2181,8 @@ document.addEventListener('click',e=>{if(e.target===document.body&&document.body
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('drawer-open')&&!$('#backdrop').classList.contains('open'))cancelManualEditor();});
 
 /* ============ Modération du groupe Telegram ============ */
-function gmLines(value){return String(value||'').split(/[\\n,;]+/u).map(x=>x.trim()).filter(Boolean).slice(0,100);}
-function gmSetList(id,values){$('#'+id).value=(Array.isArray(values)?values:[]).join('\\n');}
+function gmLines(value){return String(value||'').split(/[\n,;]+/u).map(x=>x.trim()).filter(Boolean).slice(0,100);}
+function gmSetList(id,values){$('#'+id).value=(Array.isArray(values)?values:[]).join('\n');}
 function renderGroupModerationPending(items){
  const root=$('#groupModPendingList');if(!root)return;
  $('#groupModPendingCount').textContent=String(items.length);
