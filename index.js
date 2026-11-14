@@ -3016,7 +3016,7 @@ bot.command('history', async ctx => {
 });
 
 bot.on('channel_post', queueChannelPost);
-bot.on('message', async ctx => {
+bot.on('message', async (ctx, next) => {
   const message = ctx.message;
   if (!message) return;
   rememberChannelSyncChat(message.chat);
@@ -3025,6 +3025,7 @@ bot.on('message', async ctx => {
   } catch (error) {
     noteError(error);
   }
+  await next();
 });
 bot.command('groupid', async ctx => {
   if (ctx.from?.id !== ADMIN_ID || !['group', 'supergroup'].includes(ctx.chat?.type)) return;
