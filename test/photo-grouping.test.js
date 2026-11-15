@@ -161,3 +161,30 @@ test('une légende intermédiaire peut être suivie de photos sans légende', ()
   const last = photo(4);
   assert.equal(accepts(state, last, { now: 1300 }), true);
 });
+
+
+test('stress : tailles de 2 à 20 photos et légende à chaque position possible', () => {
+  for (let count = 2; count <= 20; count++) {
+    for (let captionIndex = -1; captionIndex < count; captionIndex++) {
+      const messages = Array.from({ length: count }, (_, index) =>
+        photo(index + 1, index === captionIndex ? 'Description' : '')
+      );
+      const state = group(messages[0]);
+      for (let index = 1; index < count; index++) {
+        const incoming = messages[index];
+        const now = 1000 + index * 100;
+        assert.equal(accepts(state, incoming, { now }), true,
+          `count=${count}, captionIndex=${captionIndex}, incomingIndex=${index}`);
+        state.photos.push(incoming);
+        state.lastMessageAt = now;
+      }
+      assert.equal(state.photos.length + 1, count);
+    }
+  }
+});
+
+test('une séquence de photos indépendantes ne peut pas dépasser la fenêtre maximale', () => {
+  const state = group(photo(1, 'Description'));
+  state.lastMessageAt = 1000;
+  assert.equal(accepts(state, photo(2), { now: 31001 }), false);
+});
