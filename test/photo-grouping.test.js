@@ -38,8 +38,8 @@ test('la légende peut être sur la deuxième photo après une première photo s
   assert.equal(canAppend(group(photo(1)), photo(2, 'Description')), true);
 });
 
-test('une légende sur la première photo clôt le groupe des photos indépendantes', () => {
-  assert.equal(canAppend(group(photo(1, 'Description')), photo(2)), false);
+test('une légende sur la première photo autorise les photos suivantes sans légende', () => {
+  assert.equal(canAppend(group(photo(1, 'Description')), photo(2)), true);
 });
 
 test('une photo légendée après un groupe qui possède déjà une légende démarre un nouveau post', () => {
@@ -60,15 +60,15 @@ test('plusieurs photos non légendées consécutives restent regroupables', () =
   assert.equal(canAppend(group(first, [second]), third), true);
 });
 
-test('une photo sans légende après la légende clôt le groupe pour éviter une fusion', () => {
-  const existing = group(photo(1), [photo(2, 'Légende')]);
-  assert.equal(canAppend(existing, photo(3)), false);
+test('une photo sans légende après la légende initiale rejoint le même post', () => {
+  const existing = group(photo(1, 'Légende'), [photo(2)]);
+  assert.equal(canAppend(existing, photo(3)), true);
   assert.equal(canAppend(existing, photo(4, 'Nouvelle légende')), false);
 });
 
-test('une légende sur la photo initiale clôt aussi le groupe', () => {
+test('une légende sur la photo initiale permet de regrouper les photos suivantes', () => {
   const existing = group(photo(1, 'Légende'));
-  assert.equal(canAppend(existing, photo(2)), false);
+  assert.equal(canAppend(existing, photo(2)), true);
 });
 
 test('un texte/caption vide ou composé d’espaces ne crée pas une frontière', () => {
@@ -106,7 +106,7 @@ test('un message déjà membre d’un album Telegram natif est laissé au traite
 
 test('un groupe absent ou incomplet ne provoque pas d’erreur', () => {
   assert.equal(canAppend(null, photo(1)), false);
-  assert.equal(canAppend({ mode: 'automatic', startedAt: 1000 }, photo(1)), true);
+  assert.equal(canAppend({ mode: 'automatic', startedAt: 1000 }, photo(1)), false);
 });
 
 test('les fenêtres invalides et les horodatages invalides sont rejetés', () => {
@@ -147,9 +147,26 @@ test('rafale : une publication avec légende finale est clôturée avant la publ
   assert.equal(canAppend(firstPost, photo(304, 'Produit B'), { now: 1250 }), false);
 });
 
-test('limite connue : une photo sans légende du post suivant est indiscernable avant sa légende', () => {
+test('une photo sans légende immédiatement après une ancre légendée rejoint le post', () => {
   const firstPost = group(photo(401, 'Produit A'), [], { startedAt: 1000 });
-  // Sans identifiant, impossible de prouver qu'elle appartient à A.
-  // La règle conservatrice ferme donc le groupe plutôt que de fusionner B.
-  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), false);
+  // Sans media_group_id, le regroupement reste une heuristique temporelle :
+  // la photo contiguë sans légende est rattachée au post qui vient de commencer.
+  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), true);
+});
+
+
+test('une rafale de six photos avec légende initiale reste groupée', () => {
+  const messages = Array.from({ length: 6 }, (_, index) =>
+    photo(600 + index, index === 0 ? 'Publication Hacoo' : '')
+  );
+  const state = group(messages[0]);
+  for (const message of messages.slice(1)) {
+    assert.equal(canAppend(state, message), true);
+    state.photos.push(message);
+  }
+  assert.deepEqual([state.anchor, ...state.photos].map(item => item.message_id), [600, 601, 602, 603, 604, 605]);
+});
+
+test('une rupture dans les identifiants ferme le groupe indépendant', () => {
+  assert.equal(canAppend(group(photo(700, 'Publication')), photo(702)), false);
 });

@@ -37,7 +37,8 @@ test('stress: chaque position possible de la légende est acceptée, puis ferme 
         const state = group(messages[0], []);
         for (let i = 1; i < count; i++) {
           const accepted = accepts(state, messages[i]);
-          assert.equal(accepted, i <= captionIndex,
+          const expected = captionIndex === 0 ? true : i <= captionIndex;
+          assert.equal(accepted, expected,
             `repeat=${repetition}, count=${count}, captionIndex=${captionIndex}, incomingIndex=${i}`);
           assertions++;
           if (accepted) state.photos.push(messages[i]);
@@ -58,7 +59,7 @@ test('stress: 50 000 rafales déterministes ne réouvrent jamais un groupe aprè
   for (let run = 0; run < 50_000; run++) {
     const captionAt = Math.floor(random() * 12);
     const state = group(photo(run * 20 + 1, captionAt === 0 ? 'A' : ''));
-    let closed = captionAt === 0;
+    let closed = false;
     for (let i = 1; i < 12; i++) {
       const incoming = photo(run * 20 + i + 1, i === captionAt ? 'A' : '');
       const now = 10_000 + Math.floor(random() * 89_000);
@@ -66,7 +67,9 @@ test('stress: 50 000 rafales déterministes ne réouvrent jamais un groupe aprè
       assert.equal(result, !closed, `run=${run}, i=${i}, captionAt=${captionAt}`);
       if (result) {
         state.photos.push(incoming);
-        if (readText(incoming).trim()) closed = true;
+        // Une légende sur l'ancre autorise les photos suivantes sans légende.
+        // Une légende portée par une photo ultérieure ferme le groupe ensuite.
+        if (i > 0 && readText(incoming).trim()) closed = true;
       }
     }
   }
@@ -108,7 +111,7 @@ test('stress: messages non-photo et objets incomplets ne sont jamais ajoutés', 
     { message_id: 2, document: { file_id: 'd' } }
   ];
   for (const item of invalid) assert.equal(accepts(state, item), false);
-  assert.equal(accepts({ mode: 'automatic', startedAt: 10_000 }, photo(2)), true);
+  assert.equal(accepts({ mode: 'automatic', startedAt: 10_000 }, photo(2)), false);
   assert.equal(accepts({ mode: 'automatic', startedAt: 'invalid' }, photo(2)), false);
 });
 
@@ -130,4 +133,24 @@ test('stress: les callbacks de texte personnalisés contrôlent bien la frontiè
 test('stress: un groupe avec plusieurs photos conserve sa frontière même si les IDs sont éloignés', () => {
   const state = group(photo(100), [photo(10_000), photo(900_000, 'Produit A')]);
   for (let i = 0; i < 1_000; i++) assert.equal(accepts(state, photo(1_000_000 + i)), false);
+});
+
+
+test('stress: 10 000 publications de six photos avec légende initiale conservent les six éléments', () => {
+  for (let run = 0; run < 10_000; run++) {
+    const state = group(photo(run * 10 + 1, 'Publication ' + run));
+    for (let index = 2; index <= 6; index++) {
+      const incoming = photo(run * 10 + index);
+      assert.equal(accepts(state, incoming), true, `run=${run}, index=${index}`);
+      state.photos.push(incoming);
+    }
+    assert.equal(state.photos.length, 5);
+  }
+});
+
+test('stress: aucun message non consécutif ne traverse une frontière', () => {
+  for (let run = 0; run < 50_000; run++) {
+    const state = group(photo(run * 3 + 1, 'Produit A'));
+    assert.equal(accepts(state, photo(run * 3 + 3)), false);
+  }
 });
