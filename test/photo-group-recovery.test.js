@@ -19,9 +19,10 @@ test('un crash après confirmation reprend uniquement le nettoyage des originaux
   assert.equal(photoGroupRecoveryAction('cleanup_failed'), 'cleanup_only');
 });
 
-test('un état absent ou inconnu échoue en mode fermé', () => {
+test('les anciens journaux sans état gardent leur compatibilité, les états invalides sont bloqués', () => {
   assert.equal(photoGroupRecoveryAction(undefined), 'resume_send');
-  assert.equal(photoGroupRecoveryAction(''), 'resume_send');
+  assert.equal(photoGroupRecoveryAction(null), 'resume_send');
+  assert.equal(photoGroupRecoveryAction(''), 'manual_review');
   assert.equal(photoGroupRecoveryAction('half_sent'), 'manual_review');
   assert.equal(photoGroupRecoveryAction('unknown'), 'manual_review');
 });
