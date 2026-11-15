@@ -1715,9 +1715,9 @@ async function processMessages(ctx, messages, options = {}) {
   }
 
   const first = messages[0];
-  const captionSource = trustedPhotoGroup
-    ? messages.find(message => msgText(message).trim()) || first
-    : first;
+  // Les albums natifs peuvent eux aussi porter leur légende sur un média
+  // autre que le premier. Les messages indépendants ont déjà été séparés plus haut.
+  const captionSource = messages.find(message => msgText(message).trim()) || first;
   const groupId = first.media_group_id || null;
 
   if (!data.enabled || data.botPaused) {
