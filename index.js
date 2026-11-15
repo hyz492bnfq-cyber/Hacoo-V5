@@ -1980,6 +1980,7 @@ let photoGroupFlushChain = Promise.resolve();
 function persistPhotoGroup(group) {
   if (!group?.anchor?.message_id) throw new Error('Impossible de persister un groupe photo sans identifiant source.');
   const record = {
+    sourceAnchorId: Number(group.sourceAnchorId || group.anchor.message_id),
     anchor: clone(group.anchor),
     photos: clone(group.photos || []),
     startedAt: group.startedAt,
@@ -1994,7 +1995,8 @@ function persistPhotoGroup(group) {
     sendingChunkIndex: Number.isInteger(group.sendingChunkIndex) ? group.sendingChunkIndex : null,
     sendStartedAt: group.sendStartedAt || null
   };
-  const id = Number(group.anchor.message_id);
+  const id = Number(group.sourceAnchorId || group.anchor.message_id);
+  group.sourceAnchorId = id;
   const current = Array.isArray(data.pendingPhotoGroups) ? data.pendingPhotoGroups : [];
   const index = current.findIndex(item => Number(item?.anchor?.message_id) === id);
   if (index >= 0) current[index] = record;
@@ -2006,7 +2008,7 @@ function persistPhotoGroup(group) {
 
 function clearPersistedPhotoGroup(group) {
   if (!group?.anchor) return;
-  const id = Number(group.anchor.message_id);
+  const id = Number(group.sourceAnchorId || group.anchor.message_id);
   data.pendingPhotoGroups = (data.pendingPhotoGroups || [])
     .filter(item => Number(item?.anchor?.message_id) !== id);
   if (Number(data.pendingPhotoGroup?.anchor?.message_id) === id) data.pendingPhotoGroup = null;
@@ -2150,6 +2152,7 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
   if (!photoGroup) {
     photoGroup = {
       ctx,
+      sourceAnchorId: Number(message.message_id),
       anchor: message,
       photos: [],
       startedAt: now,
@@ -2259,49 +2262,52 @@ async function regroupPhotos(group) {
 
   // 1) Publier avec journal durable. Un crash pendant la requête rend son résultat
   // ambigu : au redémarrage, la tâche passe en validation manuelle au lieu de renvoyer.
-  group.sentMessageIds = Array.isArray(group.sentMessageIds) ? group.sentMessageIds : [];
-  group.nextChunkIndex = Number(group.nextChunkIndex || 0);
-  group.sendState = 'ready';
-  persistPhotoGroup(group);
-
-  for (let chunkIndex = group.nextChunkIndex; chunkIndex < chunks.length; chunkIndex++) {
-    const chunk = chunks[chunkIndex];
-    group.sendState = 'sending';
-    group.sendingChunkIndex = chunkIndex;
-    group.sendStartedAt = new Date().toISOString();
-    persistPhotoGroup(group); // doit être écrit AVANT l'appel réseau
-
-    let sent;
-    try {
-      sent = chunk.length === 1
-        ? [await telegramRateLimitRetry(() => ctx.api.sendPhoto(CHANNEL_ID, chunk[0].media, {
-            caption: chunk[0].caption,
-            caption_entities: chunk[0].caption_entities
-          }), 'Envoi photo')]
-        : await telegramRateLimitRetry(() => ctx.api.sendMediaGroup(CHANNEL_ID, chunk), 'Envoi album');
-    } catch (error) {
-      // Même une erreur réseau peut survenir après acceptation côté Telegram.
-      group.sendState = 'uncertain';
-      group.lastSendError = String(error?.message || error).slice(0, 300);
-      persistPhotoGroup(group);
-      notifyAdmin(`ENVOI INCERTAIN : l'album n'a pas été renvoyé automatiquement pour éviter les doublons. Les originaux sont conservés. Message source : ${anchor.message_id}. Erreur : ${group.lastSendError}`).catch(() => {});
-      return;
-    }
-
-    for (const message of sent) {
-      if (Number.isFinite(message?.message_id)) {
-        group.sentMessageIds.push(message.message_id);
-        rememberOwnMessageId(message.message_id);
-      }
-    }
-    group.nextChunkIndex = chunkIndex + 1;
+  // Si l'envoi est déjà confirmé ('sent'), on reprend uniquement le nettoyage.
+  if (group.sendState !== 'sent') {
+    group.sentMessageIds = Array.isArray(group.sentMessageIds) ? group.sentMessageIds : [];
+    group.nextChunkIndex = Number(group.nextChunkIndex || 0);
     group.sendState = 'ready';
-    group.sendingChunkIndex = null;
+    persistPhotoGroup(group);
+
+    for (let chunkIndex = group.nextChunkIndex; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      group.sendState = 'sending';
+      group.sendingChunkIndex = chunkIndex;
+      group.sendStartedAt = new Date().toISOString();
+      persistPhotoGroup(group); // doit être écrit AVANT l'appel réseau
+
+      let sent;
+      try {
+        sent = chunk.length === 1
+          ? [await telegramRateLimitRetry(() => ctx.api.sendPhoto(CHANNEL_ID, chunk[0].media, {
+              caption: chunk[0].caption,
+              caption_entities: chunk[0].caption_entities
+            }), 'Envoi photo')]
+          : await telegramRateLimitRetry(() => ctx.api.sendMediaGroup(CHANNEL_ID, chunk), 'Envoi album');
+      } catch (error) {
+        // Même une erreur réseau peut survenir après acceptation côté Telegram.
+        group.sendState = 'uncertain';
+        group.lastSendError = String(error?.message || error).slice(0, 300);
+        persistPhotoGroup(group);
+        notifyAdmin(`ENVOI INCERTAIN : l'album n'a pas été renvoyé automatiquement pour éviter les doublons. Les originaux sont conservés. Message source : ${anchor.message_id}. Erreur : ${group.lastSendError}`).catch(() => {});
+        return;
+      }
+
+      for (const message of sent) {
+        if (Number.isFinite(message?.message_id)) {
+          group.sentMessageIds.push(message.message_id);
+          rememberOwnMessageId(message.message_id);
+        }
+      }
+      group.nextChunkIndex = chunkIndex + 1;
+      group.sendState = 'ready';
+      group.sendingChunkIndex = null;
+      persistPhotoGroup(group);
+    }
+
+    group.sendState = 'sent';
     persistPhotoGroup(group);
   }
-
-  group.sendState = 'sent';
-  persistPhotoGroup(group);
 
   // 2) seulement ensuite, on supprime les publications d'origine
   let failed = 0;
@@ -2550,6 +2556,7 @@ function restorePersistentWork() {
     restoredPhotoGroupIds.add(id);
     const restored = {
       ctx: { api: bot.api },
+      sourceAnchorId: Number(record.sourceAnchorId || record.anchor.message_id),
       anchor: record.anchor,
       photos: Array.isArray(record.photos) ? record.photos : [],
       startedAt: Number(record.startedAt) || Date.now(),

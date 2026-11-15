@@ -30,10 +30,10 @@ test('stress: 100 000 décisions préservent la règle caption-first', () => {
   }
 });
 
-test('stress: une légende tardive ferme systématiquement la séquence', () => {
+test('stress: une légende intermédiaire autorise les photos suivantes sans légende', () => {
   for (let run = 0; run < 20000; run++) {
     const state = makeGroup(photo(run * 3 + 1), [photo(run * 3 + 2, 'Caption')]);
-    assert.equal(canAppend(state, photo(run * 3 + 3)), false);
+    assert.equal(canAppend(state, photo(run * 3 + 3)), true);
   }
 });
 

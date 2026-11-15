@@ -35,12 +35,13 @@ test('regroupe six photos successives avec légende sur la première', () => {
   assert.equal(state.photos.length + 1, 6);
 });
 
-test('la légende sur la deuxième photo est acceptée puis ferme le groupe', () => {
+test('une légende sur la deuxième photo peut être suivie de photos sans légende', () => {
   const state = group(photo(1));
-  assert.equal(accepts(state, photo(2, 'Description')), true);
-  state.photos.push(photo(2, 'Description'));
-  state.lastMessageAt = 1200;
-  assert.equal(accepts(state, photo(3), { now: 1300 }), false);
+  const captioned = photo(2, 'Description');
+  assert.equal(accepts(state, captioned), true);
+  state.photos.push(captioned);
+  state.lastMessageAt = 1100;
+  assert.equal(accepts(state, photo(3), { now: 1200 }), true);
 });
 
 test('une deuxième légende ferme le groupe et sépare deux publications', () => {
@@ -55,8 +56,8 @@ test('les photos sans légende peuvent se suivre avant la légende', () => {
   assert.equal(accepts(state, photo(3, 'Légende')), true);
 });
 
-test('une photo après une légende tardive ne rejoint pas le groupe', () => {
-  assert.equal(accepts(group(photo(1), [photo(2, 'Légende')]), photo(3)), false);
+test('une légende tardive ne ferme pas le groupe à elle seule', () => {
+  assert.equal(accepts(group(photo(1), [photo(2, 'Légende')]), photo(3)), true);
 });
 
 test('un message avec media_group_id est laissé au regroupement natif', () => {
