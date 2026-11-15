@@ -302,3 +302,64 @@ test('testProvider Gemini interroge l endpoint Gemini avec la variable GEMINI_AP
     global.fetch = originalFetch;
   }
 });
+
+
+test('generateText bascule vers Gemini après une exception réseau du fournisseur prioritaire', async () => {
+  const originalFetch = global.fetch;
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hacoo-provider-network-fallback-'));
+  try {
+    let calls = 0;
+    global.fetch = async (url) => {
+      calls += 1;
+      if (String(url).includes('integrate.api.nvidia.com')) {
+        throw new TypeError('fetch failed');
+      }
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: 'Réponse de secours' }] }, finishReason: 'STOP' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const env = {
+      NVIDIA_APIR: 'test-nemotron-key',
+      NVIDIA_NEMOTRON_MODEL: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
+      GEMINI_API_KEY: 'test-gemini-key',
+      GEMINI_MODEL: 'gemini-2.5-flash',
+      V6_PROVIDER_COOLDOWN_FILE: path.join(temp, 'cooldowns.json')
+    };
+    const result = await generateText('Analyse approfondie les publications pour detection de doublons', { maxTokens: 100 }, env);
+    assert.equal(result.ok, true);
+    assert.equal(result.provider, 'gemini');
+    assert.equal(result.text, 'Réponse de secours');
+    assert.equal(result.tried[0].status, 'network_error');
+    assert.equal(calls, 2, 'Gemini doit être appelé après l’exception réseau de Nemotron');
+  } finally {
+    global.fetch = originalFetch;
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('resolveProviderChain respecte le taskType explicite de modération', () => {
+  const env = {
+    NVIDIA_APIR: 'nemotron-key',
+    NVIDIA_NEMOTRON_MODEL: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
+    GEMINI_API_KEY: 'gemini-key'
+  };
+  const chain = resolveProviderChain(env, {
+    prompt: 'Bonjour tout le monde',
+    taskType: 'moderation'
+  });
+  assert.deepEqual(chain, ['gemini', 'nemotron']);
+});
+
+
+test('testProvider transforme une exception réseau en statut exploitable sans faire échouer la route', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => { throw new TypeError('fetch failed'); };
+    const result = await testProvider('gemini', { GEMINI_API_KEY: 'test-key' });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'network_error');
+    assert.match(result.message, /Échec réseau/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
