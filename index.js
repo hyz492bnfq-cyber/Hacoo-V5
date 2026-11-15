@@ -3329,7 +3329,7 @@ app.get('/health', (_req, res) => {
       pendingAlbums: Array.isArray(data.pendingAlbums) ? data.pendingAlbums.length : 0,
       oldestPendingAgeSeconds: oldestPendingAt ? Math.floor((Date.now() - oldestPendingAt) / 1000) : 0,
       stale: queueStale,
-      albumSendState: data.pendingPhotoGroup?.sendState || null
+      albumSendState: (data.pendingPhotoGroups || []).find(item => ['sending', 'uncertain', 'cleanup_failed'].includes(item?.sendState))?.sendState || data.pendingPhotoGroup?.sendState || null
     }
   });
 });
@@ -4521,7 +4521,7 @@ app.get('/api/state', (_req, res) => {
         }, 0);
         return oldest ? Math.floor((Date.now() - oldest) / 1000) : 0;
       })(),
-      uncertainAlbumSend: ['sending', 'uncertain'].includes(data.pendingPhotoGroup?.sendState || ''),
+      uncertainAlbumSend: [...(data.pendingPhotoGroups || []), ...(data.pendingPhotoGroup ? [data.pendingPhotoGroup] : [])].some(item => ['sending', 'uncertain'].includes(item?.sendState || '')),
       lastHealthCheck,
       geminiConfigured: Boolean(GEMINI_API_KEY),
       geminiModel: GEMINI_MODEL,
@@ -4802,41 +4802,42 @@ app.post('/api/retry-pending', (_req, res) => {
       queued++;
     }
   }
-  if (data.pendingPhotoGroup?.anchor && !photoGroup) {
-    photoGroup = {
-      ctx: { api: bot.api },
-      anchor: data.pendingPhotoGroup.anchor,
-      photos: Array.isArray(data.pendingPhotoGroup.photos) ? data.pendingPhotoGroup.photos : [],
-      startedAt: Number(data.pendingPhotoGroup.startedAt) || Date.now(),
-      lastMessageAt: Number(data.pendingPhotoGroup.lastMessageAt) || Date.now(),
-      mode: data.pendingPhotoGroup.mode || 'automatic',
-      attempts: Number(data.pendingPhotoGroup.attempts || 0),
-      sendState: data.pendingPhotoGroup.sendState || 'collecting',
-      nextChunkIndex: Number(data.pendingPhotoGroup.nextChunkIndex || 0),
-      sentMessageIds: Array.isArray(data.pendingPhotoGroup.sentMessageIds) ? data.pendingPhotoGroup.sentMessageIds : [],
-      sendingChunkIndex: Number.isInteger(data.pendingPhotoGroup.sendingChunkIndex) ? data.pendingPhotoGroup.sendingChunkIndex : null,
-      sendStartedAt: data.pendingPhotoGroup.sendStartedAt || null,
-      timer: null
-    };
-    photoGroup.timer = setTimeout(flushPhotoGroup, 1000);
-  }
+  resumeDeferredJobs();
   res.json({ ok: true, queued, pendingJobs: (data.pendingJobs || []).length, pendingAlbums: (data.pendingAlbums || []).length });
 });
 
 app.post('/api/album/resolve', (req, res) => {
-  const record = data.pendingPhotoGroup;
   const action = String(req.body?.action || '');
-  if (!record?.anchor || !['sending', 'uncertain'].includes(String(record.sendState || ''))) {
-    return res.status(409).json({ error: 'Aucun album en état d’envoi incertain à résoudre.' });
-  }
   if (!['confirm_sent', 'confirm_not_sent'].includes(action)) {
     return res.status(400).json({ error: 'Action invalide.' });
   }
 
+  const pending = Array.isArray(data.pendingPhotoGroups) ? data.pendingPhotoGroups : [];
+  const legacy = data.pendingPhotoGroup?.anchor ? [data.pendingPhotoGroup] : [];
+  const uncertain = [...pending, ...legacy].filter(record =>
+    record?.anchor && ['sending', 'uncertain'].includes(String(record.sendState || ''))
+  );
+  const requestedId = req.body?.sourceAnchorId == null ? null : Number(req.body.sourceAnchorId);
+  const record = requestedId == null
+    ? uncertain.sort((a, b) => Number(a.sourceAnchorId || a.anchor.message_id) - Number(b.sourceAnchorId || b.anchor.message_id))[0]
+    : uncertain.find(item => Number(item.sourceAnchorId || item.anchor.message_id) === requestedId);
+
+  if (!record) {
+    return res.status(409).json({
+      error: requestedId == null
+        ? 'Aucun album en état d’envoi incertain à résoudre.'
+        : 'Aucun album incertain ne correspond à cet identifiant.',
+      uncertainAlbums: uncertain.map(item => ({
+        sourceAnchorId: Number(item.sourceAnchorId || item.anchor.message_id),
+        photoCount: 1 + (Array.isArray(item.photos) ? item.photos.length : 0),
+        sendState: item.sendState
+      }))
+    });
+  }
+
+  const sourceId = Number(record.sourceAnchorId || record.anchor.message_id);
   if (action === 'confirm_sent') {
-    // L'opérateur confirme que tous les morceaux de l'album sont visibles dans le canal.
-    const mediaCount = 1 + (Array.isArray(record.photos) ? record.photos.length : 0);
-    let remaining = mediaCount;
+    let remaining = 1 + (Array.isArray(record.photos) ? record.photos.length : 0);
     let chunks = 0;
     while (remaining > 0) {
       let size = Math.min(10, remaining);
@@ -4847,37 +4848,52 @@ app.post('/api/album/resolve', (req, res) => {
     record.nextChunkIndex = chunks;
     record.sendState = 'sent';
   } else {
-    // L'opérateur a vérifié que le morceau ambigu n'est pas publié : reprendre à ce morceau.
     record.nextChunkIndex = Number.isInteger(record.sendingChunkIndex)
       ? record.sendingChunkIndex
       : Number(record.nextChunkIndex || 0);
     record.sendState = 'ready';
   }
+
+  record.sourceAnchorId = sourceId;
   record.sendingChunkIndex = null;
   record.resolvedAt = new Date().toISOString();
   record.resolution = action;
-  data.pendingPhotoGroup = record;
+  data.pendingPhotoGroups = [
+    ...pending.filter(item => Number(item?.sourceAnchorId || item?.anchor?.message_id) !== sourceId),
+    record
+  ];
+  data.pendingPhotoGroup = null;
   saveNow();
 
-  if (photoGroup?.timer) clearTimeout(photoGroup.timer);
-  photoGroup = {
+  const restored = {
     ctx: { api: bot.api },
+    sourceAnchorId: sourceId,
+    sourceMessageIds: Array.isArray(record.sourceMessageIds) ? record.sourceMessageIds : undefined,
     anchor: record.anchor,
     photos: Array.isArray(record.photos) ? record.photos : [],
     startedAt: Number(record.startedAt) || Date.now(),
     lastMessageAt: Number(record.lastMessageAt) || Date.now(),
     mode: record.mode || 'automatic',
     attempts: Number(record.attempts || 0),
+    preflightState: record.preflightState === 'processed' ? 'processed' : 'pending',
     sendState: record.sendState,
     nextChunkIndex: Number(record.nextChunkIndex || 0),
     sentMessageIds: Array.isArray(record.sentMessageIds) ? record.sentMessageIds : [],
     sendingChunkIndex: null,
     sendStartedAt: record.sendStartedAt || null,
-    timer: setTimeout(flushPhotoGroup, 250)
+    timer: null
   };
-  res.json({ ok: true, message: action === 'confirm_sent' ? 'Album confirmé : le bot va éviter tout nouvel envoi et terminer le nettoyage.' : 'Absence d’envoi confirmée : le bot va reprendre à partir du morceau concerné.' });
-});
+  flushPhotoGroup(restored);
 
+  res.json({
+    ok: true,
+    sourceAnchorId: sourceId,
+    remainingUncertain: uncertain.filter(item => Number(item.sourceAnchorId || item.anchor.message_id) !== sourceId).length,
+    message: action === 'confirm_sent'
+      ? 'Album confirmé : le bot évitera tout nouvel envoi et terminera le nettoyage des originaux.'
+      : 'Absence d’envoi confirmée : le bot reprendra à partir du morceau concerné.'
+  });
+});
 app.get('/api/backup', (_req, res) => {
   const body = JSON.stringify(data, null, 2);
 
@@ -5059,7 +5075,7 @@ setInterval(async () => {
       lastStaleQueueAlertAt = Date.now();
       await notifyAdmin(`ALERTE FILE BLOQUÉE : une tâche attend depuis ${Math.floor((Date.now() - oldestPendingAt) / 60000)} minutes. Le bot répond à Telegram, mais une publication semble bloquée. Ouvre le tableau de bord et vérifie les tâches en attente avant de relancer.`);
     }
-    if (['sending', 'uncertain'].includes(data.pendingPhotoGroup?.sendState || '') && Date.now() - lastStaleQueueAlertAt > 10 * 60 * 1000) {
+    if ([...(data.pendingPhotoGroups || []), ...(data.pendingPhotoGroup ? [data.pendingPhotoGroup] : [])].some(item => ['sending', 'uncertain'].includes(item?.sendState || '')) && Date.now() - lastStaleQueueAlertAt > 10 * 60 * 1000) {
       lastStaleQueueAlertAt = Date.now();
       await notifyAdmin(`ALERTE ALBUM INCERTAIN : un album nécessite une vérification manuelle. Le bot ne le renverra pas automatiquement afin d'éviter un doublon.`);
     }
