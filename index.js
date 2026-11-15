@@ -2001,7 +2001,7 @@ function persistPhotoGroup(group) {
   const id = Number(group.sourceAnchorId || group.anchor.message_id);
   group.sourceAnchorId = id;
   const current = Array.isArray(data.pendingPhotoGroups) ? data.pendingPhotoGroups : [];
-  const index = current.findIndex(item => Number(item?.anchor?.message_id) === id);
+  const index = current.findIndex(item => Number(item?.sourceAnchorId || item?.anchor?.message_id) === id);
   if (index >= 0) current[index] = record;
   else current.push(record);
   data.pendingPhotoGroups = current;
@@ -2021,8 +2021,8 @@ function clearPersistedPhotoGroup(group) {
   if (!group?.anchor) return;
   const id = Number(group.sourceAnchorId || group.anchor.message_id);
   data.pendingPhotoGroups = (data.pendingPhotoGroups || [])
-    .filter(item => Number(item?.anchor?.message_id) !== id);
-  if (Number(data.pendingPhotoGroup?.anchor?.message_id) === id) data.pendingPhotoGroup = null;
+    .filter(item => Number(item?.sourceAnchorId || item?.anchor?.message_id) !== id);
+  if (Number(data.pendingPhotoGroup?.sourceAnchorId || data.pendingPhotoGroup?.anchor?.message_id) === id) data.pendingPhotoGroup = null;
   saveNow();
 }
 
@@ -2459,6 +2459,7 @@ function resumeDeferredJobs() {
     const restored = {
       ctx: { api: bot.api },
       sourceAnchorId: id,
+      sourceMessageIds: Array.isArray(record.sourceMessageIds) ? record.sourceMessageIds : undefined,
       anchor: record.anchor,
       photos: Array.isArray(record.photos) ? record.photos : [],
       startedAt: Number(record.startedAt) || Date.now(),
@@ -2600,7 +2601,7 @@ function restorePersistentWork() {
   const restoredPhotoGroupIds = new Set();
   data.pendingPhotoGroup = null;
   for (const record of restoredPhotoGroups) {
-    const id = Number(record?.anchor?.message_id);
+    const id = Number(record?.sourceAnchorId || record?.anchor?.message_id);
     if (!Number.isFinite(id) || restoredPhotoGroupIds.has(id)) continue;
     restoredPhotoGroupIds.add(id);
     const restored = {
