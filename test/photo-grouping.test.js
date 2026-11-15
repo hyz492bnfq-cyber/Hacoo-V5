@@ -122,3 +122,41 @@ test('stress : 10 000 albums Telegram natifs restent exclus', () => {
     }), false);
   }
 });
+
+
+test('la légende peut être portée par la première, une photo intermédiaire ou la dernière', () => {
+  for (const captionIndex of [0, 2, 5]) {
+    const messages = Array.from({ length: 6 }, (_, index) =>
+      photo(index + 1, index === captionIndex ? 'Description du produit' : '')
+    );
+    const state = group(messages[0]);
+    for (let index = 1; index < messages.length; index++) {
+      const incoming = messages[index];
+      const now = 1000 + index * 100;
+      assert.equal(accepts(state, incoming, { now }), true,
+        `captionIndex=${captionIndex}, incomingIndex=${index}`);
+      state.photos.push(incoming);
+      state.lastMessageAt = now;
+    }
+    assert.equal(state.photos.length + 1, 6);
+  }
+});
+
+test('deux photos légendées indépendantes forment deux publications prudentes', () => {
+  const state = group(photo(1, 'Produit A'));
+  assert.equal(accepts(state, photo(2, 'Produit B')), false);
+});
+
+test('une légende intermédiaire peut être suivie de photos sans légende', () => {
+  const state = group(photo(1));
+  const second = photo(2);
+  assert.equal(accepts(state, second, { now: 1100 }), true);
+  state.photos.push(second);
+  state.lastMessageAt = 1100;
+  const captioned = photo(3, 'Description');
+  assert.equal(accepts(state, captioned, { now: 1200 }), true);
+  state.photos.push(captioned);
+  state.lastMessageAt = 1200;
+  const last = photo(4);
+  assert.equal(accepts(state, last, { now: 1300 }), true);
+});

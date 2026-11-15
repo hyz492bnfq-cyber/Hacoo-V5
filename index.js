@@ -174,6 +174,7 @@ const DEFAULTS = {
   pendingJobs: [],
   pendingAlbums: [],
   completedAlbums: [],
+  pendingPhotoGroups: [],
   pendingPhotoGroup: null,
   processedMessageIds: [],
   ownMessageIds: [],
@@ -247,12 +248,21 @@ function normalizeData(saved) {
   for (const key of [
     'bannedWords', 'blockedPhrases', 'blockedDomains', 'allowedDomains', 'textReplacements',
     'history', 'duplicateHistory', 'deletions',
-    'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums', 'completedAlbums',
+    'imageHashes', 'textSeen', 'albumSeen', 'pendingJobs', 'pendingAlbums', 'completedAlbums', 'pendingPhotoGroups',
     'processedMessageIds', 'ownMessageIds', 'aiEvents', 'manualPublications', 'manualPublicationHistory', 'manualPublicationTrash',
     'channelSyncQueue', 'channelSyncHistory', 'channelSyncSeen', 'channelSyncPendingAlbums', 'channelSyncConnections', 'channelSyncChats', 'channelSyncImports', 'channelSyncImportSeen', 'affiliateOrders', 'affiliateOrderEvents', 'affiliateForecastSnapshots'
   ]) {
     if (!Array.isArray(out[key])) out[key] = [];
   }
+
+  // Migration non destructive de l'ancien emplacement singleton.
+  if (!out.pendingPhotoGroups.length && saved.pendingPhotoGroup?.anchor) {
+    out.pendingPhotoGroups = [saved.pendingPhotoGroup];
+  }
+  out.pendingPhotoGroups = out.pendingPhotoGroups
+    .filter(item => item && typeof item === 'object' && item.anchor?.message_id !== undefined)
+    .slice(-100);
+  out.pendingPhotoGroup = null;
 
   {
     const replacements = normalizeReplacements(out.textReplacements);
@@ -1683,20 +1693,31 @@ async function deleteMessageGroup(ctx, messages, reason) {
   return 'deleted';
 }
 
-async function processMessages(ctx, messages) {
+async function processMessages(ctx, messages, options = {}) {
   if (!messages.length) return;
 
-  // Garde-fou : plusieurs messages ne constituent un album que si Telegram
-  // leur a attribué exactement le même media_group_id non vide. Deux posts
-  // indépendants (notamment avec deux légendes) sont traités séparément,
-  // même s'ils ont été réunis par une ancienne tâche persistée.
-  const batches = splitPublicationBatches(messages);
-  if (batches.length > 1) {
-    for (const batch of batches) await processMessages(ctx, batch);
-    return;
+  // Par défaut, seuls les media_group_id Telegram constituent une preuve d'album.
+  // L'exception n'est accessible qu'au collecteur interne, après validation
+  // stricte d'une séquence de photos indépendantes, contiguës et du même canal.
+  const trustedPhotoGroup = options.allowIndependentPhotoGroup === true &&
+    messages.length > 1 &&
+    messages.every(message => message?.photo?.length && !message.media_group_id) &&
+    messages.every((message, index) => index === 0 ||
+      (String(message.chat?.id ?? '') === String(messages[0].chat?.id ?? '') &&
+       Number(message.message_id) === Number(messages[index - 1].message_id) + 1));
+
+  if (!trustedPhotoGroup) {
+    const batches = splitPublicationBatches(messages);
+    if (batches.length > 1) {
+      for (const batch of batches) await processMessages(ctx, batch);
+      return;
+    }
   }
 
   const first = messages[0];
+  const captionSource = trustedPhotoGroup
+    ? messages.find(message => msgText(message).trim()) || first
+    : first;
   const groupId = first.media_group_id || null;
 
   if (!data.enabled || data.botPaused) {
@@ -1723,7 +1744,7 @@ async function processMessages(ctx, messages) {
   }
 
   if (data.duplicates) {
-    const text = msgText(first);
+    const text = msgText(captionSource);
     const currentPhotoFileId = messages
       .find(message => message.photo?.length)
       ?.photo.at(-1)?.file_id || null;
@@ -1920,12 +1941,15 @@ async function processMessages(ctx, messages) {
               changed,
               { entities: publicationFooterEntities(changed) }
             );
+            message.text = changed;
           } else if (message.caption !== undefined || message.photo || message.video || message.document || message.animation || message.audio || message.voice) {
             await ctx.api.editMessageCaption(
               message.chat.id,
               message.message_id,
               { caption: changed, caption_entities: publicationFooterEntities(changed) }
             );
+            message.caption = changed;
+            delete message.caption_entities;
           }
 
           cleaned = true;
@@ -1951,15 +1975,18 @@ async function processMessages(ctx, messages) {
 // ---------- Regroupement des photos seules en album ----------
 
 let photoGroup = null;
+let photoGroupFlushChain = Promise.resolve();
 
 function persistPhotoGroup(group) {
-  data.pendingPhotoGroup = {
+  if (!group?.anchor?.message_id) throw new Error('Impossible de persister un groupe photo sans identifiant source.');
+  const record = {
     anchor: clone(group.anchor),
     photos: clone(group.photos || []),
     startedAt: group.startedAt,
     lastMessageAt: group.lastMessageAt,
     mode: group.mode || 'automatic',
     attempts: Number(group.attempts || 0),
+    preflightState: group.preflightState || 'pending',
     // Durable send journal: never blindly resend a chunk whose result is ambiguous.
     sendState: group.sendState || 'collecting',
     nextChunkIndex: Number(group.nextChunkIndex || 0),
@@ -1967,14 +1994,23 @@ function persistPhotoGroup(group) {
     sendingChunkIndex: Number.isInteger(group.sendingChunkIndex) ? group.sendingChunkIndex : null,
     sendStartedAt: group.sendStartedAt || null
   };
+  const id = Number(group.anchor.message_id);
+  const current = Array.isArray(data.pendingPhotoGroups) ? data.pendingPhotoGroups : [];
+  const index = current.findIndex(item => Number(item?.anchor?.message_id) === id);
+  if (index >= 0) current[index] = record;
+  else current.push(record);
+  data.pendingPhotoGroups = current.slice(-100);
+  data.pendingPhotoGroup = null;
   saveNow();
 }
 
 function clearPersistedPhotoGroup(group) {
-  if (!group?.anchor || data.pendingPhotoGroup?.anchor?.message_id === group.anchor.message_id) {
-    data.pendingPhotoGroup = null;
-    saveNow();
-  }
+  if (!group?.anchor) return;
+  const id = Number(group.anchor.message_id);
+  data.pendingPhotoGroups = (data.pendingPhotoGroups || [])
+    .filter(item => Number(item?.anchor?.message_id) !== id);
+  if (Number(data.pendingPhotoGroup?.anchor?.message_id) === id) data.pendingPhotoGroup = null;
+  saveNow();
 }
 
 function anyCleaningEnabled() {
@@ -1999,43 +2035,65 @@ function schedulePhotoGroupFlush() {
   photoGroup.timer = setTimeout(flushPhotoGroup, remaining);
 }
 
-function flushPhotoGroup() {
-  const group = photoGroup;
-  photoGroup = null;
-  if (!group) return;
+function flushPhotoGroup(groupToFlush = photoGroup) {
+  const group = groupToFlush;
+  if (!group) return photoGroupFlushChain;
+  if (group === photoGroup) photoGroup = null;
   clearTimeout(group.timer);
 
-  const messages = [group.anchor, ...(group.photos || [])]
-    .filter(Boolean)
-    .sort((a, b) => Number(a.message_id) - Number(b.message_id));
+  // Une seule publication reconstruite à la fois : le journal persistant est
+  // désormais multi-entrées, mais l'envoi Telegram reste strictement séquentiel.
+  photoGroupFlushChain = photoGroupFlushChain.then(async () => {
+    const messages = [group.anchor, ...(group.photos || [])]
+      .filter(Boolean)
+      .sort((a, b) => Number(a.message_id) - Number(b.message_id));
 
-  if (!messages.length) {
-    clearPersistedPhotoGroup(group);
-    return;
-  }
+    if (!messages.length) {
+      clearPersistedPhotoGroup(group);
+      return;
+    }
 
-  // En mode manuel, conserver toutes les photos dans une seule entrée.
-  // En automatique, reconstruire un album Telegram si plusieurs photos ont
-  // été collectées. Une photo isolée suit le traitement normal.
-  const task = group.mode === 'manual'
-    ? interceptManualPublication(group.ctx, messages)
-    : messages.length > 1
-      ? regroupPhotos(group)
-      : enqueueProcessMessages(group.ctx, messages);
+    if (group.mode === 'manual') {
+      await interceptManualPublication(group.ctx, messages);
+      clearPersistedPhotoGroup(group);
+      return;
+    }
 
-  Promise.resolve(task)
-    .then(() => {
-      // regroupPhotos conserve son journal si l'envoi est incertain ou si
-      // le nettoyage des originaux échoue. Ne jamais effacer ces états.
-      if (group.mode === 'manual' || messages.length === 1 || group.sendState === 'sent') {
-        clearPersistedPhotoGroup(group);
+    if (messages.length === 1) {
+      await enqueueProcessMessages(group.ctx, messages);
+      clearPersistedPhotoGroup(group);
+      return;
+    }
+
+    // Ne jamais reconstruire directement un album en contournant modération,
+    // détection de doublons, remplacement de liens et nettoyage du contenu.
+    // Les reprises après un envoi commencé/ambigu restent exclusivement gérées
+    // par le journal de regroupement, sans rejouer le prétraitement.
+    if (group.sendState === 'collecting' || group.sendState === 'ready') {
+      if (group.preflightState !== 'processed') {
+        group.preflightState = 'processing';
+        persistPhotoGroup(group);
+        const result = await processMessages(group.ctx, messages, { allowIndependentPhotoGroup: true });
+        if (result === 'deferred') {
+          group.preflightState = 'pending';
+          persistPhotoGroup(group);
+          notifyAdmin('Regroupement photo mis en attente : le bot est en pause ou désactivé. Les photos originales sont conservées.');
+          return;
+        }
+        group.preflightState = 'processed';
+        persistPhotoGroup(group);
       }
-    })
-    .catch(error => {
-      noteError(error);
-      persistPhotoGroup(group);
-      notifyAdmin(`Regroupement photo conservé en attente : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
-    });
+    }
+
+    await regroupPhotos(group);
+    if (group.mode === 'manual' || group.sendState === 'sent') clearPersistedPhotoGroup(group);
+  }).catch(error => {
+    noteError(error);
+    persistPhotoGroup(group);
+    notifyAdmin(`Regroupement photo conservé en attente : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
+  });
+
+  return photoGroupFlushChain;
 }
 
 function observeEditedChannelPost(ctx) {
@@ -2130,16 +2188,20 @@ async function regroupPhotos(group) {
   // Attend la fin des analyses (modération, doublons) en cours
   await Promise.allSettled([...inflight]);
 
-  const { ctx, anchor } = group;
+  const { ctx } = group;
 
-  // Si l'analyse a supprimé la publication principale, on ne touche à rien
-  if (removedIds.has(anchor.message_id)) { clearPersistedPhotoGroup(group); return; }
-
-  const sourceMessages = [anchor, ...group.photos.filter(m => !removedIds.has(m.message_id))]
+  const sourceMessages = [group.anchor, ...(group.photos || [])]
+    .filter(message => message && !removedIds.has(message.message_id))
     .sort((a, b) => a.message_id - b.message_id);
   const items = sourceMessages.filter(message => Boolean(message.photo?.length));
 
   if (!items.length) { clearPersistedPhotoGroup(group); return; }
+
+  // Si la première image a été écartée par la modération/détection de doublon,
+  // la première image restante devient l'ancre durable de l'album reconstruit.
+  group.anchor = sourceMessages[0];
+  group.photos = sourceMessages.slice(1);
+  const anchor = group.anchor;
 
   // La légende peut être portée par n'importe quelle photo de la séquence,
   // pas nécessairement par la première (qui sert uniquement d'ancre).
@@ -2460,23 +2522,35 @@ function restorePersistentWork() {
     pendingAlbums.set(record.groupId, album);
     schedulePendingAlbum(record.groupId, album);
   }
-  if (data.pendingPhotoGroup?.anchor) {
-    photoGroup = {
+  const restoredPhotoGroups = [
+    ...(Array.isArray(data.pendingPhotoGroups) ? data.pendingPhotoGroups : []),
+    ...(data.pendingPhotoGroup?.anchor ? [data.pendingPhotoGroup] : [])
+  ];
+  const restoredPhotoGroupIds = new Set();
+  data.pendingPhotoGroup = null;
+  for (const record of restoredPhotoGroups) {
+    const id = Number(record?.anchor?.message_id);
+    if (!Number.isFinite(id) || restoredPhotoGroupIds.has(id)) continue;
+    restoredPhotoGroupIds.add(id);
+    const restored = {
       ctx: { api: bot.api },
-      anchor: data.pendingPhotoGroup.anchor,
-      photos: Array.isArray(data.pendingPhotoGroup.photos) ? data.pendingPhotoGroup.photos : [],
-      startedAt: Number(data.pendingPhotoGroup.startedAt) || Date.now(),
-      lastMessageAt: Number(data.pendingPhotoGroup.lastMessageAt) || Date.now(),
-      mode: data.pendingPhotoGroup.mode || 'automatic',
-      attempts: Number(data.pendingPhotoGroup.attempts || 0),
-      sendState: data.pendingPhotoGroup.sendState || 'collecting',
-      nextChunkIndex: Number(data.pendingPhotoGroup.nextChunkIndex || 0),
-      sentMessageIds: Array.isArray(data.pendingPhotoGroup.sentMessageIds) ? data.pendingPhotoGroup.sentMessageIds : [],
-      sendingChunkIndex: Number.isInteger(data.pendingPhotoGroup.sendingChunkIndex) ? data.pendingPhotoGroup.sendingChunkIndex : null,
-      sendStartedAt: data.pendingPhotoGroup.sendStartedAt || null,
+      anchor: record.anchor,
+      photos: Array.isArray(record.photos) ? record.photos : [],
+      startedAt: Number(record.startedAt) || Date.now(),
+      lastMessageAt: Number(record.lastMessageAt) || Date.now(),
+      mode: record.mode || 'automatic',
+      attempts: Number(record.attempts || 0),
+      preflightState: record.preflightState || 'pending',
+      sendState: record.sendState || 'collecting',
+      nextChunkIndex: Number(record.nextChunkIndex || 0),
+      sentMessageIds: Array.isArray(record.sentMessageIds) ? record.sentMessageIds : [],
+      sendingChunkIndex: Number.isInteger(record.sendingChunkIndex) ? record.sendingChunkIndex : null,
+      sendStartedAt: record.sendStartedAt || null,
       timer: null
     };
-    schedulePhotoGroupFlush();
+    // Après un redémarrage, la fenêtre de collecte est terminée : on traite
+    // chaque groupe récupéré dans l'ordre, sans les écraser entre eux.
+    flushPhotoGroup(restored);
   }
 }
 
