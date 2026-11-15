@@ -1981,6 +1981,9 @@ function persistPhotoGroup(group) {
   if (!group?.anchor?.message_id) throw new Error('Impossible de persister un groupe photo sans identifiant source.');
   const record = {
     sourceAnchorId: Number(group.sourceAnchorId || group.anchor.message_id),
+    sourceMessageIds: Array.isArray(group.sourceMessageIds)
+      ? [...new Set(group.sourceMessageIds.map(Number).filter(Number.isFinite))]
+      : [Number(group.anchor.message_id), ...(group.photos || []).map(message => Number(message.message_id))].filter(Number.isFinite),
     anchor: clone(group.anchor),
     photos: clone(group.photos || []),
     startedAt: group.startedAt,
@@ -2003,6 +2006,14 @@ function persistPhotoGroup(group) {
   else current.push(record);
   data.pendingPhotoGroups = current.slice(-100);
   data.pendingPhotoGroup = null;
+  // Dès qu'un appel d'envoi est commencé, une mise à jour Telegram rejouée
+  // ne doit pas recréer un deuxième groupe pour les mêmes messages.
+  if (['sending', 'uncertain', 'sent', 'cleanup_failed'].includes(record.sendState)) {
+    data.processedMessageIds = [...new Set([
+      ...(data.processedMessageIds || []),
+      ...record.sourceMessageIds
+    ])].slice(-10000);
+  }
   saveNow();
 }
 
@@ -2153,6 +2164,7 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
     photoGroup = {
       ctx,
       sourceAnchorId: Number(message.message_id),
+      sourceMessageIds: [Number(message.message_id)],
       anchor: message,
       photos: [],
       startedAt: now,
@@ -2166,6 +2178,10 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
     };
   } else {
     photoGroup.photos.push(message);
+    photoGroup.sourceMessageIds = [...new Set([
+      ...(photoGroup.sourceMessageIds || [Number(photoGroup.anchor.message_id)]),
+      Number(message.message_id)
+    ])];
     photoGroup.lastMessageAt = now;
   }
 
@@ -2557,6 +2573,9 @@ function restorePersistentWork() {
     const restored = {
       ctx: { api: bot.api },
       sourceAnchorId: Number(record.sourceAnchorId || record.anchor.message_id),
+      sourceMessageIds: Array.isArray(record.sourceMessageIds)
+        ? record.sourceMessageIds
+        : [Number(record.anchor.message_id), ...(Array.isArray(record.photos) ? record.photos : []).map(message => Number(message.message_id))].filter(Number.isFinite),
       anchor: record.anchor,
       photos: Array.isArray(record.photos) ? record.photos : [],
       startedAt: Number(record.startedAt) || Date.now(),
