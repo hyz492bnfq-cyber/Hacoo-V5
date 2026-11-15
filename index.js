@@ -2075,9 +2075,11 @@ function flushPhotoGroup(groupToFlush = photoGroup) {
         persistPhotoGroup(group);
         const result = await processMessages(group.ctx, messages, { allowIndependentPhotoGroup: true });
         if (result === 'deferred') {
-          group.preflightState = 'pending';
-          persistPhotoGroup(group);
-          notifyAdmin('Regroupement photo mis en attente : le bot est en pause ou désactivé. Les photos originales sont conservées.');
+          // La pause ne doit ni perdre les photos ni bloquer leur reprise.
+          // On remet chaque message dans la file persistante classique : elle
+          // reprendra automatiquement au retour du bot, sans album spéculatif.
+          for (const message of messages) await enqueueProcessMessages(group.ctx, [message]);
+          clearPersistedPhotoGroup(group);
           return;
         }
         group.preflightState = 'processed';
@@ -2101,15 +2103,29 @@ function observeEditedChannelPost(ctx) {
 
   if (!edited || !photoGroup) return;
   if (String(edited.chat.id) !== CHANNEL_ID) return;
-  if (edited.message_id !== photoGroup.anchor.message_id) return;
 
-  // Remplace l'objet d'origine par sa dernière version : le regroupement
-  // republiera donc la légende/texte et les entités les plus récents.
-  photoGroup.anchor = edited;
+  const id = Number(edited.message_id);
+  if (Number(photoGroup.anchor?.message_id) === id) {
+    photoGroup.anchor = edited;
+    persistPhotoGroup(photoGroup);
+    return;
+  }
+  const index = (photoGroup.photos || []).findIndex(message => Number(message.message_id) === id);
+  if (index < 0) return;
+
+  // Une légende modifiée sur n'importe quelle photo du groupe doit être reprise.
+  photoGroup.photos[index] = edited;
   persistPhotoGroup(photoGroup);
 }
 
 function observeForPhotoGroup(ctx, message, mode = 'automatic') {
+  // En pause/désactivation, laisser la file persistante classique prendre
+  // chaque message séparément : elle sait différer puis reprendre sans perte.
+  if (!data.enabled || data.botPaused) {
+    if (photoGroup) flushPhotoGroup();
+    return false;
+  }
+
   // Les albums Telegram natifs suivent leur propre collecte par media_group_id.
   // Les photos publiées comme messages successifs sont regroupées seulement
   // si elles forment une séquence contiguë et arrivent dans la fenêtre prévue.
