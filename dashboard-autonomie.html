@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
+<title>HACOO BOT — Autonomie</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2c;--line:#29364e;--text:#edf2ff;--muted:#93a3bd;--green:#39d6a0;--red:#ff7385;--amber:#ffc36b}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,sans-serif}.wrap{max-width:1100px;margin:auto;padding:28px 20px}header{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid var(--line);padding-bottom:18px}h1{font-size:24px;margin:0}h2{font-size:15px;color:var(--muted);font-weight:600;margin:0}.sub{color:var(--muted);margin:5px 0 0}.links{display:flex;gap:10px;align-items:center}.links a,.links button{border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:9px 12px;text-decoration:none;font:inherit}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin:22px 0}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}.metric{font-size:27px;font-weight:700;margin:9px 0 2px}.detail{color:var(--muted);font-size:13px}.pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:5px 10px;background:#18243a;font-size:13px}.dot{width:8px;height:8px;border-radius:50%;background:var(--amber)}.ok .dot{background:var(--green)}.warn .dot{background:var(--amber)}.off .dot{background:var(--red)}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:560px;margin-top:12px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:13px}.empty{color:var(--muted);text-align:center;padding:24px}footer{color:var(--muted);font-size:12px;margin-top:14px}@media(max-width:600px){.wrap{padding:18px 12px}header{align-items:flex-start;flex-direction:column}.links{width:100%}.links a,.links button{flex:1;text-align:center}.metric{font-size:24px}}
+
+/* Harmonisation visuelle et navigation mobile plus confortable. */
+:root{--bg:#070b14;--panel:#101827;--line:#283850;--text:#f4f7ff;--muted:#a0aec4;--green:#4adeb1;--red:#ff7e90;--amber:#ffd078}
+body{background:radial-gradient(900px 450px at 80% -150px,#1d2e51 0%,transparent 70%),var(--bg)}
+.wrap{max-width:1240px;padding:clamp(14px,3vw,36px)}
+header{padding-bottom:20px;border-bottom-color:#25354c}h1{letter-spacing:-.5px;font-size:clamp(21px,3vw,30px)}
+.card{background:linear-gradient(145deg,rgba(17,27,44,.98),rgba(13,21,35,.98));border-color:#293a54;border-radius:18px;box-shadow:0 10px 28px #00000017}
+.grid{gap:12px}.metric{font-size:clamp(23px,3vw,32px)}
+.links a,.links button{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+ .howto{margin-bottom:14px}.howto h2{color:var(--text);margin-bottom:13px}.howto-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.howto-grid>div{background:#0c1422;border:1px solid #293a54;border-radius:12px;padding:12px;min-width:0}.howto-grid b{font-size:13px}.howto-grid p{font-size:12px;line-height:1.45;color:var(--muted);margin:6px 0 0}
+@media(max-width:800px){.howto-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.wrap{padding:14px 11px calc(24px + env(safe-area-inset-bottom))}header{gap:14px}.links{display:grid;grid-template-columns:1fr 1fr}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.card{padding:14px;min-width:0}.table-wrap table{min-width:620px}th,td{padding:10px 8px}.sub{line-height:1.45}.howto-grid{grid-template-columns:1fr}.howto-grid>div{padding:13px}}
+</style>
+</head>
+<body><main class="wrap">
+<header><div><h1>M2 HACOO BOT — Autonomie</h1><p class="sub">État du moteur et file de développement</p></div><div class="links"><a href="/">Dashboard principal</a><button id="refresh" type="button">Actualiser</button></div></header>
+<section class="grid" aria-label="État du système">
+<article class="card"><h2>Bot Telegram</h2><div class="metric" id="bot-status">Chargement…</div><div class="detail" id="version">Version —</div></article>
+<article class="card"><h2>Moteur autonome</h2><div class="metric" id="engine-status">Chargement…</div><div class="detail" id="engine-detail">État de contrôle</div></article>
+<article class="card"><h2>Cycles aujourd’hui</h2><div class="metric" id="runs">—</div><div class="detail" id="last-run">Dernier cycle —</div></article>
+<article class="card"><h2>Tâches d’ingénierie</h2><div class="metric" id="task-count">—</div><div class="detail" id="task-detail">File de tâches</div></article>
+</section>
+<section class="card howto" aria-label="Guide rapide">
+  <h2>Comment utiliser cette page ?</h2>
+  <div class="howto-grid">
+    <div><b>1. Détecter</b><p>Le moteur observe des métriques agrégées et propose une amélioration. Il ne transmet pas les textes des publications au modèle.</p></div>
+    <div><b>2. Coder et retenter</b><p>L’agent modifie uniquement un module autorisé. Si les contrôles échouent, il peut corriger et réessayer jusqu’à la limite configurée.</p></div>
+    <div><b>3. Tester isolément</b><p>Le test ciblé est exécuté dans une copie temporaire sans secrets ni données de production. Un candidat sans test ou en échec est bloqué.</p></div>
+    <div><b>4. Préparer une PR</b><p>Optionnellement, une Pull Request GitHub en brouillon est créée. Elle n’est ni fusionnée ni déployée automatiquement.</p></div>
+  </div>
+  <p class="detail">Les fichiers actifs ne sont jamais remplacés par la génération. La création d’une PR exige une configuration GitHub autorisée; la fusion et la production restent séparées.</p>
+</section>
+<section class="card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2>File de développement autonome</h2><div class="detail">Données du moteur existant de Hacoo-V5</div></div><span class="pill" id="overall"><span class="dot"></span><span id="overall-text">Connexion…</span></span></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Objectif</th><th>Cible</th><th>Statut</th><th>Créée</th></tr></thead><tbody id="task-rows"><tr><td class="empty" colspan="5">Chargement…</td></tr></tbody></table></div></section>
+<footer id="updated">Aucune donnée n’a encore été chargée.</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const show=(id,value)=>{$(id).textContent=value==null||value===''?'—':String(value)};
+async function readJSON(url){const response=await fetch(url,{cache:'no-store',headers:{Accept:'application/json'}});if(!response.ok)throw new Error('HTTP '+response.status);return response.json()}
+function dateText(value){if(!value)return '—';const date=new Date(value);return Number.isNaN(date.getTime())?'—':date.toLocaleString('fr-FR')}
+function renderTasks(tasks){const body=$('task-rows');body.replaceChildren();if(!tasks.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=5;cell.className='empty';cell.textContent='Aucune tâche enregistrée';row.append(cell);body.append(row);return}const labels={queued:'En attente',running:'Développement en cours',candidate_ready:'Candidat testé',pull_request_ready:'Pull Request en brouillon',blocked:'Bloqué par les contrôles',failed:'Échec',deploying:'Déploiement en cours',completed_runtime_healthy:'Runtime vérifié',deployed_runtime_unconfirmed:'Runtime non confirmé',rollback_attempted:'Retour arrière tenté',interrupted_needs_review:'Interrompu — à vérifier',cancelled:'Annulé',deploy_blocked:'Déploiement bloqué'};tasks.slice(0,20).forEach(task=>{const row=document.createElement('tr');const values=[task.id,task.objective||task.title,task.target,labels[task.status]||task.status,dateText(task.createdAt)];values.forEach((value,index)=>{const cell=document.createElement('td');cell.textContent=value==null||value===''?'—':String(value);if(index===1){const url=task.pullRequest?.pullRequestUrl||task.result?.pullRequest?.url;if(typeof url==='string'&&url.startsWith('https://github.com/')){const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Ouvrir la Pull Request';link.style.display='block';link.style.marginTop='6px';link.style.color='var(--green)';cell.append(link)}}row.append(cell)});body.append(row)})}
+async function refresh(){
+ try {
+  const data=await readJSON('/api/v6/overview');
+  const system=data.system||{},engine=data.engine||{},tasks=Array.isArray(data.tasks)?data.tasks:[];
+  show('version','Version '+(system.version||'—'));
+  const connected=Boolean(system.telegram&&system.telegram.connectedRecently),paused=Boolean(system.queue&&system.queue.paused);
+  show('bot-status',paused?'En pause':connected?'Connecté récemment':'À vérifier');
+  show('engine-status',engine.paused?'En pause':engine.enabled?'Actif':'Inactif');
+  show('engine-detail',(engine.configuredProviderAvailable?'Fournisseur IA configuré':'Aucun fournisseur IA configuré')+' · '+String(engine.safeEngineeringTargets?.length||0)+' cibles testées · '+String(engine.engineeringMaxAttempts||2)+' tentatives max'+(engine.pullRequestEnabled?' · PR brouillon activée':''));
+  show('runs',String(engine.runsToday||0)+' / '+String(engine.maxRunsPerDay||0));
+  show('last-run',engine.lastRunAt?'Dernier cycle '+dateText(engine.lastRunAt):'Aucun cycle enregistré');
+  const active=tasks.filter(task=>['queued','running','deploying','candidate_ready','pull_request_ready'].includes(String(task.status||'').toLowerCase())).length;
+  show('task-count',String(tasks.length));show('task-detail',String(active)+' tâche(s) active(s)');renderTasks(tasks);
+  const pill=$('overall');pill.classList.remove('ok','warn','off');
+  const healthy=connected&&!paused&&engine.enabled;
+  pill.classList.add(healthy?'ok':connected||engine.enabled?'warn':'off');
+  show('overall-text',healthy?'Système synchronisé':connected||engine.enabled?'À vérifier':'Système indisponible');
+  show('updated','Dernière actualisation : '+new Date().toLocaleString('fr-FR'));
+ } catch(error) {
+  show('bot-status','Indisponible');show('engine-status','Indisponible');show('engine-detail','API du bot inaccessible');show('runs','—');show('last-run','Dernier cycle —');show('task-count','Indisponible');show('task-detail',error.message||'API indisponible');renderTasks([]);
+  const pill=$('overall');pill.classList.remove('ok','warn');pill.classList.add('off');show('overall-text','Système indisponible');show('updated','Impossible d’actualiser : '+(error.message||'erreur API'));
+ }
+}
+$('refresh').addEventListener('click',refresh);refresh();// Rafraîchissement toutes les 60 s : limite les appels inutiles tout en gardant l'état à jour.
+setInterval(refresh,60000);
+</script></body></html>

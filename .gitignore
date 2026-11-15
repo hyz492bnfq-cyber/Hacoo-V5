@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+node_modules/
+data.json
+data.json.bak
+data.json.before-restore.json
+logs/
+workspace/candidates/
+workspace/provider-cooldowns.json
+workspace/provider-cooldowns.json.*.tmp

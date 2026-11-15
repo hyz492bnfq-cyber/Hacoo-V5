@@ -1,0 +1,48 @@
+name: HACOO BOT CI (production deploy locked)
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hacoo-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate project
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+      - name: Validate configuration and required files
+        run: npm run check:config
+      - name: Check server, modules, scripts and dashboard syntax
+        run: npm run check
+      - name: Run test suite
+        run: npm test
+      - name: Fail closed if the legacy auto-deploy switch is enabled
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.FADEHOST_AUTODEPLOY == 'true'
+        run: |
+          echo 'Production deployment is locked: FadeHost deploys the latest branch commit and cannot pin the validated SHA.'
+          echo 'Do not enable FADEHOST_AUTODEPLOY until commit pinning and required branch protection are available.'
+          exit 1
+      - name: Record validated commit
+        run: echo "Validation completed for SHA ${GITHUB_SHA}"

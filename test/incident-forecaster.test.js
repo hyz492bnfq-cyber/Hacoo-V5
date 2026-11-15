@@ -1,0 +1,2 @@
+'use strict'; const test=require('node:test'); const assert=require('node:assert/strict'); const {forecastIncidents}=require('../lib/incident-forecaster');
+test('forecasts stale queue and uncertain album without destructive action',()=>{const r=forecastIncidents({pendingJobs:[{createdAt:1,status:'queued'}],pendingPhotoGroup:{sendState:'uncertain'},stats:{errors:2}},100000000);assert.equal(r.riskLevel,'high');assert.ok(r.risks.some(x=>x.code==='album_uncertain'));});

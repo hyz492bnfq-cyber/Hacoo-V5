@@ -1,0 +1,2 @@
+'use strict'; const test=require('node:test'); const assert=require('node:assert/strict'); const {proposeAdaptivePolicy}=require('../lib/adaptive-policy');
+test('adaptive policy recommends but never applies threshold changes',()=>{const r=proposeAdaptivePolicy({pendingJobs:[{status:'failed'},{stage:'manual_review'},{status:'failed'}],stats:{errors:12}});assert.ok(r.suggestions.length);assert.equal(r.suggestions[0].autoApplied,false);assert.equal(r.policy,'recommend_only');});
