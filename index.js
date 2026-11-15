@@ -36,6 +36,7 @@ const { createEngineeringTask, listEngineeringTasks, runEngineeringTask, runNext
 const { runProjectTask, isEngineeringRequest } = require('./lib/project-agent');
 const { supportsTelegramMediaGroup, manualPhotoContextMedia, nextAlbumWaitMs, recoverInterruptedPublications, preserveCapturedPublication, interceptedMessagesWereRemoved, pendingAlbumRecord, pendingAlbumRetryDelay, manualAlbumCaptions, remainingAlbumMessages } = require('./lib/manual-publication');
 const { shouldAppendPhotoToGroup } = require('./lib/photo-grouping');
+const { isTelegramMessageAlreadyGone } = require('./lib/telegram-errors');
 const { splitPublicationBatches } = require('./lib/publication-batch');
 const { hashDistance, colorSimilarity, strongVisualDuplicateEvidence } = require('./lib/duplicate-visual');
 const { Api: ResenderApi, CustomFile: ResenderCustomFile, createClient: createResenderClient, listChats: listResenderChats, copyRecent: copyResenderRecent, republish: republishResender, watchConnections: watchResenderConnections } = require('./lib/channel-sync-resender');
@@ -1636,7 +1637,7 @@ async function deleteMessageGroup(ctx, messages, reason) {
     } catch (error) {
       const description = String(error?.description || error?.message || error).slice(0, 300);
       // Telegram's "message to delete not found" is an idempotent final state.
-      if (/message to delete not found|message_id_invalid|message not found/i.test(description)) {
+      if (isTelegramMessageAlreadyGone(error)) {
         rememberId(removedIds, message.message_id);
         continue;
       }
@@ -2224,11 +2225,7 @@ async function regroupPhotos(group) {
     notifyAdmin(`ALERTE : résultat d'envoi d'un album incertain. Aucun nouvel envoi automatique pour éviter un doublon. Publication d'origine conservée. Message source : ${group.anchor?.message_id || 'inconnu'}. Vérifie le canal puis résous cette tâche manuellement.`).catch(() => {});
     return;
   }
-  if (group.sendState === 'cleanup_failed') {
-    notifyAdmin(`Un album a déjà été envoyé, mais son nettoyage reste à vérifier. Aucun nouvel envoi automatique. Message source : ${group.anchor?.message_id || 'inconnu'}.`).catch(() => {});
-    return;
-  }
-
+  // cleanup_failed reprend uniquement la suppression des originaux : aucun média ne sera renvoyé.
   // Attend la fin des analyses (modération, doublons) en cours
   await Promise.allSettled([...inflight]);
 
@@ -2288,7 +2285,7 @@ async function regroupPhotos(group) {
   // 1) Publier avec journal durable. Un crash pendant la requête rend son résultat
   // ambigu : au redémarrage, la tâche passe en validation manuelle au lieu de renvoyer.
   // Si l'envoi est déjà confirmé ('sent'), on reprend uniquement le nettoyage.
-  if (group.sendState !== 'sent') {
+  if (!['sent', 'cleanup_failed'].includes(group.sendState)) {
     group.sentMessageIds = Array.isArray(group.sentMessageIds) ? group.sentMessageIds : [];
     group.nextChunkIndex = Number(group.nextChunkIndex || 0);
     group.sendState = 'ready';
@@ -2343,8 +2340,13 @@ async function regroupPhotos(group) {
       await ctx.api.deleteMessage(message.chat.id, message.message_id);
       rememberId(removedIds, message.message_id);
     } catch (error) {
+      if (isTelegramMessageAlreadyGone(error)) {
+        // Après un crash pendant le nettoyage, une source déjà absente est un succès idempotent.
+        rememberId(removedIds, message.message_id);
+        continue;
+      }
       failed++;
-      lastError = String(error?.message || error).slice(0, 200);
+      lastError = String(error?.description || error?.message || error).slice(0, 200);
     }
   }
 
