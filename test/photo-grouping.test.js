@@ -101,7 +101,7 @@ test('stress : 10 000 séquences de six photos légendées sur la première', ()
     const state = group(photo(run * 10 + 1, 'Produit'));
     for (let offset = 2; offset <= 6; offset++) {
       const incoming = photo(run * 10 + offset);
-      assert.equal(accepts(state, incoming), true);
+      assert.equal(accepts(state, incoming, { now: 1000 + offset * 100 }), true);
       state.photos.push(incoming);
       state.lastMessageAt = 1000 + offset * 100;
     }
