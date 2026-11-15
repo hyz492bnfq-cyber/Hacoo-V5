@@ -106,7 +106,7 @@ test('un message déjà membre d’un album Telegram natif est laissé au traite
 
 test('un groupe absent ou incomplet ne provoque pas d’erreur', () => {
   assert.equal(canAppend(null, photo(1)), false);
-  assert.equal(canAppend({ mode: 'automatic', startedAt: 1000 }, photo(1)), true);
+  assert.equal(canAppend({ mode: 'automatic', startedAt: 1000 }, photo(1)), false);
 });
 
 test('les fenêtres invalides et les horodatages invalides sont rejetés', () => {
@@ -147,11 +147,11 @@ test('rafale : une publication avec légende finale est clôturée avant la publ
   assert.equal(canAppend(firstPost, photo(304, 'Produit B'), { now: 1250 }), false);
 });
 
-test('limite connue : une photo sans légende du post suivant est indiscernable avant sa légende', () => {
+test('une photo sans légende immédiatement après une ancre légendée rejoint le post', () => {
   const firstPost = group(photo(401, 'Produit A'), [], { startedAt: 1000 });
-  // Sans identifiant, impossible de prouver qu'elle appartient à A.
-  // La règle conservatrice ferme donc le groupe plutôt que de fusionner B.
-  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), false);
+  // Sans media_group_id, le regroupement reste une heuristique temporelle :
+  // la photo contiguë sans légende est rattachée au post qui vient de commencer.
+  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), true);
 });
 
 
