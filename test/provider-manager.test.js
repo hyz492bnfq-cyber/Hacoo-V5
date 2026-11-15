@@ -349,3 +349,17 @@ test('resolveProviderChain respecte le taskType explicite de modération', () =>
   });
   assert.deepEqual(chain, ['gemini', 'nemotron']);
 });
+
+
+test('testProvider transforme une exception réseau en statut exploitable sans faire échouer la route', async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => { throw new TypeError('fetch failed'); };
+    const result = await testProvider('gemini', { GEMINI_API_KEY: 'test-key' });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'network_error');
+    assert.match(result.message, /Échec réseau/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
