@@ -27,57 +27,36 @@ const canAppend = (existing, incoming, options = {}) =>
     getText
   );
 
-test('deux photos sans légende puis une troisième légendée restent dans le même album', () => {
-  const first = photo(1);
-  const second = photo(2);
-  const third = photo(3, 'Légende du produit');
-  assert.equal(canAppend(group(first, [second]), third), true);
+test('une publication avec légende sur la première photo accepte les photos suivantes sans légende', () => {
+  const state = group(photo(1, 'Légende du produit'));
+  for (let id = 2; id <= 6; id++) {
+    const incoming = photo(id);
+    assert.equal(canAppend(state, incoming), true);
+    state.photos.push(incoming);
+  }
+  assert.equal(state.photos.length + 1, 6);
 });
 
-test('la légende peut être sur la deuxième photo après une première photo sans texte', () => {
-  assert.equal(canAppend(group(photo(1)), photo(2, 'Description')), true);
+test('une deuxième légende ferme le groupe et démarre une nouvelle publication', () => {
+  assert.equal(canAppend(group(photo(1, 'Produit A'), [photo(2)]), photo(3, 'Produit B')), false);
 });
 
-test('une légende sur la première photo clôt le groupe des photos indépendantes', () => {
-  assert.equal(canAppend(group(photo(1, 'Description')), photo(2)), false);
+test('une légende arrivée après les premières photos ferme le groupe', () => {
+  const state = group(photo(1), [photo(2)]);
+  assert.equal(canAppend(state, photo(3, 'Description')), true);
+  state.photos.push(photo(3, 'Description'));
+  assert.equal(canAppend(state, photo(4)), false);
 });
 
-test('une photo légendée après un groupe qui possède déjà une légende démarre un nouveau post', () => {
-  assert.equal(canAppend(group(photo(1, 'Premier produit'), [photo(2)]), photo(3, 'Deuxième produit')), false);
-});
-
-test('une troisième légende ne rejoint pas le groupe après la première frontière', () => {
-  const firstGroup = group(photo(1, 'Premier'), [photo(2)]);
-  assert.equal(canAppend(firstGroup, photo(3, 'Deuxième')), false);
-  const secondGroup = group(photo(3, 'Deuxième'), [], { startedAt: 2000 });
-  assert.equal(canAppend(secondGroup, photo(4, 'Troisième'), { now: 2500 }), false);
+test('une légende sur la première photo ferme le groupe si une autre légende arrive', () => {
+  assert.equal(canAppend(group(photo(1, 'Description')), photo(2, 'Autre publication')), false);
 });
 
 test('plusieurs photos non légendées consécutives restent regroupables', () => {
-  const first = photo(1);
-  const second = photo(2);
-  const third = photo(3);
-  assert.equal(canAppend(group(first, [second]), third), true);
-});
-
-test('une photo sans légende après la légende clôt le groupe pour éviter une fusion', () => {
-  const existing = group(photo(1), [photo(2, 'Légende')]);
-  assert.equal(canAppend(existing, photo(3)), false);
-  assert.equal(canAppend(existing, photo(4, 'Nouvelle légende')), false);
-});
-
-test('une légende sur la photo initiale clôt aussi le groupe', () => {
-  const existing = group(photo(1, 'Légende'));
-  assert.equal(canAppend(existing, photo(2)), false);
-});
-
-test('un texte/caption vide ou composé d’espaces ne crée pas une frontière', () => {
-  const existing = group(photo(1), [photo(2, '   ')]);
-  assert.equal(canAppend(existing, photo(3, 'Nouvelle légende')), true);
-});
-
-test('les entités ou la présence de texte ne sont pas nécessaires pour regrouper une photo', () => {
-  assert.equal(canAppend(group(photo(1)), photo(2)), true);
+  const state = group(photo(1));
+  assert.equal(canAppend(state, photo(2)), true);
+  state.photos.push(photo(2));
+  assert.equal(canAppend(state, photo(3)), true);
 });
 
 test('un groupe d’un autre mode est rejeté', () => {
@@ -106,7 +85,7 @@ test('un message déjà membre d’un album Telegram natif est laissé au traite
 
 test('un groupe absent ou incomplet ne provoque pas d’erreur', () => {
   assert.equal(canAppend(null, photo(1)), false);
-  assert.equal(canAppend({ mode: 'automatic', startedAt: 1000 }, photo(1)), true);
+  assert.equal(canAppend({ mode: 'automatic', startedAt: 1000 }, photo(1)), false);
 });
 
 test('les fenêtres invalides et les horodatages invalides sont rejetés', () => {
@@ -115,41 +94,33 @@ test('les fenêtres invalides et les horodatages invalides sont rejetés', () =>
   assert.equal(shouldAppendPhotoToGroup(group(photo(1)), photo(2), 'automatic', 2000, 90000, null), true);
 });
 
-test('une publication avec une légende sur chaque photo est séparée à chaque légende', () => {
-  const first = group(photo(1, 'Article A'));
-  assert.equal(canAppend(first, photo(2, 'Article B')), false);
-  const second = group(photo(2, 'Article B'), [], { startedAt: 2000 });
-  assert.equal(canAppend(second, photo(3, 'Article C'), { now: 2500 }), false);
+test('une publication légendée sur la première photo peut contenir plusieurs photos sans légende', () => {
+  const state = group(photo(10, 'Produit A'));
+  for (let id = 11; id <= 15; id++) {
+    const incoming = photo(id);
+    assert.equal(canAppend(state, incoming), true);
+    state.photos.push(incoming);
+  }
+  assert.equal(state.photos.length, 5);
 });
 
-
-test('rafale : deux photos sans légende puis la légende 120 ms après restent ensemble', () => {
-  const first = photo(101);
-  const second = photo(102);
-  const captionLast = photo(103, 'Publication A');
-  const current = group(first, [], { startedAt: 1000 });
-  assert.equal(canAppend(current, second, { now: 1120 }), true);
-  current.photos.push(second);
-  assert.equal(canAppend(current, captionLast, { now: 1240 }), true);
-  current.photos.push(captionLast);
-  assert.deepEqual([current.anchor.message_id, ...current.photos.map(item => item.message_id)], [101, 102, 103]);
+test('deux publications légendées successives ne fusionnent pas', () => {
+  const first = group(photo(20, 'Produit A'));
+  assert.equal(canAppend(first, photo(21, 'Produit B')), false);
 });
 
-test('rafale : deux publications légendées séparées de 150 ms ne fusionnent pas', () => {
-  const firstPost = group(photo(201, 'Produit A'), [], { startedAt: 1000 });
-  assert.equal(canAppend(firstPost, photo(202, 'Produit B'), { now: 1150 }), false);
+test('un message non consécutif ne rejoint pas le groupe', () => {
+  assert.equal(canAppend(group(photo(30, 'Produit A')), photo(32)), false);
 });
 
-test('rafale : une publication avec légende finale est clôturée avant la publication légendée suivante', () => {
-  const firstPost = group(photo(301), [photo(302)], { startedAt: 1000 });
-  assert.equal(canAppend(firstPost, photo(303, 'Produit A'), { now: 1100 }), true);
-  firstPost.photos.push(photo(303, 'Produit A'));
-  assert.equal(canAppend(firstPost, photo(304, 'Produit B'), { now: 1250 }), false);
-});
-
-test('limite connue : une photo sans légende du post suivant est indiscernable avant sa légende', () => {
-  const firstPost = group(photo(401, 'Produit A'), [], { startedAt: 1000 });
-  // Sans identifiant, impossible de prouver qu'elle appartient à A.
-  // La règle conservatrice ferme donc le groupe plutôt que de fusionner B.
-  assert.equal(canAppend(firstPost, photo(402), { now: 1100 }), false);
+test('une rafale de six photos avec légende initiale est regroupée sans perte', () => {
+  const messages = Array.from({ length: 6 }, (_, index) =>
+    photo(100 + index, index === 0 ? 'Publication Hacoo' : '')
+  );
+  const state = group(messages[0]);
+  for (const message of messages.slice(1)) {
+    assert.equal(canAppend(state, message), true);
+    state.photos.push(message);
+  }
+  assert.deepEqual([state.anchor, ...state.photos].map(message => message.message_id), [100, 101, 102, 103, 104, 105]);
 });
