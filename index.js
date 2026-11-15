@@ -260,8 +260,7 @@ function normalizeData(saved) {
     out.pendingPhotoGroups = [saved.pendingPhotoGroup];
   }
   out.pendingPhotoGroups = out.pendingPhotoGroups
-    .filter(item => item && typeof item === 'object' && item.anchor?.message_id !== undefined)
-    .slice(-100);
+    .filter(item => item && typeof item === 'object' && item.anchor?.message_id !== undefined);
   out.pendingPhotoGroup = null;
 
   {
@@ -1976,6 +1975,7 @@ async function processMessages(ctx, messages, options = {}) {
 
 let photoGroup = null;
 let photoGroupFlushChain = Promise.resolve();
+const activePhotoGroupFlushIds = new Set();
 
 function persistPhotoGroup(group) {
   if (!group?.anchor?.message_id) throw new Error('Impossible de persister un groupe photo sans identifiant source.');
@@ -2004,7 +2004,7 @@ function persistPhotoGroup(group) {
   const index = current.findIndex(item => Number(item?.anchor?.message_id) === id);
   if (index >= 0) current[index] = record;
   else current.push(record);
-  data.pendingPhotoGroups = current.slice(-100);
+  data.pendingPhotoGroups = current;
   data.pendingPhotoGroup = null;
   // Dès qu'un appel d'envoi est commencé, une mise à jour Telegram rejouée
   // ne doit pas recréer un deuxième groupe pour les mêmes messages.
@@ -2051,6 +2051,9 @@ function schedulePhotoGroupFlush() {
 function flushPhotoGroup(groupToFlush = photoGroup) {
   const group = groupToFlush;
   if (!group) return photoGroupFlushChain;
+  const groupId = Number(group.sourceAnchorId || group.anchor?.message_id);
+  if (!Number.isFinite(groupId) || activePhotoGroupFlushIds.has(groupId)) return photoGroupFlushChain;
+  activePhotoGroupFlushIds.add(groupId);
   if (group === photoGroup) photoGroup = null;
   clearTimeout(group.timer);
 
@@ -2067,7 +2070,12 @@ function flushPhotoGroup(groupToFlush = photoGroup) {
     }
 
     if (group.mode === 'manual') {
-      await interceptManualPublication(group.ctx, messages);
+      const result = await interceptManualPublication(group.ctx, messages);
+      if (result?.reason === 'deferred') {
+        group.preflightState = 'pending';
+        persistPhotoGroup(group);
+        return;
+      }
       clearPersistedPhotoGroup(group);
       return;
     }
@@ -2088,11 +2096,10 @@ function flushPhotoGroup(groupToFlush = photoGroup) {
         persistPhotoGroup(group);
         const result = await processMessages(group.ctx, messages, { allowIndependentPhotoGroup: true });
         if (result === 'deferred') {
-          // La pause ne doit ni perdre les photos ni bloquer leur reprise.
-          // On remet chaque message dans la file persistante classique : elle
-          // reprendra automatiquement au retour du bot, sans album spéculatif.
-          for (const message of messages) await enqueueProcessMessages(group.ctx, [message]);
-          clearPersistedPhotoGroup(group);
+          // Garder le groupe intact : il sera repris au /reprise ou à la
+          // réactivation depuis le tableau de bord, sans casser l'album.
+          group.preflightState = 'pending';
+          persistPhotoGroup(group);
           return;
         }
         group.preflightState = 'processed';
@@ -2106,6 +2113,8 @@ function flushPhotoGroup(groupToFlush = photoGroup) {
     noteError(error);
     persistPhotoGroup(group);
     notifyAdmin(`Regroupement photo conservé en attente : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
+  }).finally(() => {
+    activePhotoGroupFlushIds.delete(groupId);
   });
 
   return photoGroupFlushChain;
@@ -2441,6 +2450,30 @@ function resumeDeferredJobs() {
     if (job.stage === 'paused' || job.status === 'queued' || job.status === 'retry_wait') {
       enqueueProcessMessages({ api: bot.api }, job.messages, job.id);
     }
+  }
+
+  const currentGroupId = Number(photoGroup?.sourceAnchorId || photoGroup?.anchor?.message_id);
+  for (const record of [...(data.pendingPhotoGroups || [])]) {
+    const id = Number(record?.sourceAnchorId || record?.anchor?.message_id);
+    if (!Number.isFinite(id) || id === currentGroupId || activePhotoGroupFlushIds.has(id)) continue;
+    const restored = {
+      ctx: { api: bot.api },
+      sourceAnchorId: id,
+      anchor: record.anchor,
+      photos: Array.isArray(record.photos) ? record.photos : [],
+      startedAt: Number(record.startedAt) || Date.now(),
+      lastMessageAt: Number(record.lastMessageAt) || Date.now(),
+      mode: record.mode || 'automatic',
+      attempts: Number(record.attempts || 0),
+      preflightState: record.preflightState === 'processed' ? 'processed' : 'pending',
+      sendState: record.sendState || 'collecting',
+      nextChunkIndex: Number(record.nextChunkIndex || 0),
+      sentMessageIds: Array.isArray(record.sentMessageIds) ? record.sentMessageIds : [],
+      sendingChunkIndex: Number.isInteger(record.sendingChunkIndex) ? record.sendingChunkIndex : null,
+      sendStartedAt: record.sendStartedAt || null,
+      timer: null
+    };
+    flushPhotoGroup(restored);
   }
 }
 
