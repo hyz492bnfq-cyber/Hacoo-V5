@@ -1999,52 +1999,64 @@ function schedulePhotoGroupFlush() {
   photoGroup.timer = setTimeout(flushPhotoGroup, remaining);
 }
 
+let photoGroupFlushPromise = null;
+
 function flushPhotoGroup() {
+  if (photoGroupFlushPromise) return photoGroupFlushPromise;
+
   const group = photoGroup;
   photoGroup = null;
-  if (!group) return;
+  if (!group) return Promise.resolve(true);
   clearTimeout(group.timer);
 
-  // Sécurité anti-fusion : les messages sans media_group_id Telegram sont
-  // toujours des publications indépendantes. Même les anciennes files créées
-  // par l'ancien regroupement temporel sont désormais traitées séparément.
   const messages = [group.anchor, ...(group.photos || [])]
     .filter(Boolean)
     .sort((a, b) => Number(a.message_id) - Number(b.message_id));
 
   if (!messages.length) {
     clearPersistedPhotoGroup(group);
-    return;
+    return Promise.resolve(true);
   }
 
   const isMultiPhotoPost = messages.length > 1;
-  let task;
-
-  if (group.mode === 'manual') {
-    task = interceptManualPublication(group.ctx, messages);
-  } else if (isMultiPhotoPost) {
-    // Reconstitue un véritable album Telegram. regroupPhotos publie d'abord,
-    // journalise le résultat, puis seulement supprime les messages sources.
-    task = regroupPhotos(group);
-  } else {
-    task = enqueueProcessMessages(group.ctx, messages);
-  }
-
-  Promise.resolve(task)
-    .then(() => {
-      // regroupPhotos gère lui-même son journal durable et ne doit pas être
-      // effacé si Telegram a un résultat incertain ou si le nettoyage échoue.
-      if (!isMultiPhotoPost || group.mode === 'manual' || group.sendState === 'sent') {
+  const operation = (async () => {
+    try {
+      if (group.mode === 'manual') {
+        const result = await interceptManualPublication(group.ctx, messages);
+        if (result?.reason === 'deferred') {
+          throw new Error('Interception différée : le bot est en pause ou désactivé.');
+        }
         clearPersistedPhotoGroup(group);
+        return true;
       }
-    })
-    .catch(error => {
+
+      if (isMultiPhotoPost) {
+        // Reconstitue un véritable album Telegram. regroupPhotos publie d'abord,
+        // journalise le résultat, puis seulement supprime les messages sources.
+        await regroupPhotos(group);
+        // regroupPhotos conserve volontairement son journal si l'envoi est
+        // incertain ou si le nettoyage Telegram a échoué.
+        const stillPending = data.pendingPhotoGroup?.anchor?.message_id === group.anchor.message_id;
+        return !stillPending || group.sendState === 'sent';
+      }
+
+      await enqueueProcessMessages(group.ctx, messages);
+      clearPersistedPhotoGroup(group);
+      return true;
+    } catch (error) {
       noteError(error);
       // Garder toutes les photos capturées : ne jamais les perdre si la
       // publication, l'interception ou la sauvegarde échoue.
       persistPhotoGroup(group);
       notifyAdmin(`Regroupement photo conservé en attente : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
-    });
+      return false;
+    }
+  })();
+
+  photoGroupFlushPromise = operation.finally(() => {
+    photoGroupFlushPromise = null;
+  });
+  return photoGroupFlushPromise;
 }
 
 function observeEditedChannelPost(ctx) {
@@ -2060,12 +2072,15 @@ function observeEditedChannelPost(ctx) {
   persistPhotoGroup(photoGroup);
 }
 
-function observeForPhotoGroup(ctx, message, mode = 'automatic') {
+async function observeForPhotoGroup(ctx, message, mode = 'automatic') {
   // Les albums natifs passent par media_group_id et ne viennent jamais ici.
-  // Pour les posts Hacoo éclatés en messages photo successifs, on regroupe
-  // uniquement une séquence contiguë, dans une courte fenêtre de silence.
   if (!message?.photo?.length || message.media_group_id) {
-    if (photoGroup) flushPhotoGroup();
+    if (photoGroup || photoGroupFlushPromise) await flushPhotoGroup();
+    return false;
+  }
+
+  // Ne jamais écraser un envoi précédent dont le résultat reste à vérifier.
+  if (!photoGroup && ['sending', 'uncertain', 'cleanup_failed'].includes(String(data.pendingPhotoGroup?.sendState || ''))) {
     return false;
   }
 
@@ -2078,7 +2093,13 @@ function observeForPhotoGroup(ctx, message, mode = 'automatic') {
     msgText
   );
 
-  if (photoGroup && !canAppend) flushPhotoGroup();
+  if (photoGroup && !canAppend) {
+    const flushed = await flushPhotoGroup();
+    if (!flushed) return false;
+  } else if (!photoGroup && photoGroupFlushPromise) {
+    const flushed = await flushPhotoGroup();
+    if (!flushed) return false;
+  }
 
   if (!photoGroup) {
     photoGroup = {
@@ -2903,7 +2924,7 @@ function restoreChannelSyncWork() {
   saveNow();
 }
 
-function queueChannelPost(ctx) {
+async function queueChannelPost(ctx) {
   const message = ctx.channelPost;
   if (!message) return;
   rememberChannelSyncChat(message.chat);
@@ -2914,7 +2935,7 @@ function queueChannelPost(ctx) {
   const telegramGroupId = message.media_group_id;
   if (!telegramGroupId) {
     const mode = data.manualPublicationMode ? 'manual' : 'automatic';
-    if (observeForPhotoGroup(ctx, message, mode)) return;
+    if (await observeForPhotoGroup(ctx, message, mode)) return;
     if (mode === 'manual') {
       interceptManualPublication(ctx, [message]).catch(error => {
         noteError(error);
@@ -2924,7 +2945,7 @@ function queueChannelPost(ctx) {
     return;
   }
 
-  flushPhotoGroup();
+  await flushPhotoGroup();
   // Clé composée : un media_group_id n'est jamais partagé entre conversations.
   const groupId = `${message.chat.id}:${telegramGroupId}`;
   if (!pendingAlbums.has(groupId)) {
