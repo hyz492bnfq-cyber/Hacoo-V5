@@ -69,7 +69,7 @@ const ALBUM_QUIET_MS = 12000;
 const ALBUM_MAX_WAIT_MS = 120000;
 const WINDOW_OPTIONS = [1, 5, 15, 30, 60, 180, 360];
 const RETENTION_OPTIONS = [7, 30, 90];
-const GROUP_WINDOW_MS = 90000; // contexte texte conservé au plus 90 s pour les images seules
+const GROUP_WINDOW_MS = 30000; // fenêtre maximale pour reconstituer une publication photo éclatée
 const GROUP_QUIET_MS = 5000;  // silence après la dernière photo avant de publier l’album
 
 if (
@@ -2005,9 +2005,6 @@ function flushPhotoGroup() {
   if (!group) return;
   clearTimeout(group.timer);
 
-  // Sécurité anti-fusion : les messages sans media_group_id Telegram sont
-  // toujours des publications indépendantes. Même les anciennes files créées
-  // par l'ancien regroupement temporel sont désormais traitées séparément.
   const messages = [group.anchor, ...(group.photos || [])]
     .filter(Boolean)
     .sort((a, b) => Number(a.message_id) - Number(b.message_id));
@@ -2017,21 +2014,27 @@ function flushPhotoGroup() {
     return;
   }
 
-  const tasks = messages.map(message => {
-    if (group.mode === 'manual') {
-      return interceptManualPublication(group.ctx, [message]);
-    }
-    return enqueueProcessMessages(group.ctx, [message]);
-  });
+  // En mode manuel, conserver toutes les photos dans une seule entrée.
+  // En automatique, reconstruire un album Telegram si plusieurs photos ont
+  // été collectées. Une photo isolée suit le traitement normal.
+  const task = group.mode === 'manual'
+    ? interceptManualPublication(group.ctx, messages)
+    : messages.length > 1
+      ? regroupPhotos(group)
+      : enqueueProcessMessages(group.ctx, messages);
 
-  Promise.all(tasks)
-    .then(() => clearPersistedPhotoGroup(group))
+  Promise.resolve(task)
+    .then(() => {
+      // regroupPhotos conserve son journal si l'envoi est incertain ou si
+      // le nettoyage des originaux échoue. Ne jamais effacer ces états.
+      if (group.mode === 'manual' || messages.length === 1 || group.sendState === 'sent') {
+        clearPersistedPhotoGroup(group);
+      }
+    })
     .catch(error => {
       noteError(error);
-      // Garder l'enregistrement durable si une publication individuelle
-      // n'a pas pu être mise en file / sauvegardée.
       persistPhotoGroup(group);
-      notifyAdmin(`Traitement individuel d'anciennes photos en attente : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
+      notifyAdmin(`Regroupement photo conservé en attente : ${String(error?.message || error).slice(0, 250)}`).catch(() => {});
     });
 }
 
@@ -2049,12 +2052,49 @@ function observeEditedChannelPost(ctx) {
 }
 
 function observeForPhotoGroup(ctx, message, mode = 'automatic') {
-  // Aucun regroupement temporel de messages indépendants.
-  // Seul le media_group_id fourni par Telegram autorise la création d'un album.
-  // Si une ancienne file temporelle existe encore, on la vide en publications
-  // séparées avant de laisser le message courant suivre son traitement normal.
-  if (photoGroup) flushPhotoGroup();
-  return false;
+  // Les albums Telegram natifs suivent leur propre collecte par media_group_id.
+  // Les photos publiées comme messages successifs sont regroupées seulement
+  // si elles forment une séquence contiguë et arrivent dans la fenêtre prévue.
+  if (!message?.photo?.length || message.media_group_id) {
+    if (photoGroup) flushPhotoGroup();
+    return false;
+  }
+
+  const now = Date.now();
+  const canAppend = shouldAppendPhotoToGroup(
+    photoGroup,
+    message,
+    mode,
+    now,
+    GROUP_WINDOW_MS,
+    msgText,
+    GROUP_QUIET_MS
+  );
+
+  if (photoGroup && !canAppend) flushPhotoGroup();
+
+  if (!photoGroup) {
+    photoGroup = {
+      ctx,
+      anchor: message,
+      photos: [],
+      startedAt: now,
+      lastMessageAt: now,
+      mode,
+      attempts: 0,
+      sendState: 'collecting',
+      nextChunkIndex: 0,
+      sentMessageIds: [],
+      timer: null
+    };
+  } else {
+    photoGroup.photos.push(message);
+    photoGroup.lastMessageAt = now;
+  }
+
+  persistPhotoGroup(photoGroup);
+  schedulePhotoGroupFlush();
+  return true;
 }
 
 async function telegramRateLimitRetry(operation, label) {
