@@ -36,7 +36,7 @@ test('Resender transforme une seule légende consolidée sans perdre les médias
   ], text => text ? `M2REPS: ${text}` : text);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].file.length, 3);
-  assert.equal(sent[0].caption, 'M2REPS: titre produit\\n👉🏼 https://exemple.test');
+  assert.equal(sent[0].caption, 'M2REPS: titre produit\n👉🏼 https://exemple.test');
   assert.deepEqual(sent[0].file.map(file => file.name), ['photo.jpg', 'photo.jpg', 'photo.jpg']);
 });
 
@@ -77,7 +77,7 @@ test('Resender regroupe toutes les légendes d’un album dans une seule caption
     async sendFile(destination, value) { sent.push({ destination, ...value }); }
   };
   await republish(client, '-1002', [
-    { id: 1, groupedId: 7n, message: 'Titre produit\\nLien produit A', photo: true },
+    { id: 1, groupedId: 7n, message: 'Titre produit\nLien produit A', photo: true },
     { id: 2, groupedId: 7n, message: 'ℹ️ Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur', photo: true },
     { id: 3, groupedId: 7n, message: '🛍️• ʟɪᴇɴ ᴀꜰꜰɪʟɪᴇ́, ᴄᴏᴍᴍɪssɪᴏɴ ᴘᴏssɪʙʟᴇ. ᴀᴜᴛʜᴇɴᴛɪᴄɪᴛᴇ́ ᴀ̀ ᴠᴇ́ʀɪꜰɪᴇʀ ᴀᴜᴘʀᴇ̀s ᴅᴜ ᴠᴇɴᴅᴇᴜʀ⚡️‼️', photo: true }
   ], text => require('../lib/presentation-cleaner').removeRepeatedPublicationLines(text));
