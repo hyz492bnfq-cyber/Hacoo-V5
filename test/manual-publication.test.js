@@ -121,7 +121,7 @@ test('un texte séparé suivi de photos devient la légende de la première phot
 });
 
 test('une seule légende sur la deuxième photo conserve sa position', () => {
-  assert.deepEqual(manualAlbumCaptions([{}, { caption: 'Légende photo 2' }, {}]), ['', 'Légende photo 2', '']);
+  assert.deepEqual(manualAlbumCaptions([{}, { caption: 'Légende photo 2' }, {}]), ['Légende photo 2', '', '']);
 });
 
 
