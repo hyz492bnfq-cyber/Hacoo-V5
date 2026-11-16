@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isHacooStoreUrl, isOnlyaffShortUrl, resolveHacooShortUrl, extractUrls, sign, replaceHacooLinks } = require('../lib/hacoo-promo-link');
+const { isHacooStoreUrl, isOnlyaffShortUrl, extractHacooProductId, canonicalHacooProductUrl, resolveHacooShortUrl, extractUrls, sign, replaceHacooLinks } = require('../lib/hacoo-promo-link');
 
 test('reconnaît uniquement les domaines de boutique Hacoo sécurisés', () => {
   assert.equal(isHacooStoreUrl('https://www.hacoo.pl/en-FR/detail/40886057'), true);
@@ -12,6 +12,16 @@ test('reconnaît uniquement les domaines de boutique Hacoo sécurisés', () => {
   assert.equal(isHacooStoreUrl('https://c.onlyaff.app/dTzXl3'), false);
   assert.equal(isOnlyaffShortUrl('https://c.onlyaff.app/dTzXl3'), true);
   assert.equal(isOnlyaffShortUrl('https://example.com/dTzXl3'), false);
+});
+
+
+test('extrait un identifiant numérique uniquement depuis une fiche produit Hacoo', () => {
+  assert.equal(extractHacooProductId('https://www.hacoo.pl/en-FR/detail/40886057'), '40886057');
+  assert.equal(extractHacooProductId('https://m.hacoo.app/product/40886057'), '40886057');
+  assert.equal(extractHacooProductId('https://www.hacoo.pl/p/15591709'), null);
+  assert.equal(extractHacooProductId('https://example.com/detail/40886057'), null);
+  assert.equal(extractHacooProductId('https://www.hacoo.pl/en-FR/detail/0'), null);
+  assert.equal(canonicalHacooProductUrl('40886057'), 'https://www.hacoo.pl/en-FR/detail/40886057');
 });
 
 test('extrait les URL sans leur ponctuation finale', () => {
@@ -38,6 +48,28 @@ test('remplace chaque lien Hacoo et conserve les autres domaines et la ponctuati
   assert.equal(result.changed, true);
   assert.equal(result.errors.length, 0);
   assert.equal(result.text, 'A https://c.onlyaff.app/one, B https://c.onlyaff.app/two! C https://example.com/x');
+});
+
+test('ne transmet pas les URL Hacoo qui ne sont pas des fiches produit à promoLink', async () => {
+  let calls = 0;
+  for (const url of [
+    'https://www.hacoo.pl/',
+    'https://www.hacoo.pl/search?q=shoes',
+    'https://www.hacoo.pl/category/123',
+    'https://www.hacoo.pl/unknown/123'
+  ]) {
+    const result = await replaceHacooLinks(url, {
+      config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+      fetchImpl: async () => {
+        calls++;
+        throw new Error('promoLink ne doit pas être appelé');
+      }
+    });
+    assert.equal(result.text, url);
+    assert.equal(result.changed, false);
+    assert.equal(result.errors.length, 1);
+  }
+  assert.equal(calls, 0);
 });
 
 test('en cas de refus Hacoo, conserve le lien original et signale l’erreur', async () => {
@@ -84,8 +116,9 @@ test('remplace aussi les liens affiliés reçus avec un nouveau lien généré p
     };
     return { status: 200, ok: true, headers: { get: () => null } };
   };
-  const fetchImpl = async (_url, init) => {
+  const fetchImpl = async (url, init) => {
     generated++;
+    assert.equal(new URL(url).searchParams.get('sid'), 'test');
     const data = JSON.parse(new URLSearchParams(init.body).get('data'));
     assert.equal(data.link, 'https://www.hacoo.pl/en-FR/detail/40886057');
     return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/NEWCODE', linkType: 'DETAIL' } }) };
@@ -107,4 +140,112 @@ test('si le lien court ne mène pas à Hacoo, conserve le lien reçu', async () 
   assert.equal(result.text, 'https://c.onlyaff.app/OLD-CODE');
   assert.equal(result.changed, false);
   assert.equal(result.errors.length, 1);
+});
+
+test('si le lien court mène à Hacoo mais sans identifiant produit, conserve le lien original', async () => {
+  const result = await replaceHacooLinks('https://c.onlyaff.app/OLD-CODE', {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    resolveFetchImpl: async () => ({ status: 302, ok: false, headers: { get: () => 'https://www.hacoo.pl/p/15591709' } }),
+    fetchImpl: async () => { throw new Error('Ne doit pas appeler promoLink'); }
+  });
+  assert.equal(result.text, 'https://c.onlyaff.app/OLD-CODE');
+  assert.equal(result.changed, false);
+  assert.equal(result.errors.length, 1);
+});
+
+
+test('ne transmet jamais directement une URL de publication /p/ à promoLink', async () => {
+  let promoCalls = 0;
+  const original = 'https://www.hacoo.pl/p/15580911';
+  const result = await replaceHacooLinks(original, {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    fetchImpl: async () => {
+      promoCalls++;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/SHOULD-NOT-HAPPEN' } }) };
+    }
+  });
+  assert.equal(result.text, original);
+  assert.equal(result.changed, false);
+  assert.equal(promoCalls, 0);
+  assert.equal(result.errors.length, 1);
+});
+
+test('convertit uniquement le premier produit résolu d’une publication', async () => {
+  let promoLink;
+  const result = await replaceHacooLinks('Publication : https://www.hacoo.pl/p/15607115', {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    fetchFeedDetail: async id => {
+      assert.equal(id, '15607115');
+      return { productCardDetail: [
+        { moduleType: 'item_detail_card', moduleData: { item_id: 40860854 } },
+        { moduleType: 'item_detail_card', moduleData: { item_id: 40665765 } }
+      ] };
+    },
+    fetchImpl: async (_url, init) => {
+      promoLink = JSON.parse(new URLSearchParams(init.body).get('data')).link;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/FIRST' } }) };
+    },
+    timestamp: '123'
+  });
+  assert.equal(promoLink, 'https://www.hacoo.pl/en-FR/detail/40860854');
+  assert.equal(result.text, 'Publication : https://c.onlyaff.app/FIRST');
+});
+
+test('ne contourne pas un premier produit externe et conserve le lien de publication', async () => {
+  let promoCalls = 0;
+  let promoProductUrl = '';
+  const result = await replaceHacooLinks('Publication : https://www.hacoo.pl/p/15591709', {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    fetchFeedDetail: async () => ({ productCardDetail: [
+      { moduleType: 'item_detail_card', moduleData: { domain: 'taobao.com', extPlat: 'taobao', out_site: true } },
+      { moduleType: 'item_detail_card', moduleData: { item_id: 40665765 } }
+    ] }),
+    fetchImpl: async (_url, init) => {
+      promoCalls++;
+      promoProductUrl = JSON.parse(new URLSearchParams(init.body).get('data')).link;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/NEXT' } }) };
+    },
+    timestamp: '123'
+  });
+  assert.equal(promoProductUrl, '');
+  assert.equal(result.text, 'Publication : https://www.hacoo.pl/p/15591709');
+  assert.equal(result.changed, false);
+  assert.equal(result.errors.length, 1);
+  assert.equal(promoCalls, 0);
+});
+
+
+test('résout un lien OnlyAff qui redirige vers une publication Hacoo puis convertit son premier produit', async () => {
+  let redirectCalls = 0;
+  let promoProductUrl = '';
+  const result = await replaceHacooLinks('https://c.onlyaff.app/dYxHUS', {
+    config: { cookie: 'sid=test', appname: 'saramart', platform: 'pc' },
+    resolveFetchImpl: async () => {
+      redirectCalls++;
+      if (redirectCalls === 1) return {
+        status: 302, ok: false,
+        headers: { get: () => 'https://www.hacoo.pl/p/15591744' }
+      };
+      return { status: 200, ok: true, headers: { get: () => null } };
+    },
+    fetchFeedDetail: async feedId => {
+      assert.equal(feedId, '15591744');
+      return { code: 1001, data: { productCardDetail: {
+        first: { moduleType: 'item_detail_card', moduleData: { item_id: 40722058, extPlat: 'hacoo', out_site: false } },
+        second: { moduleType: 'item_detail_card', moduleData: { item_id: 40665765, extPlat: 'hacoo', out_site: false } }
+      } } };
+    },
+    fetchImpl: async (_url, init) => {
+      promoProductUrl = JSON.parse(new URLSearchParams(init.body).get('data')).link;
+      return { ok: true, status: 200, text: async () => JSON.stringify({
+        code: 1001, data: { promoLink: 'https://c.onlyaff.app/REGENERATED', linkType: 'DETAIL' }
+      }) };
+    },
+    timestamp: '123'
+  });
+  assert.equal(redirectCalls, 2);
+  assert.equal(promoProductUrl, 'https://www.hacoo.pl/en-FR/detail/40722058');
+  assert.equal(result.text, 'https://c.onlyaff.app/REGENERATED');
+  assert.equal(result.changed, true);
+  assert.equal(result.errors.length, 0);
 });

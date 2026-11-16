@@ -22,6 +22,8 @@ const { cleanPresentationLine, removeRepeatedPublicationLines } = require('./lib
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { productLinks, replaceProductLink } = require('./lib/manual-link');
 const hacooPromoLinks = require('./lib/hacoo-promo-link');
+const { createFeedDetailFetcher } = require('./lib/hacoo-feed-detail');
+const hacooFeedDetailFetcher = createFeedDetailFetcher();
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
 const { remember: rememberMemory, list: listMemory } = require('./lib/semantic-memory');
 const { inspectCandidate, stageCandidate } = require('./lib/deployment-manager');
@@ -1894,7 +1896,7 @@ async function processMessages(ctx, messages, options = {}) {
     for (const message of messages) {
       const original = msgText(message);
       if (!original) continue;
-      const result = await hacooPromoLinks.replaceHacooLinks(original, { cache: promoLinkCache });
+      const result = await hacooPromoLinks.replaceHacooLinks(original, { cache: promoLinkCache, fetchFeedDetail: hacooFeedDetailFetcher });
       promoLinkErrors.push(...result.errors);
       if (!result.changed) continue;
       try {

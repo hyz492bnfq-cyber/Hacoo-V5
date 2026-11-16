@@ -27,6 +27,40 @@ Version 6.4.0 construite sur le code V5 fourni et durcie après audit du process
 - **Optimisation éditoriale** : propose une reformulation mais ne publie jamais automatiquement.
 - **Architecture multicanale préparée**; l’activation des canaux secondaires reste désactivée par défaut.
 
+## Conversion automatique des liens Hacoo
+
+Le tableau de bord comporte le réglage **« Convertir les liens Hacoo automatiquement »** (clé interne `hacooLinkReplacementEnabled`, activé par défaut dans la configuration initiale). Lorsqu'il est activé, le remplacement intervient avant la publication, aussi bien dans le traitement automatique que dans le mode de publication manuelle.
+
+Types de liens pris en charge :
+
+- **Fiche produit Hacoo** : les routes produit reconnues (`/detail/<id>` et `/product/<id>`) sont converties en lien affilié.
+- **Publication Hacoo** : une URL `/p/<id>` est analysée pour identifier son premier produit Hacoo valide. Le bot ne saute pas un premier produit externe ou invalide pour convertir un produit ultérieur de la même publication.
+- **Lien court OnlyAff** (`c.onlyaff.app` ou sous-domaine `onlyaff.app`) : les redirections HTTPS sont suivies avec une liste de domaines autorisés. Si la destination est une fiche produit, son identifiant est vérifié; si elle est une publication `/p/<id>`, le premier produit est recherché comme ci-dessus.
+
+Le lien de destination est transmis au service de liens promotionnels Hacoo Affiliate. Le texte du post est remplacé uniquement lorsqu'un nouveau lien court affilié valide est obtenu. En cas de session expirée, de réponse inattendue, de publication non convertible ou de redirection non autorisée, le lien d'origine est conservé et une erreur est journalisée; le bot ne fabrique pas de lien de remplacement.
+
+### Configuration Hacoo Affiliate dans FadeHost
+
+Configurer les variables suivantes dans l'environnement de l'application, jamais dans le dépôt ou dans le tableau de bord public :
+
+- `HACOO_AFFILIATE_COOKIE` : cookie de session Affiliate actif.
+- `HACOO_AFFILIATE_APPNAME` : nom d'application Affiliate (valeur par défaut du code : `saramart`).
+- `HACOO_AFFILIATE_PLATFORM` : plateforme de session (`pc` par défaut; `h5` est également reconnu).
+- `HACOO_AFFILIATE_SID` : SID explicite, facultatif si le cookie contient déjà `sid`.
+- `HACOO_AFFILIATE_WEB_ID` : identifiant Web facultatif pour les appels Affiliate.
+- `HACOO_FEED_DETAIL_ETS` et `HACOO_FEED_DETAIL_F` : contexte H5 utilisé par le transport candidat de récupération des détails d'une publication. Ces valeurs doivent provenir de la session Affiliate active; ne pas les inventer.
+
+Le transport `getFeedDetail` est expérimental et n'a pas été validé en direct contre le service Hacoo. Si le contexte API n'est pas configuré ou si l'API échoue, le résolveur tente uniquement l'extraction de données publiques structurées de la page de publication; si aucune donnée fiable n'est disponible, la conversion échoue sans altérer le lien d'origine. Les cookies et valeurs de session expirent et peuvent devoir être renouvelés.
+
+### Vérification
+
+1. Activer **« Convertir les liens Hacoo automatiquement »** dans le tableau de bord.
+2. Tester sur un canal privé avec une fiche produit, une publication `/p/<id>`, un lien OnlyAff vers une fiche produit et un lien OnlyAff vers une publication.
+3. Vérifier que seuls les liens reconnus sont remplacés, que le lien affilié renvoyé est un domaine HTTPS `onlyaff.app`, et que le lien initial reste présent si la conversion échoue.
+4. Refaire le test après renouvellement de la session Affiliate si Hacoo renvoie une erreur d'authentification.
+
+Les tests automatisés couvrent notamment la sélection du premier produit, les publications non convertibles, les redirections et la génération simulée du lien affilié. Ils ne prouvent pas que les identifiants de session sont valides ni que l'API Hacoo fonctionne en production. La fonctionnalité est documentée dans cette branche de développement; elle n'est pas considérée comme déployée sur FadeHost tant qu'un déploiement contrôlé et un test réel n'ont pas été réalisés.
+
 ## Variables FadeHost
 
 Obligatoires : `BOT_TOKEN`, `ADMIN_ID`, `CHANNEL_ID`, `DASHBOARD_PASSWORD`.
