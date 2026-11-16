@@ -46,19 +46,19 @@ test('déduplique les mentions affiliées malgré petites capitales, puces et po
     '• Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur',
     '🛍️• ʟɪᴇɴ ᴀꜰꜰɪʟɪᴇ́, ᴄᴏᴍᴍɪssɪᴏɴ ᴘᴏssɪʙʟᴇ. ᴀᴜᴛʜᴇɴᴛɪᴄɪᴛᴇ́ ᴀ̀ ᴠᴇ́ʀɪꜰɪᴇʀ ᴀᴜᴘʀᴇ̀s ᴅᴜ ᴠᴇɴᴅᴇᴜʀ⚡️‼️',
     'ℹ️ • LIEN AFFILIÉ — COMMISSION POSSIBLE — AUTHENTICITÉ À VÉRIFIER AUPRÈS DU VENDEUR'
-  ].join('\\n');
+  ].join('\n');
   const result = removeRepeatedPublicationLines(input);
-  assert.equal(result.split('\\n').length, 2);
+  assert.equal(result.split('\n').length, 2);
   assert.equal(hasAffiliateDisclosure(result), true);
 });
 
 test('reconnaît une mention affiliée même si elle est au milieu du texte', () => {
   const { hasAffiliateDisclosure } = require('../lib/presentation-cleaner');
-  assert.equal(hasAffiliateDisclosure('Titre\\nℹ️ Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur\\nLien produit'), true);
+  assert.equal(hasAffiliateDisclosure('Titre\nℹ️ Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur\nLien produit'), true);
 });
 
 test('ne fusionne pas des informations produit ou des liens distincts', () => {
   const { removeRepeatedPublicationLines } = require('../lib/presentation-cleaner');
-  const input = 'Produit rouge\\nProduit bleu\\nhttps://example.test/a\\nhttps://example.test/b';
+  const input = 'Produit rouge\nProduit bleu\nhttps://example.test/a\nhttps://example.test/b';
   assert.equal(removeRepeatedPublicationLines(input), input);
 });
