@@ -20,6 +20,19 @@ test('extrait les URL sans leur ponctuation finale', () => {
   ]);
 });
 
+test('utilise le SID du compte Hacoo Affiliate pour générer les liens', async () => {
+  const config = { cookie: 'sid=test', sid: '1', appname: 'saramart', platform: 'pc' };
+  let requestedUrl = '';
+  const fetchImpl = async (url, init) => {
+    requestedUrl = url;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/OWN-LINK' } }) };
+  };
+  const { createPromoLink } = require('../lib/hacoo-promo-link');
+  const result = await createPromoLink('https://www.hacoo.pl/detail/1', { config, fetchImpl, timestamp: '123' });
+  assert.equal(new URL(result).hostname, 'c.onlyaff.app');
+  assert.equal(new URL(requestedUrl).searchParams.get('sid'), '1');
+});
+
 test('la signature promoLink correspond à la requête Hacoo observée', () => {
   assert.equal(sign({ link: 'https://www.hacoo.pl/en-FR/detail/40886057' }, '1793919275815', 'pc'), 'cbc70fd4af0ee56677f66866a8c76259');
 });
