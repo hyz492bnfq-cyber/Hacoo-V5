@@ -120,7 +120,7 @@ test('un texte séparé suivi de photos devient la légende de la première phot
   assert.deepEqual(manualAlbumCaptions([{}, {}], { text: 'Texte du post', contextMedia: true }), ['Texte du post', '']);
 });
 
-test('une seule légende sur la deuxième photo conserve sa position', () => {
+test('une seule légende sur la deuxième photo est consolidée sur la première', () => {
   assert.deepEqual(manualAlbumCaptions([{}, { caption: 'Légende photo 2' }, {}]), ['Légende photo 2', '', '']);
 });
 
