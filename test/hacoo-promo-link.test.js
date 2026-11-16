@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isHacooStoreUrl, isOnlyaffShortUrl, resolveHacooShortUrl, extractUrls, sign, replaceHacooLinks } = require('../lib/hacoo-promo-link');
+const { isHacooStoreUrl, normalizeHacooProductUrl, isOnlyaffShortUrl, resolveHacooShortUrl, extractUrls, sign, replaceHacooLinks } = require('../lib/hacoo-promo-link');
 
 test('reconnaît uniquement les domaines de boutique Hacoo sécurisés', () => {
   assert.equal(isHacooStoreUrl('https://www.hacoo.pl/en-FR/detail/40886057'), true);
@@ -14,6 +14,21 @@ test('reconnaît uniquement les domaines de boutique Hacoo sécurisés', () => {
   assert.equal(isOnlyaffShortUrl('https://example.com/dTzXl3'), false);
 });
 
+test('convertit les URL produit /p/ à 8 chiffres vers le format detail attendu par Hacoo', () => {
+  assert.equal(
+    normalizeHacooProductUrl('https://www.hacoo.pl/p/15565659?f=affiliate&ets=123'),
+    'https://www.hacoo.pl/en-FR/detail/15565659'
+  );
+  assert.equal(
+    normalizeHacooProductUrl('https://www.hacoo.pl/en-FR/detail/40886057'),
+    'https://www.hacoo.pl/en-FR/detail/40886057'
+  );
+  assert.equal(
+    normalizeHacooProductUrl('https://www.hacoo.pl/p/123'),
+    'https://www.hacoo.pl/p/123'
+  );
+});
+
 test('extrait les URL sans leur ponctuation finale', () => {
   assert.deepEqual(extractUrls('Produit https://www.hacoo.pl/detail/1, puis https://example.com/a.').map(x => x.url), [
     'https://www.hacoo.pl/detail/1', 'https://example.com/a'
@@ -22,6 +37,22 @@ test('extrait les URL sans leur ponctuation finale', () => {
 
 test('la signature promoLink correspond à la requête Hacoo observée', () => {
   assert.equal(sign({ link: 'https://www.hacoo.pl/en-FR/detail/40886057' }, '1793919275815', 'pc'), 'cbc70fd4af0ee56677f66866a8c76259');
+});
+
+test('envoie à promoLink une URL /p/ normalisée au format detail', async () => {
+  const config = { cookie: 'sid=test', sid: '10', appname: 'saramart', platform: 'pc' };
+  let sentLink;
+  const result = await replaceHacooLinks('https://www.hacoo.pl/p/15565659?f=affiliate&ets=123', {
+    config,
+    fetchImpl: async (_url, init) => {
+      sentLink = JSON.parse(new URLSearchParams(init.body).get('data')).link;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ code: 1001, data: { promoLink: 'https://c.onlyaff.app/NEW' } }) };
+    },
+    timestamp: '123'
+  });
+  assert.equal(sentLink, 'https://www.hacoo.pl/en-FR/detail/15565659');
+  assert.equal(result.text, 'https://c.onlyaff.app/NEW');
+  assert.equal(result.errors.length, 0);
 });
 
 test('remplace chaque lien Hacoo et conserve les autres domaines et la ponctuation', async () => {
