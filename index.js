@@ -18,7 +18,7 @@ const { parseChannelRegistry } = require('./lib/multichannel');
 const publicationVault = require('./lib/publication-vault');
 const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
-const { cleanPresentationLine, removeRepeatedPublicationLines } = require('./lib/presentation-cleaner');
+const { cleanPresentationLine, removeRepeatedPublicationLines, hasAffiliateDisclosure } = require('./lib/presentation-cleaner');
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { productLinks, replaceProductLink } = require('./lib/manual-link');
 const hacooPromoLinks = require('./lib/hacoo-promo-link');
@@ -887,7 +887,7 @@ function formatPostText(text, maxLength = 4096) {
   const base=formatted.trimEnd();
   const footerSpacing=Math.max(0,Math.min(3,Number(data.formatFooterSpacing)||0));
   const footerSeparator='\n'.repeat(footerSpacing+1);
-  if(footer&&!base.endsWith(footer)&&base.length+footerSeparator.length+footer.length<=maxLength)formatted=base?base+footerSeparator+footer:footer;
+  if(footer&&!base.endsWith(footer)&&!hasAffiliateDisclosure(base)&&base.length+footerSeparator.length+footer.length<=maxLength)formatted=base?base+footerSeparator+footer:footer;
  }
  return removeRepeatedPublicationLines(formatted);
 }
@@ -2249,22 +2249,28 @@ async function regroupPhotos(group) {
   // La légende peut être portée par n'importe quelle photo de la séquence,
   // pas nécessairement par la première (qui sert uniquement d'ancre).
   const captionMessage = sourceMessages.find(message => msgText(message).trim()) || anchor;
-  const caption = msgText(captionMessage);
+  const caption = removeRepeatedPublicationLines(
+    sourceMessages.map(message => msgText(message).trim()).filter(Boolean).join('\n')
+  );
 
   let finalCaption = caption;
   let entities = captionMessage.caption_entities || captionMessage.entities;
 
   finalCaption = transformPublicationText(caption, 1024);
   entities = publicationFooterEntities(finalCaption);
-  if (!entities.length && finalCaption === caption) entities = captionMessage.caption_entities || captionMessage.entities;
+  if (!entities.length && finalCaption === caption && caption === msgText(captionMessage)) entities = captionMessage.caption_entities || captionMessage.entities;
 
   const media = items.map(message => ({
     type: 'photo',
     media: message.photo[message.photo.length - 1].file_id
   }));
 
+  if (finalCaption.length > 1024) {
+    throw new Error('La légende consolidée dépasse la limite Telegram de 1024 caractères. Aucune photo de cet album ne sera envoyée : raccourcis la légende source puis relance.');
+  }
+
   if (finalCaption) {
-    media[0].caption = finalCaption.slice(0, 1024);
+    media[0].caption = finalCaption;
 
     if (entities?.length && finalCaption === caption) {
       media[0].caption_entities = entities;
@@ -2790,7 +2796,7 @@ async function publishManualPublication(item) {
           entry.caption = caption;
           const sourceEntities = contextMedia || item.edited
             ? (index === 0 ? captionEntities : undefined)
-            : (m.caption_entities || undefined);
+            : (index === 0 && captions[0] === String(m.caption || '') && albumMessages.slice(1).every(message => !String(message.caption || '').trim()) ? (m.caption_entities || undefined) : undefined);
           if (sourceEntities?.length) entry.caption_entities = sourceEntities;
         }
         return entry;
@@ -2930,13 +2936,14 @@ async function restorePublicationVault(archiveId, destinationId, job) {
         const bytes = await publicationVault.readMedia({ root: PUBLICATION_VAULT_ROOT, archiveId, fileId: record.mediaFileId, key });
         files.push(new ResenderCustomFile(record.fileName || 'media.bin', bytes.length, '', bytes));
       }
-      const captions = mediaRecords.map(item => item.text || '');
-      if (files.length === 1) await client.sendFile(destination, { file: files[0], caption: captions[0] });
-      else {
-        for (let offset = 0; offset < files.length; offset += 10) {
-          await client.sendFile(destination, { file: files.slice(offset, offset + 10), caption: captions.slice(offset, offset + 10) });
-        }
+      const restoreChunks = [];
+      for (let offset = 0; offset < files.length; offset += 10) {
+        const chunkRecords = mediaRecords.slice(offset, offset + 10);
+        const caption = removeRepeatedPublicationLines(chunkRecords.map(record => String(record.text || '').trim()).filter(Boolean).join('\n'));
+        if (caption.length > 1024) throw new Error(`Légende de restauration trop longue (${caption.length}/1024 caractères). Aucun média de ce groupe n'a été restauré.`);
+        restoreChunks.push({ file: files.slice(offset, offset + 10), caption });
       }
+      for (const chunk of restoreChunks) await client.sendFile(destination, chunk);
     } else {
       for (const record of group) if (record.text) await client.sendMessage(destination, { message: record.text, linkPreview: true });
     }
