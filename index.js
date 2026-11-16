@@ -3264,6 +3264,7 @@ bot.command('groupid', async ctx => {
   await ctx.reply('Identifiant de ce groupe : ' + ctx.chat.id + '\nAjoute cet identifiant dans Paramètres > Modération du groupe.');
 });
 bot.on('my_chat_member', ctx => rememberChannelSyncChat(ctx.myChatMember?.chat));
+bot.on('edited_message', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedMessage); });
 bot.on('edited_channel_post', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedChannelPost); observeEditedChannelPost(ctx); });
 
 bot.catch(error => {
@@ -4484,7 +4485,8 @@ app.post('/api/manual-publications/trash/:id/restore', (req, res) => {
 });
 
 app.get('/api/hacoo-auto-append', (_req, res) => {
-  const chats = [...new Map((data.channelSyncChats || []).map(item => [String(item.id), item])).values()];
+  const registry = parseChannelRegistry();
+  const chats = [...new Map([...(data.channelSyncChats || []), ...(registry.channels || []).map(item => ({ ...item, type: 'channel' })), { id: CHANNEL_ID, name: 'Canal principal', type: 'channel' }].map(item => [String(item.id), item])).values()];
   res.json({ chats, rules: hacooAutoAppend.normalizeRules(data.hacooAutoAppendRules) });
 });
 app.put('/api/hacoo-auto-append', (req, res) => {
