@@ -31,3 +31,43 @@ test('preserves captions and refuses Telegram length overflow', () => {
   const tooLong = appendConfiguredText({ text: 'https://hacoo.app/' + 'x'.repeat(4090) }, { enabled: true, text: 'Fin' });
   assert.equal(tooLong.reason, 'telegram-limit');
 });
+
+
+test('calls grammY editMessageCaption with caption as third argument', async () => {
+  const { editOriginalMessage } = require('../lib/hacoo-auto-append');
+  const calls = [];
+  const api = { editMessageCaption: async (...args) => { calls.push(args); } };
+  const message = {
+    chat: { id: -100123 },
+    message_id: 44,
+    caption: 'https://hacoo.app/item/1',
+    caption_entities: [{ type: 'bold', offset: 0, length: 4 }]
+  };
+  const result = appendConfiguredText(message, { enabled: true, text: 'À découvrir' });
+  await editOriginalMessage(api, message, result);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], -100123);
+  assert.equal(calls[0][1], 44);
+  assert.equal(calls[0][2], 'https://hacoo.app/item/1\n\nÀ découvrir');
+  assert.deepEqual(calls[0][3], { caption_entities: message.caption_entities });
+});
+
+test('calls grammY editMessageText with text as third argument', async () => {
+  const { editOriginalMessage } = require('../lib/hacoo-auto-append');
+  const calls = [];
+  const api = { editMessageText: async (...args) => { calls.push(args); } };
+  const message = { chat: { id: -100123 }, message_id: 45, text: 'https://hacoo.app/item/2', entities: [] };
+  const result = appendConfiguredText(message, { enabled: true, text: 'À découvrir' });
+  await editOriginalMessage(api, message, result);
+  assert.equal(calls[0][2], 'https://hacoo.app/item/2\n\nÀ découvrir');
+  assert.deepEqual(calls[0][3], { entities: [] });
+});
+
+test('retains caption editing mode for photo posts', () => {
+  const result = appendConfiguredText(
+    { chat: { id: -100123 }, message_id: 46, photo: [{}], caption: 'https://hacoo.app/item/3' },
+    { enabled: true, text: 'À découvrir' }
+  );
+  assert.equal(result.field, 'caption');
+  assert.equal(result.changed, true);
+});
