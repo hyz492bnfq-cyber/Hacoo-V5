@@ -18,7 +18,7 @@ const { parseChannelRegistry } = require('./lib/multichannel');
 const publicationVault = require('./lib/publication-vault');
 const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
-const { cleanPresentationLine, removeRepeatedPublicationLines } = require('./lib/presentation-cleaner');
+const { cleanPresentationLine, removeRepeatedPublicationLines, hasAffiliateDisclosure } = require('./lib/presentation-cleaner');
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { productLinks, replaceProductLink } = require('./lib/manual-link');
 const hacooPromoLinks = require('./lib/hacoo-promo-link');
@@ -887,7 +887,7 @@ function formatPostText(text, maxLength = 4096) {
   const base=formatted.trimEnd();
   const footerSpacing=Math.max(0,Math.min(3,Number(data.formatFooterSpacing)||0));
   const footerSeparator='\n'.repeat(footerSpacing+1);
-  if(footer&&!base.endsWith(footer)&&base.length+footerSeparator.length+footer.length<=maxLength)formatted=base?base+footerSeparator+footer:footer;
+  if(footer&&!hasAffiliateDisclosure(base)&&base.length+footerSeparator.length+footer.length<=maxLength)formatted=base?base+footerSeparator+footer:footer;
  }
  return removeRepeatedPublicationLines(formatted);
 }
