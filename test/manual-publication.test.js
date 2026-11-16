@@ -94,9 +94,21 @@ test('le délai d’attente par défaut laisse une fenêtre de collecte de 12 se
   assert.equal(nextAlbumWaitMs({ startedAt: 1000, lastMessageAt: 1000, now: 1000 }), 12000);
 });
 
-test('un album avec plusieurs légendes conserve chaque légende sur sa photo', () => {
+test('un album avec plusieurs légendes les conserve dans une seule caption consolidée', () => {
   const messages = [{ caption: 'Légende A' }, {}, { caption: 'Légende C' }];
-  assert.deepEqual(manualAlbumCaptions(messages), ['Légende A', '', 'Légende C']);
+  assert.deepEqual(manualAlbumCaptions(messages), ['Légende A\nLégende C', '', '']);
+});
+
+test('les avertissements affiliés répétés sont dédupliqués dans un album manuel', () => {
+  const disclosure = 'Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur';
+  const messages = [{ caption: 'Produit A\n' + disclosure }, { caption: disclosure }];
+  const captions = manualAlbumCaptions(messages);
+  assert.equal(captions[0].split('Lien affilié').length - 1, 1);
+  assert.equal(captions[1], '');
+});
+
+test('une légende portée par une photo intermédiaire est conservée dans la caption consolidée', () => {
+  assert.deepEqual(manualAlbumCaptions([{}, { caption: 'Légende photo 2' }, {}]), ['Légende photo 2', '', '']);
 });
 
 test('une édition manuelle place le texte édité sur la première photo sans dupliquer les anciennes légendes', () => {
