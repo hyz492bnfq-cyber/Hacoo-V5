@@ -2249,7 +2249,9 @@ async function regroupPhotos(group) {
   // La légende peut être portée par n'importe quelle photo de la séquence,
   // pas nécessairement par la première (qui sert uniquement d'ancre).
   const captionMessage = sourceMessages.find(message => msgText(message).trim()) || anchor;
-  const caption = msgText(captionMessage);
+  const caption = removeRepeatedPublicationLines(
+    sourceMessages.map(message => msgText(message).trim()).filter(Boolean).join('\n')
+  );
 
   let finalCaption = caption;
   let entities = captionMessage.caption_entities || captionMessage.entities;
@@ -2263,8 +2265,12 @@ async function regroupPhotos(group) {
     media: message.photo[message.photo.length - 1].file_id
   }));
 
+  if (finalCaption.length > 1024) {
+    throw new Error('La légende consolidée dépasse la limite Telegram de 1024 caractères. Aucune photo de cet album ne sera envoyée : raccourcis la légende source puis relance.');
+  }
+
   if (finalCaption) {
-    media[0].caption = finalCaption.slice(0, 1024);
+    media[0].caption = finalCaption;
 
     if (entities?.length && finalCaption === caption) {
       media[0].caption_entities = entities;
@@ -2930,11 +2936,13 @@ async function restorePublicationVault(archiveId, destinationId, job) {
         const bytes = await publicationVault.readMedia({ root: PUBLICATION_VAULT_ROOT, archiveId, fileId: record.mediaFileId, key });
         files.push(new ResenderCustomFile(record.fileName || 'media.bin', bytes.length, '', bytes));
       }
-      const captions = mediaRecords.map(item => item.text || '');
-      if (files.length === 1) await client.sendFile(destination, { file: files[0], caption: captions[0] });
-      else {
+      if (files.length === 1) {
+        await client.sendFile(destination, { file: files[0], caption: removeRepeatedPublicationLines(mediaRecords[0].text || '') });
+      } else {
         for (let offset = 0; offset < files.length; offset += 10) {
-          await client.sendFile(destination, { file: files.slice(offset, offset + 10), caption: captions.slice(offset, offset + 10) });
+          const chunkRecords = mediaRecords.slice(offset, offset + 10);
+          const caption = removeRepeatedPublicationLines(chunkRecords.map(record => String(record.text || '').trim()).filter(Boolean).join('\n'));
+          await client.sendFile(destination, { file: files.slice(offset, offset + 10), caption });
         }
       }
     } else {
