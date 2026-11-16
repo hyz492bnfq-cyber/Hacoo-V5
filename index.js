@@ -22,6 +22,7 @@ const { cleanPresentationLine, removeRepeatedPublicationLines, hasAffiliateDiscl
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { productLinks, replaceProductLink } = require('./lib/manual-link');
 const hacooPromoLinks = require('./lib/hacoo-promo-link');
+const hacooAutoAppend = require('./lib/hacoo-auto-append');
 const { createSchedule, listSchedules, cancelSchedule, processDueSchedules, recoverSendingSchedules } = require('./lib/publication-scheduler');
 const { remember: rememberMemory, list: listMemory } = require('./lib/semantic-memory');
 const { inspectCandidate, stageCandidate } = require('./lib/deployment-manager');
@@ -143,6 +144,7 @@ const DEFAULTS = {
   groupPhotosContextVersion: 2,
 
   hacooLinkReplacementEnabled: true,
+  hacooAutoAppendRules: [],
   formatEnabled: false,
   formatTitlePrefix: '🛍️ ',
   formatTitleSuffix: ' 🤩‼️',
@@ -277,6 +279,7 @@ function normalizeData(saved) {
   }
 
   if (!out.geminiModelState || typeof out.geminiModelState !== 'object' || Array.isArray(out.geminiModelState)) out.geminiModelState = {};
+  out.hacooAutoAppendRules = hacooAutoAppend.normalizeRules(out.hacooAutoAppendRules);
   if (!out.channelSync || typeof out.channelSync !== 'object' || Array.isArray(out.channelSync)) out.channelSync = clone(DEFAULTS.channelSync);
   out.channelSync.enabled = Boolean(out.channelSync.enabled);
   out.channelSync.sourceChatId = String(out.channelSync.sourceChatId || '').trim().slice(0, 80);
@@ -3042,6 +3045,33 @@ async function runChannelSyncImport(job) {
   }
   data.channelSyncImports = data.channelSyncImports.slice(-100); saveNow();
 }
+async function applyHacooAutoAppend(ctx, message) {
+  if (!message?.chat?.id || !message.message_id) return;
+  const chatId = String(message.chat.id);
+  const rule = (data.hacooAutoAppendRules || []).find(item => item.chatId === chatId && item.enabled && item.text);
+  if (!rule) return;
+  const result = hacooAutoAppend.appendConfiguredText(message, rule);
+  if (!result.changed) return;
+  try {
+    if (result.field === 'caption') {
+      await ctx.api.editMessageCaption(chatId, message.message_id, {
+        caption: result.text,
+        caption_entities: message.caption_entities || []
+      });
+      message.caption = result.text;
+    } else {
+      await ctx.api.editMessageText(chatId, message.message_id, result.text, {
+        entities: message.entities || []
+      });
+      message.text = result.text;
+    }
+    console.log('Texte Hacoo ajouté au message original', chatId, message.message_id);
+  } catch (error) {
+    const reason = String(error?.description || error?.message || error).slice(0, 240);
+    console.warn('Modification automatique Hacoo impossible pour', chatId, message.message_id, reason);
+  }
+}
+
 function rememberChannelSyncChat(chat) {
   if (!chat?.id) return;
   const item = { id: String(chat.id), name: String(chat.title || chat.username || `Chat ${chat.id}`).slice(0, 100), type: String(chat.type || 'chat') };
@@ -3216,11 +3246,12 @@ bot.command('history', async ctx => {
   );
 });
 
-bot.on('channel_post', queueChannelPost);
+bot.on('channel_post', async ctx => { await applyHacooAutoAppend(ctx, ctx.channelPost); queueChannelPost(ctx); });
 bot.on('message', async (ctx, next) => {
   const message = ctx.message;
   if (!message) return;
   rememberChannelSyncChat(message.chat);
+  await applyHacooAutoAppend(ctx, message);
   try {
     await moderateGroupMessage(ctx, { data, adminId: ADMIN_ID, generateText, saveData });
   } catch (error) {
@@ -3233,7 +3264,7 @@ bot.command('groupid', async ctx => {
   await ctx.reply('Identifiant de ce groupe : ' + ctx.chat.id + '\nAjoute cet identifiant dans Paramètres > Modération du groupe.');
 });
 bot.on('my_chat_member', ctx => rememberChannelSyncChat(ctx.myChatMember?.chat));
-bot.on('edited_channel_post', observeEditedChannelPost);
+bot.on('edited_channel_post', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedChannelPost); observeEditedChannelPost(ctx); });
 
 bot.catch(error => {
   noteError(error.error || error);
@@ -4450,6 +4481,22 @@ app.post('/api/manual-publications/trash/:id/restore', (req, res) => {
   data.manualPublications.push(item);
   saveNow();
   res.json({ ok: true });
+});
+
+app.get('/api/hacoo-auto-append', (_req, res) => {
+  const chats = [...new Map((data.channelSyncChats || []).map(item => [String(item.id), item])).values()];
+  res.json({ chats, rules: hacooAutoAppend.normalizeRules(data.hacooAutoAppendRules) });
+});
+app.put('/api/hacoo-auto-append', (req, res) => {
+  const chatId = String(req.body?.chatId || '').trim();
+  if (!/^-?\d{1,20}$/u.test(chatId)) return res.status(400).json({ error: 'Sélectionne un chat Telegram valide.' });
+  const text = String(req.body?.text || '').replace(/\u0000/g, '').slice(0, 600);
+  const enabled = req.body?.enabled === true;
+  const rules = hacooAutoAppend.normalizeRules(data.hacooAutoAppendRules).filter(rule => rule.chatId !== chatId);
+  rules.push({ chatId, enabled, text });
+  data.hacooAutoAppendRules = hacooAutoAppend.normalizeRules(rules);
+  saveData();
+  res.json({ ok: true, rules: data.hacooAutoAppendRules });
 });
 
 app.get('/api/channel-sync', (_req, res) => {
