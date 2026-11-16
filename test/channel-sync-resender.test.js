@@ -107,3 +107,36 @@ test('Resender garde une seule caption par lot lorsque l’album dépasse dix m�
   assert.equal(sent[1].file.length, 2);
   assert.equal(sent[1].caption, '');
 });
+
+test('Resender ne fabrique pas de pied de page pour un lot sans légende', async () => {
+  const sent = [];
+  const client = {
+    async getEntity(id) { return { id }; },
+    async downloadMedia(message) { return Buffer.from(String(message.id)); },
+    async sendFile(destination, value) { sent.push(value); }
+  };
+  await republish(client, '-1002', [
+    { id: 1, groupedId: 9n, message: 'Titre', photo: true },
+    { id: 2, groupedId: 9n, message: '', photo: true },
+    { id: 3, groupedId: 9n, message: '', photo: true }
+  ], text => text ? `${text}\\nPied de page` : 'Pied de page');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].caption, 'Titre\\nPied de page');
+});
+
+test('Resender refuse une légende consolidée trop longue avant tout envoi', async () => {
+  let sendCalls = 0;
+  const client = {
+    async getEntity(id) { return { id }; },
+    async downloadMedia(message) { return Buffer.from(String(message.id)); },
+    async sendFile() { sendCalls++; }
+  };
+  await assert.rejects(
+    republish(client, '-1002', [
+      { id: 1, groupedId: 10n, message: 'x'.repeat(1025), photo: true },
+      { id: 2, groupedId: 10n, message: '', photo: true }
+    ]),
+    /1024 caractères/
+  );
+  assert.equal(sendCalls, 0);
+});
