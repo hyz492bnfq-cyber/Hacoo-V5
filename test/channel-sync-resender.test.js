@@ -72,3 +72,42 @@ test('Resender distingue les groupes, supergroupes et canaux de diffusion', asyn
     { id: '-10033', name: 'Canal de diffusion', type: 'canal' }
   ]);
 });
+
+test('Resender regroupe toutes les légendes d’un album dans une seule caption transformée', async () => {
+  const sent = [];
+  const client = {
+    async getEntity(id) { return { id }; },
+    async downloadMedia(message) { return Buffer.from(String(message.id)); },
+    async sendFile(destination, value) { sent.push({ destination, ...value }); }
+  };
+  await republish(client, '-1002', [
+    { id: 1, groupedId: 7n, message: 'Titre produit\\nLien produit A', photo: true },
+    { id: 2, groupedId: 7n, message: 'ℹ️ Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur', photo: true },
+    { id: 3, groupedId: 7n, message: '🛍️• ʟɪᴇɴ ᴀꜰꜰɪʟɪᴇ́, ᴄᴏᴍᴍɪssɪᴏɴ ᴘᴏssɪʙʟᴇ. ᴀᴜᴛʜᴇɴᴛɪᴄɪᴛᴇ́ ᴀ̀ ᴠᴇ́ʀɪꜰɪᴇʀ ᴀᴜᴘʀᴇ̀s ᴅᴜ ᴠᴇɴᴅᴇᴜʀ⚡️‼️', photo: true }
+  ], text => require('../lib/presentation-cleaner').removeRepeatedPublicationLines(text));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].file.length, 3);
+  assert.equal(typeof sent[0].caption, 'string');
+  assert.match(sent[0].caption, /Titre produit/);
+  assert.match(sent[0].caption, /Lien produit A/);
+  assert.equal((sent[0].caption.match(/Lien affilié/giu) || []).length, 1);
+});
+
+test('Resender garde une seule caption par lot lorsque l’album dépasse dix médias', async () => {
+  const sent = [];
+  const client = {
+    async getEntity(id) { return { id }; },
+    async downloadMedia(message) { return Buffer.from(String(message.id)); },
+    async sendFile(destination, value) { sent.push(value); }
+  };
+  await republish(client, '-1002', Array.from({ length: 12 }, (_, index) => ({
+    id: index + 1, groupedId: 8n,
+    message: index === 0 ? 'Titre album' : '',
+    photo: true
+  })), text => text);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].file.length, 10);
+  assert.equal(sent[0].caption, 'Titre album');
+  assert.equal(sent[1].file.length, 2);
+  assert.equal(sent[1].caption, '');
+});
