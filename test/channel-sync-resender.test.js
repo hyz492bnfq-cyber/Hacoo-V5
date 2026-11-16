@@ -19,10 +19,10 @@ test('Resender récupère les dernières publications et traite un album comme u
   assert.equal(result.copied, 3);
   assert.deepEqual(result.keys, ['-1001:4-5', '-1001:6']);
   assert.equal(messageId({ id: 6 }), 6);
-  assert.deepEqual(sent, [[{ id: '-1002' }, ['album', ''], true], [{ id: '-1002' }, 'texte', false]]);
+  assert.deepEqual(sent, [[{ id: '-1002' }, 'album', true], [{ id: '-1002' }, 'texte', false]]);
 });
 
-test('Resender transforme chaque légende sans perdre les médias de l’album', async () => {
+test('Resender transforme une seule légende consolidée sans perdre les médias de l’album', async () => {
   const sent = [];
   const client = {
     async getEntity(id) { return { id }; },
@@ -36,11 +36,7 @@ test('Resender transforme chaque légende sans perdre les médias de l’album',
   ], text => text ? `M2REPS: ${text}` : text);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].file.length, 3);
-  assert.deepEqual(sent[0].caption, [
-    'M2REPS: titre produit',
-    'M2REPS: 👉🏼 https://exemple.test',
-    ''
-  ]);
+  assert.equal(sent[0].caption, 'M2REPS: titre produit\\n👉🏼 https://exemple.test');
   assert.deepEqual(sent[0].file.map(file => file.name), ['photo.jpg', 'photo.jpg', 'photo.jpg']);
 });
 
