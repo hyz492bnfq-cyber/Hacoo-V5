@@ -771,6 +771,20 @@ input[type=search]::-webkit-search-cancel-button{filter:invert(.6)}
           <div class="btnrow"><button class="btn primary" id="saveFormat" type="button">Enregistrer le format</button><button class="btn" id="openFormatAssistant" type="button">✧ Assistant IA</button></div>
         </div>
       </div></details>
+<details class="group" id="g-hacoo-auto-append"><summary><span class="gi"><svg class="ic"><use href="#i-link"/></svg></span><div><b>Ajout automatique sur liens Hacoo</b><span class="s" id="s-hacoo-auto-append">Par chat Telegram</span></div></summary>
+ <div class="gbody">
+  <p class="small muted" style="padding:8px 0 12px">Détecte uniquement les domaines Hacoo pris en charge (hacoo.app, hacoo.pl et les liens courts onlyaff.app), y compris les liens cliquables masqués. Le texte est ajouté à la fin du message original, sans second message.</p>
+  <div class="subsec">
+   <label class="lb" for="hacooAutoAppendChat">Chat concerné</label>
+   <select id="hacooAutoAppendChat"><option value="">Chargement des chats…</option></select>
+   <div class="set"><div class="tx"><b>Activer pour ce chat</b><span>Chaque publication Hacoo de ce chat sera complétée.</span></div><input id="hacooAutoAppendEnabled" type="checkbox"></div>
+   <label class="lb" for="hacooAutoAppendText">Texte à ajouter à la fin</label>
+   <textarea id="hacooAutoAppendText" rows="4" maxlength="600" placeholder="Ton texte automatique…"></textarea>
+   <p class="tiny muted" id="hacooAutoAppendNote">Les publications de canal nécessitent que le bot soit administrateur avec le droit de modifier les messages. Telegram peut refuser la modification des messages écrits par d'autres membres dans un groupe.</p>
+   <div class="btnrow"><button class="btn primary" id="saveHacooAutoAppend" type="button">Enregistrer cette règle</button></div>
+  </div>
+ </div>
+</details>
 <details class="group" id="g-replacements"><summary><span class="gi"><svg class="ic"><use href="#i-swap"/></svg></span><div><b>Remplacement de texte</b><span class="s" id="s-replacements"></span></div></summary>
       <div class="gbody"><div class="subsec">
         <p class="small muted">Chaque publication du canal est vérifiée : si un texte d'origine y figure, il est remplacé par ton texte. S'applique aux textes et légendes des posts ainsi qu'aux publications programmées.</p>
@@ -2200,6 +2214,31 @@ function renderGroupModerationPending(items){
  $('#groupModPendingCount').textContent=String(items.length);
  root.innerHTML=items.length?items.map(item=>'<div class="item"><div class="row between"><b>'+esc(item.displayName||item.username||('Membre '+item.userId))+'</b><span class="tag warn">'+esc(Math.round(Number(item.confidence||0)*100)+' %')+'</span></div><div class="small muted">'+esc(item.chatTitle||item.chatId)+' · '+esc(item.category||'à vérifier')+'</div><div class="small break">'+esc(item.preview||'')+'</div><div class="row wrap"><button class="btn sm danger" type="button" data-gm-review="delete" data-gm-id="'+esc(item.id)+'">Confirmer la suppression</button><button class="btn sm" type="button" data-gm-review="ignore" data-gm-id="'+esc(item.id)+'">Ignorer</button></div></div>').join(''):'<div class="empty">Aucun cas en attente.</div>';
 }
+let hacooAutoAppendState={rules:[],chats:[]};
+function renderHacooAutoAppend(){
+ const select=$('#hacooAutoAppendChat'),previous=select.value;
+ const chats=hacooAutoAppendState.chats||[];
+ select.innerHTML=chats.length?chats.map(chat=>'<option value="'+esc(chat.id)+'">'+esc(chat.name||('Chat '+chat.id))+' · '+esc(chat.type||'chat')+'</option>').join(''):'<option value="">Aucun chat connu — le bot doit recevoir au moins un message.</option>';
+ if(previous&&chats.some(chat=>String(chat.id)===previous))select.value=previous;
+ const rule=hacooAutoAppendState.rules.find(item=>item.chatId===select.value);
+ $('#hacooAutoAppendEnabled').checked=Boolean(rule?.enabled);
+ $('#hacooAutoAppendText').value=rule?.text||'';
+ $('#s-hacoo-auto-append').textContent=hacooAutoAppendState.rules.filter(item=>item.enabled).length+' règle(s) active(s)';
+}
+async function loadHacooAutoAppend(){
+ try{const result=await api('/api/hacoo-auto-append');hacooAutoAppendState=result;renderHacooAutoAppend();}
+ catch(error){$('#hacooAutoAppendNote').textContent='Chargement impossible : '+error.message;}
+}
+$('#hacooAutoAppendChat').addEventListener('change',renderHacooAutoAppend);
+$('#saveHacooAutoAppend').addEventListener('click',async event=>{
+ const chatId=$('#hacooAutoAppendChat').value;
+ if(!chatId){toast('Sélectionne un chat Telegram.','bad');return;}
+ try{await busy(event.currentTarget,'Enregistrement…',async()=>{
+  const result=await api('/api/hacoo-auto-append',{method:'PUT',body:JSON.stringify({chatId,enabled:$('#hacooAutoAppendEnabled').checked,text:$('#hacooAutoAppendText').value})});
+  hacooAutoAppendState.rules=result.rules||[];renderHacooAutoAppend();$('#hacooAutoAppendChat').value=chatId;renderHacooAutoAppend();toast('Règle Hacoo enregistrée.','ok');
+ });}catch(error){toast(error.message,'bad');}
+});
+
 async function loadGroupModeration(){
  try{
   const [result,sync]=await Promise.all([api('/api/group-moderation'),api('/api/channel-sync')]),g=result.config||{};
@@ -2265,7 +2304,7 @@ function showTab(name){
  replayNums($('#tab-'+name));
  if(name==='publications')loadManual();
  if((name==='affiliate'||name==='forecast')&&!affiliateLoaded)loadAffiliate();
- if(name==='settings'){loadChannelSync();loadGroupModeration();}
+ if(name==='settings'){loadChannelSync();loadGroupModeration();loadHacooAutoAppend();}
 }
 $('#tabbar').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab);});
 $('#refreshBtn').addEventListener('click',()=>{loadCore(true);if(S.tab==='affiliate'||S.tab==='forecast')loadAffiliate();});
@@ -2301,7 +2340,7 @@ setInterval(()=>{if(!document.hidden&&!$('#backdrop').classList.contains('open')
 // de 5 minutes est activée uniquement par le bouton dédié.
 const first=(location.hash||'').slice(1);
 if(TABS.includes(first)&&first!=='home')showTab(first);else{moveInd();}
-loadCore().then(()=>{if(S.tab==='publications')loadManual();if(S.tab==='settings')loadChannelSync();});
+loadCore().then(()=>{if(S.tab==='publications')loadManual();if(S.tab==='settings'){loadChannelSync();loadHacooAutoAppend();}});
 if(S.tab!=='affiliate')loadAffiliate();
 </script>
 </body>
