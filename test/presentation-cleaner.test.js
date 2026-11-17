@@ -80,3 +80,13 @@ test('reconnaît la mention affiliée collée au titre sans confondre les deux',
   assert.equal(hasAffiliateDisclosure(value), true);
   assert.equal(hasSubstantivePublicationText(value), true);
 });
+
+
+test('la mention affiliée exige un lien réel dans la publication', () => {
+  const { hasPublicationLink } = require('../lib/presentation-cleaner');
+  assert.equal(hasPublicationLink('Pull Ralph Lauren\\n-15% coupon : M2REPS'), false);
+  assert.equal(hasPublicationLink('Pull Ralph Lauren\\nhttps://c.onlyaff.app/ene4vd'), true);
+  assert.equal(hasPublicationLink('Pull Ralph Lauren\\nc.onlyaff.app/ene4vd'), true);
+  assert.equal(hasPublicationLink('Pull Ralph Lauren\\nLien ici', [{ type: 'text_link', url: 'https://c.onlyaff.app/ene4vd', offset: 17, length: 8 }]), true);
+  assert.equal(hasPublicationLink('Contact : client@example.com'), false);
+});
