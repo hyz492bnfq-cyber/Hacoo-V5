@@ -62,3 +62,13 @@ test('ne fusionne pas des informations produit ou des liens distincts', () => {
   const input = 'Produit rouge\nProduit bleu\nhttps://example.test/a\nhttps://example.test/b';
   assert.equal(removeRepeatedPublicationLines(input), input);
 });
+
+
+test('une mention affiliée seule ne constitue jamais une légende produit', () => {
+  const { hasSubstantivePublicationText, removeAffiliateDisclosureLines } = require('../lib/presentation-cleaner');
+  const disclosure = '🛍️• ʟɪᴇɴ ᴀꜰꜰɪʟɪᴇ́, ᴄᴏᴍᴍɪssɪᴏɴ ᴘᴏssɪʙʟᴇ. ᴀᴜᴛʜᴇɴᴛɪᴄɪᴛᴇ́ ᴀ̀ ᴠᴇ́ʀɪꜰɪᴇʀ ᴀᴜᴘʀᴇ̀s ᴅᴜ ᴠᴇɴᴅᴇᴜʀ⚡️‼️';
+  assert.equal(hasSubstantivePublicationText(disclosure), false);
+  assert.equal(removeAffiliateDisclosureLines(disclosure), '');
+  assert.equal(hasSubstantivePublicationText('ASICS Gel Nimbus 16\n' + disclosure), true);
+  assert.equal(hasSubstantivePublicationText('https://c.onlyaff.app/eohYlc'), false);
+});
