@@ -71,3 +71,20 @@ test('retains caption editing mode for photo posts', () => {
   assert.equal(result.field, 'caption');
   assert.equal(result.changed, true);
 });
+
+test('does not append a second affiliate disclosure when the original uses small caps and emoji decorations', () => {
+  const original = [
+    '🛍️Pull RALPH LAUREN⚡️‼️',
+    '-15% coupon : M2REPS',
+    '👉https://c.onlyaff.app/ene4vd',
+    '• ʟɪᴇɴ ᴀꜰꜰɪʟɪᴇ́, ᴄᴏᴍᴍɪssɪᴏɴ ᴘᴏssɪʙʟᴇ. ᴀᴜᴛʜᴇɴᴛɪᴄɪᴛᴇ́ ᴀ̀ ᴠᴇ́ʀɪꜰɪᴇʀ ᴀᴜᴘʀᴇ̀s ᴅᴜ ᴠᴇɴᴅᴇᴜʀ'
+  ].join('\\n');
+  const configured = '🛍️• Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur⚡️‼️';
+  const result = appendConfiguredText(
+    { caption: original, photo: [{}] },
+    { enabled: true, text: configured }
+  );
+  assert.equal(result.changed, false);
+  assert.equal(result.reason, 'already-appended');
+  assert.equal(result.text, original);
+});
