@@ -72,3 +72,11 @@ test('une mention affiliée seule ne constitue jamais une légende produit', () 
   assert.equal(hasSubstantivePublicationText('ASICS Gel Nimbus 16\n' + disclosure), true);
   assert.equal(hasSubstantivePublicationText('https://c.onlyaff.app/eohYlc'), false);
 });
+
+
+test('reconnaît la mention affiliée collée au titre sans confondre les deux', () => {
+  const { hasAffiliateDisclosure, hasSubstantivePublicationText } = require('../lib/presentation-cleaner');
+  const value = 'ASICS Gel Nimbus 16 \\n • Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur';
+  assert.equal(hasAffiliateDisclosure(value), true);
+  assert.equal(hasSubstantivePublicationText(value), true);
+});
