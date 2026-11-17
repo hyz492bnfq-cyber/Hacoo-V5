@@ -188,3 +188,13 @@ test('une séquence de photos indépendantes ne peut pas dépasser la fenêtre m
   state.lastMessageAt = 1000;
   assert.equal(accepts(state, photo(2), { now: 31001 }), false);
 });
+
+
+test('une mention affiliée seule ne compte pas comme légende et ne ferme pas un album', () => {
+  const disclosure = 'Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur';
+  const state = group(photo(1, disclosure));
+  assert.equal(accepts(state, photo(2), { now: 1200 }), true);
+  state.photos.push(photo(2));
+  state.lastMessageAt = 1200;
+  assert.equal(accepts(state, photo(3, 'ASICS Gel Nimbus 16'), { now: 1300 }), true);
+});

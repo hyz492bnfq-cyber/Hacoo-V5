@@ -88,3 +88,17 @@ test('does not append a second affiliate disclosure when the original uses small
   assert.equal(result.reason, 'already-appended');
   assert.equal(result.text, original);
 });
+
+
+test('interdit formellement une mention affiliée comme seule légende d’une photo', () => {
+  const disclosure = 'Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur';
+  const emptyCaption = appendConfiguredText({ photo: [{}], caption: 'https://hacoo.app/p/empty' }, { enabled: true, text: disclosure });
+  assert.equal(emptyCaption.changed, false);
+  assert.equal(emptyCaption.reason, 'no-product-caption');
+  const disclosureOnly = appendConfiguredText({ photo: [{}], caption: disclosure + '\nhttps://hacoo.app/p/1' }, { enabled: true, text: disclosure });
+  assert.equal(disclosureOnly.changed, false);
+  assert.equal(disclosureOnly.reason, 'no-product-caption');
+  const realCaption = appendConfiguredText({ photo: [{}], caption: 'ASICS Gel Nimbus 16\nhttps://hacoo.app/p/1' }, { enabled: true, text: disclosure });
+  assert.equal(realCaption.changed, true);
+  assert.match(realCaption.text, /^ASICS Gel Nimbus 16\nhttps:\/\/hacoo\.app\/p\/1\n\nLien affilié/u);
+});

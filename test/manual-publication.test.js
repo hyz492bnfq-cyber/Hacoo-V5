@@ -130,3 +130,11 @@ test('les photos arrivées après finalisation sont isolées du contenu déjà p
   assert.deepEqual(remainingAlbumMessages(messages, [1, 2]), [{ message_id: 3 }]);
   assert.deepEqual(remainingAlbumMessages(messages, [1, 2, 3]), []);
 });
+
+
+test('une mention affiliée seule est interdite comme légende d’un album manuel', () => {
+  const disclosure = 'Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur';
+  assert.deepEqual(manualAlbumCaptions([{ caption: disclosure }, {}]), ['', '']);
+  assert.deepEqual(manualAlbumCaptions([{}, {}], { text: disclosure, contextMedia: true }), ['', '']);
+  assert.deepEqual(manualAlbumCaptions([{ caption: 'ASICS Gel Nimbus 16\n' + disclosure }, {}]), ['ASICS Gel Nimbus 16\n' + disclosure, '']);
+});
