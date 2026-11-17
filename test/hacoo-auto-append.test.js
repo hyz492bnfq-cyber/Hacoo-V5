@@ -95,7 +95,7 @@ test('interdit formellement une mention affiliée comme seule légende d’une p
   const emptyCaption = appendConfiguredText({ photo: [{}], caption: 'https://hacoo.app/p/empty' }, { enabled: true, text: disclosure });
   assert.equal(emptyCaption.changed, false);
   assert.equal(emptyCaption.reason, 'no-product-caption');
-  const disclosureOnly = appendConfiguredText({ photo: [{}], caption: disclosure + '\\nhttps://hacoo.app/p/1' }, { enabled: true, text: disclosure });
+  const disclosureOnly = appendConfiguredText({ photo: [{}], caption: disclosure + '\nhttps://hacoo.app/p/1' }, { enabled: true, text: disclosure });
   assert.equal(disclosureOnly.changed, false);
   assert.equal(disclosureOnly.reason, 'no-product-caption');
   const realCaption = appendConfiguredText({ photo: [{}], caption: 'ASICS Gel Nimbus 16\nhttps://hacoo.app/p/1' }, { enabled: true, text: disclosure });
