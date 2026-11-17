@@ -136,5 +136,5 @@ test('une mention affiliée seule est interdite comme légende d’un album manu
   const disclosure = 'Lien affilié, commission possible. Authenticité à vérifier auprès du vendeur';
   assert.deepEqual(manualAlbumCaptions([{ caption: disclosure }, {}]), ['', '']);
   assert.deepEqual(manualAlbumCaptions([{}, {}], { text: disclosure, contextMedia: true }), ['', '']);
-  assert.deepEqual(manualAlbumCaptions([{ caption: 'ASICS Gel Nimbus 16\\n' + disclosure }, {}]), ['ASICS Gel Nimbus 16\\n' + disclosure, '']);
+  assert.deepEqual(manualAlbumCaptions([{ caption: 'ASICS Gel Nimbus 16\n' + disclosure }, {}]), ['ASICS Gel Nimbus 16\\n' + disclosure, '']);
 });
