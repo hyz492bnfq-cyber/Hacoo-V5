@@ -18,7 +18,7 @@ const { parseChannelRegistry } = require('./lib/multichannel');
 const publicationVault = require('./lib/publication-vault');
 const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
-const { cleanPresentationLine, removeRepeatedPublicationLines, hasAffiliateDisclosure, hasSubstantivePublicationText, removeAffiliateDisclosureLines } = require('./lib/presentation-cleaner');
+const { cleanPresentationLine, removeRepeatedPublicationLines, hasAffiliateDisclosure, hasPublicationLink, hasSubstantivePublicationText, removeAffiliateDisclosureLines } = require('./lib/presentation-cleaner');
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { productLinks, replaceProductLink } = require('./lib/manual-link');
 const hacooPromoLinks = require('./lib/hacoo-promo-link');
@@ -827,7 +827,7 @@ function cleanText(text) {
 // Toutes les transformations appliquées aux publications automatiques doivent
 // aussi être enregistrées dans la file manuelle. Garder ce chemin unique évite
 // qu'un réglage actif (nettoyage, remplacement ou format) soit oublié.
-function transformPublicationText(text, maxLength = 4096) {
+function transformPublicationText(text, maxLength = 4096, entities = []) {
   const original = String(text || '');
   const hasCleaning = data.cleanHashtags || data.cleanLinks || data.cleanMentions || data.cleanEmptyLines || data.cleanEmojis;
   const cleanedText = hasCleaning ? cleanText(original) : original;
@@ -835,14 +835,14 @@ function transformPublicationText(text, maxLength = 4096) {
     rule?.enabled !== false && typeof rule?.find === 'string' && rule.find.length > 0
   );
   const replacedText = hasReplacements ? applyTextReplacements(cleanedText, data.textReplacements).text : cleanedText;
-  return formatPostText(replacedText, maxLength);
+  return formatPostText(replacedText, maxLength, entities);
 }
 
 function stripFormattingMarkers(value) {
   return cleanPresentationLine(value);
 }
 
-function formatPostText(text, maxLength = 4096) {
+function formatPostText(text, maxLength = 4096, entities = []) {
  const original=String(text||'');
  let formatted=original;
  if(data.formatEnabled){
@@ -897,7 +897,7 @@ function formatPostText(text, maxLength = 4096) {
   // Nettoie les anciennes publications mal formées : jamais de mention seule.
   formatted = removeAffiliateDisclosureLines(formatted);
  }
- if(data.formatFooterEnabled && hasSubstantivePublicationText(formatted)){
+ if(data.formatFooterEnabled && hasSubstantivePublicationText(formatted) && hasPublicationLink(formatted, entities)){
   const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,600);
   const base=formatted.trimEnd();
   const footerSpacing=Math.max(0,Math.min(3,Number(data.formatFooterSpacing)||0));
@@ -1946,7 +1946,7 @@ async function processMessages(ctx, messages, options = {}) {
   ) {
     for (const message of messages) {
       const original = msgText(message);
-      const changed = transformPublicationText(original, message.caption !== undefined ? 1024 : 4096);
+      const changed = transformPublicationText(original, message.caption !== undefined ? 1024 : 4096, message.entities || message.caption_entities || []);
 
       if (changed !== original) {
         try {
@@ -2271,7 +2271,7 @@ async function regroupPhotos(group) {
   let finalCaption = caption;
   let entities = captionMessage.caption_entities || captionMessage.entities;
 
-  finalCaption = transformPublicationText(caption, 1024);
+  finalCaption = transformPublicationText(caption, 1024, captionMessage.caption_entities || captionMessage.entities || []);
   entities = publicationFooterEntities(finalCaption);
   if (!entities.length && finalCaption === caption && caption === msgText(captionMessage)) entities = captionMessage.caption_entities || captionMessage.entities;
 
@@ -2690,7 +2690,7 @@ async function captureManualPublication(ctx, messages) {
   // et options de formatage, pas seulement le format visuel.
   for (const message of savedMessages) {
     const original = msgText(message);
-    const transformed = transformPublicationText(original, message.caption !== undefined || message.photo || message.video || message.document || message.animation || message.audio || message.voice ? 1024 : 4096);
+    const transformed = transformPublicationText(original, message.caption !== undefined || message.photo || message.video || message.document || message.animation || message.audio || message.voice ? 1024 : 4096, message.entities || message.caption_entities || []);
     if (transformed === original) continue;
     if (message.text !== undefined || (!message.caption && !message.photo && !message.video && !message.document)) message.text = transformed;
     else message.caption = transformed;
