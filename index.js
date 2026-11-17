@@ -18,7 +18,7 @@ const { parseChannelRegistry } = require('./lib/multichannel');
 const publicationVault = require('./lib/publication-vault');
 const { inspectPublication } = require('./lib/prepublication');
 const { normalizeReplacements, applyTextReplacements } = require('./lib/text-replacements');
-const { cleanPresentationLine, removeRepeatedPublicationLines, hasAffiliateDisclosure } = require('./lib/presentation-cleaner');
+const { cleanPresentationLine, removeRepeatedPublicationLines, hasAffiliateDisclosure, hasSubstantivePublicationText, removeAffiliateDisclosureLines } = require('./lib/presentation-cleaner');
 const { isExistingPromoLine, hasExistingPromoLine } = require('./lib/promo-line');
 const { productLinks, replaceProductLink } = require('./lib/manual-link');
 const hacooPromoLinks = require('./lib/hacoo-promo-link');
@@ -892,12 +892,17 @@ function formatPostText(text, maxLength = 4096) {
    }
   }
  }
- if(data.formatFooterEnabled){
+ const hasProductCaption = hasSubstantivePublicationText(formatted);
+ if (!hasProductCaption && hasAffiliateDisclosure(formatted)) {
+  // Nettoie les anciennes publications mal formées : jamais de mention seule.
+  formatted = removeAffiliateDisclosureLines(formatted);
+ }
+ if(data.formatFooterEnabled && hasSubstantivePublicationText(formatted)){
   const footer=String(data.formatFooterText||'').replace(/\u0000/g,'').trim().slice(0,600);
   const base=formatted.trimEnd();
   const footerSpacing=Math.max(0,Math.min(3,Number(data.formatFooterSpacing)||0));
   const footerSeparator='\n'.repeat(footerSpacing+1);
-  if(footer&&!base.endsWith(footer)&&!hasAffiliateDisclosure(base)&&base.length+footerSeparator.length+footer.length<=maxLength)formatted=base?base+footerSeparator+footer:footer;
+  if(footer&&!base.endsWith(footer)&&!hasAffiliateDisclosure(base)&&base.length+footerSeparator.length+footer.length<=maxLength)formatted=base+footerSeparator+footer;
  }
  return removeRepeatedPublicationLines(formatted);
 }
@@ -2258,7 +2263,7 @@ async function regroupPhotos(group) {
 
   // La légende peut être portée par n'importe quelle photo de la séquence,
   // pas nécessairement par la première (qui sert uniquement d'ancre).
-  const captionMessage = sourceMessages.find(message => msgText(message).trim()) || anchor;
+  const captionMessage = sourceMessages.find(message => hasSubstantivePublicationText(msgText(message))) || anchor;
   const caption = removeRepeatedPublicationLines(
     sourceMessages.map(message => msgText(message).trim()).filter(Boolean).join('\n')
   );
@@ -3265,7 +3270,7 @@ bot.command('history', async ctx => {
 
 bot.on('channel_post', async ctx => { await applyHacooAutoAppend(ctx, ctx.channelPost); queueChannelPost(ctx); });
 bot.on('edited_message', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedMessage); });
-bot.on('edited_channel_post', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedChannelPost); });
+bot.on('edited_channel_post', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedChannelPost); observeEditedChannelPost(ctx); });
 bot.on('message', async (ctx, next) => {
   const message = ctx.message;
   if (!message) return;
@@ -3283,8 +3288,6 @@ bot.command('groupid', async ctx => {
   await ctx.reply('Identifiant de ce groupe : ' + ctx.chat.id + '\nAjoute cet identifiant dans Paramètres > Modération du groupe.');
 });
 bot.on('my_chat_member', ctx => rememberChannelSyncChat(ctx.myChatMember?.chat));
-bot.on('edited_message', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedMessage); });
-bot.on('edited_channel_post', async ctx => { await applyHacooAutoAppend(ctx, ctx.editedChannelPost); observeEditedChannelPost(ctx); });
 
 bot.catch(error => {
   noteError(error.error || error);
